@@ -1,3 +1,5 @@
+use crate::list::List;
+
 use core::alloc::Layout;
 use core::cmp::Ordering;
 use core::fmt::{self, Debug, Display, Formatter, Pointer, Write};
@@ -36,6 +38,20 @@ impl<T: ?Sized> AsRef<T> for Box<'_, T> {
 impl<T: ?Sized> AsMut<T> for Box<'_, T> {
     fn as_mut(&mut self) -> &mut T {
         unsafe { self.ptr.as_mut() }
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<T, const N: usize> AsRef<[T]> for Box<'_, [T; N]> {
+    fn as_ref(&self) -> &[T] {
+        &self[..]
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<T, const N: usize> AsMut<[T]> for Box<'_, [T; N]> {
+    fn as_mut(&mut self) -> &mut [T] {
+        &mut self[..]
     }
 }
 
@@ -267,13 +283,30 @@ impl<'src> Arena<'src> {
         self.try_array(T::default(), count)
     }
 
+    fn try_array_raw<T>(&mut self, count: usize) -> *mut [MaybeUninit<T>]
+    where
+        T: Sized,
+    {
+        let alloc_layout = match Layout::array::<T>(count) {
+            Ok(layout) => layout,
+            Err(_) => {
+                return unsafe {
+                    let ptr = null_mut() as *mut T;
+                    let ptr = from_raw_parts_mut(ptr, 0) as *mut [T];
+                    ptr as *mut [MaybeUninit<T>]
+                }
+            }
+        };
+
+        let ptr = self.try_alloc_raw(&alloc_layout) as *mut T;
+        unsafe { from_raw_parts_mut(ptr, count) as *mut [T] as *mut [MaybeUninit<T>] }
+    }
+
     pub fn try_array<T>(&mut self, val: T, count: usize) -> Option<Box<'src, [T]>>
     where
         T: Copy + Sized,
     {
-        let alloc_layout = Layout::array::<T>(count).ok()?;
-
-        let ptr = self.try_alloc_raw(&alloc_layout);
+        let ptr = self.try_array_raw::<T>(count);
         if ptr.is_null() {
             return None;
         }
@@ -291,6 +324,52 @@ impl<'src> Arena<'src> {
                 src: PhantomData,
             })
         }
+    }
+
+    pub fn list_with_capacity<T>(
+        &mut self,
+        capacity: usize,
+    ) -> List<T, Box<'src, [MaybeUninit<T>]>, usize> {
+        self.try_list_with_capacity(capacity).unwrap()
+    }
+
+    pub fn try_list_with_capacity<T>(
+        &mut self,
+        capacity: usize,
+    ) -> Option<List<T, Box<'src, [MaybeUninit<T>]>, usize>> {
+        let ptr = self.try_array_raw::<T>(capacity);
+        if ptr.is_null() { return None; }
+        let buf = Box {
+            ptr: unsafe { NonNull::new_unchecked(ptr) },
+            val: PhantomData,
+            src: PhantomData,
+        };
+
+        Some(List::from_buffer(buf))
+    }
+
+    #[cfg(feature = "nighlty")]
+    pub fn array_list<T, const N: usize>(&mut self) -> List<T, Box<'src, [MaybeUninit<T>; N]>, usize> {
+        self.try_array_list().unwrap()
+    }
+
+    #[cfg(feature = "nightly")]
+    pub fn try_array_list<T, const N: usize>(
+        &mut self,
+    ) -> Option<List<T, Box<'src, [MaybeUninit<T>; N]>, usize>> {
+        let alloc_layout = Layout::new::<[T; N]>();
+        let ptr = self.try_alloc_raw(&alloc_layout) as *mut [T; N];
+        if ptr.is_null() {
+            return None;
+        }
+
+        let buf = Box {
+            ptr: unsafe { NonNull::new_unchecked(ptr as *mut [MaybeUninit<T>; N]) },
+            val: PhantomData,
+            src: PhantomData,
+        };
+
+        Some(List::from_buffer(buf))
     }
 
     pub fn collect<T, I>(&mut self, iter: I) -> Box<'src, [T]>
@@ -514,5 +593,25 @@ mod tests {
             output.as_ref(),
             "LinkedList { val: 1, next: Some(LinkedList { val: 0, next: None }) }"
         );
+    }
+
+    #[test]
+    fn lists() {
+        let mut backing_memory = [MaybeUninit::uninit(); 256];
+        let mut arena = Arena::from_buffer(&mut backing_memory[..]);
+
+        let mut list_a = arena.list_with_capacity::<i32>(32);
+        let mut list_b = arena.list_with_capacity::<i32>(32);
+        assert!(arena.try_alloc(0u8).is_none());
+
+        for i in 1..=32 {
+            list_a.push(i);
+        }
+
+        for i in &list_a {
+            list_b.push(-i);
+        }
+
+        assert_eq!(&list_b.as_slice()[..8], &[-1, -2, -3, -4, -5, -6, -7, -8]);
     }
 }
