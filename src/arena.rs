@@ -1,4 +1,4 @@
-use crate::list::List;
+use crate::list::{AsIndex, BoxSliceList, BoxArrayList, List};
 
 use core::alloc::Layout;
 use core::cmp::Ordering;
@@ -84,10 +84,6 @@ impl<T: ?Sized + PartialEq> PartialEq for Box<'_, T> {
     #[inline]
     fn eq(&self, other: &Box<'_, T>) -> bool {
         PartialEq::eq(&**self, &**other)
-    }
-    #[inline]
-    fn ne(&self, other: &Box<'_, T>) -> bool {
-        PartialEq::ne(&**self, &**other)
     }
 }
 impl<T: ?Sized + PartialOrd> PartialOrd for Box<'_, T> {
@@ -203,7 +199,7 @@ impl<'src> Arena<'src> {
         }
     }
 
-    pub fn make_sub_arena<'a>(&'a mut self) -> Arena<'a> {
+    pub fn make_sub_arena(&mut self) -> Arena<'_> {
         Arena {
             cursor: self.cursor,
             end: self.end,
@@ -222,8 +218,8 @@ impl<'src> Arena<'src> {
         let align_offset = self.cursor.align_offset(alloc_layout.align());
         assert!(align_offset != usize::MAX);
 
-        let result = unsafe { self.cursor.offset(align_offset as isize) };
-        let new_cursor = unsafe { result.offset(alloc_layout.size() as isize) };
+        let result = unsafe { self.cursor.add(align_offset) };
+        let new_cursor = unsafe { result.add(alloc_layout.size()) };
         if new_cursor <= self.end {
             self.cursor = new_cursor;
             result
@@ -314,7 +310,7 @@ impl<'src> Arena<'src> {
         unsafe {
             let ptr = ptr as *mut T;
             for i in 0..count {
-                ptr.offset(i as isize).write(val);
+                ptr.add(i).write(val);
             }
 
             let slice = from_raw_parts_mut(ptr, count);
@@ -326,17 +322,17 @@ impl<'src> Arena<'src> {
         }
     }
 
-    pub fn list_with_capacity<T>(
+    pub fn list_with_capacity<T, I: AsIndex>(
         &mut self,
         capacity: usize,
-    ) -> List<T, Box<'src, [MaybeUninit<T>]>, usize> {
+    ) -> BoxSliceList<'src, T, I> {
         self.try_list_with_capacity(capacity).unwrap()
     }
 
-    pub fn try_list_with_capacity<T>(
+    pub fn try_list_with_capacity<T, I: AsIndex>(
         &mut self,
         capacity: usize,
-    ) -> Option<List<T, Box<'src, [MaybeUninit<T>]>, usize>> {
+    ) -> Option<BoxSliceList<'src, T, I>> {
         let ptr = self.try_array_raw::<T>(capacity);
         if ptr.is_null() { return None; }
         let buf = Box {
@@ -349,14 +345,14 @@ impl<'src> Arena<'src> {
     }
 
     #[cfg(feature = "nighlty")]
-    pub fn array_list<T, const N: usize>(&mut self) -> List<T, Box<'src, [MaybeUninit<T>; N]>, usize> {
+    pub fn array_list<T, I: AsIndex, const N: usize>(&mut self) -> BoxArrayList<'src, T, I, N> {
         self.try_array_list().unwrap()
     }
 
     #[cfg(feature = "nightly")]
-    pub fn try_array_list<T, const N: usize>(
+    pub fn try_array_list<T, I: AsIndex, const N: usize>(
         &mut self,
-    ) -> Option<List<T, Box<'src, [MaybeUninit<T>; N]>, usize>> {
+    ) -> Option<BoxArrayList<'src, T, I, N>> {
         let alloc_layout = Layout::new::<[T; N]>();
         let ptr = self.try_alloc_raw(&alloc_layout) as *mut [T; N];
         if ptr.is_null() {
@@ -389,7 +385,7 @@ impl<'src> Arena<'src> {
         let align_offset = self.cursor.align_offset(alloc_layout.align());
         assert!(align_offset != usize::MAX);
 
-        let base = unsafe { self.cursor.offset(align_offset as isize) as *mut T };
+        let base = unsafe { self.cursor.add(align_offset) as *mut T };
         let mut count = 0usize;
         let mut cursor = base;
 
@@ -398,7 +394,7 @@ impl<'src> Arena<'src> {
             if (next_cursor as *mut MaybeUninit<u8>) > self.end {
                 for i in 0..count {
                     unsafe {
-                        base.offset(i as isize).drop_in_place();
+                        base.add(i).drop_in_place();
                     }
                 }
 
@@ -433,7 +429,7 @@ pub struct ArenaWriter<'src, 'buf> {
 
 impl Write for ArenaWriter<'_, '_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        let new_cursor = unsafe { self.source.cursor.offset(s.len() as isize) };
+        let new_cursor = unsafe { self.source.cursor.add(s.len()) };
 
         if new_cursor > self.source.end {
             return fmt::Result::Err(fmt::Error);
@@ -600,8 +596,8 @@ mod tests {
         let mut backing_memory = [MaybeUninit::uninit(); 256];
         let mut arena = Arena::from_buffer(&mut backing_memory[..]);
 
-        let mut list_a = arena.list_with_capacity::<i32>(32);
-        let mut list_b = arena.list_with_capacity::<i32>(32);
+        let mut list_a = arena.list_with_capacity::<i32, usize>(32);
+        let mut list_b = arena.list_with_capacity::<i32, usize>(32);
         assert!(arena.try_alloc(0u8).is_none());
 
         for i in 1..=32 {

@@ -1,3 +1,5 @@
+use crate::arena::Box;
+
 use core::convert::{AsMut, AsRef, TryInto};
 use core::hash::{Hash, Hasher};
 use core::iter::{IntoIterator as IntoIter, Iterator};
@@ -80,6 +82,11 @@ macro_rules! index_type {
         }
     }
 }
+
+pub type BoxSliceList<'src, E, I = usize> = List<E, Box<'src, [MaybeUninit<E>]>, I>;
+
+#[cfg(feature = "nightly")]
+pub type BoxArrayList<'src, E, I, const N: usize> = List<E, Box<'src, [MaybeUninit<E>; N]>, I>;
 
 pub struct List<Element, Buf, Idx = usize>
 where
@@ -461,11 +468,6 @@ where
     fn eq(&self, other: &List<BE, BB, BI>) -> bool {
         self.as_slice() == other.as_slice()
     }
-
-    #[inline]
-    fn ne(&self, other: &List<BE, BB, BI>) -> bool {
-        self.as_slice() != other.as_slice()
-    }
 }
 
 impl<E, B, I> core::cmp::Eq for List<E, B, I>
@@ -486,11 +488,6 @@ where
     fn eq(&self, other: &&[V]) -> bool {
         self.as_slice() == &other[..]
     }
-
-    #[inline]
-    fn ne(&self, other: &&[V]) -> bool {
-        self.as_slice() != &other[..]
-    }
 }
 
 impl<V, E, B, I> core::cmp::PartialEq<&mut [V]> for List<E, B, I>
@@ -502,11 +499,6 @@ where
     #[inline]
     fn eq(&self, other: &&mut [V]) -> bool {
         self.as_slice() == &other[..]
-    }
-
-    #[inline]
-    fn ne(&self, other: &&mut [V]) -> bool {
-        self.as_slice() != &other[..]
     }
 }
 
@@ -520,11 +512,6 @@ where
     fn eq(&self, other: &List<E, B, I>) -> bool {
         &self[..] == other.as_slice()
     }
-
-    #[inline]
-    fn ne(&self, other: &List<E, B, I>) -> bool {
-        &self[..] != other.as_slice()
-    }
 }
 
 impl<V, E, B, I> core::cmp::PartialEq<List<E, B, I>> for &mut [V]
@@ -536,11 +523,6 @@ where
     #[inline]
     fn eq(&self, other: &List<E, B, I>) -> bool {
         &self[..] == other.as_slice()
-    }
-
-    #[inline]
-    fn ne(&self, other: &List<E, B, I>) -> bool {
-        &self[..] != other.as_slice()
     }
 }
 
@@ -641,7 +623,9 @@ where
 
     fn into_iter(mut self) -> Self::IntoIter {
         let end = self.len;
+        #[allow(clippy::uninit_assumed_init)]
         let buf = core::mem::replace(&mut self.buf, unsafe {
+            // This is safe because we're going from MaybeUninit<[_]> to [MaybeUninit<_>]
             MaybeUninit::uninit().assume_init()
         });
         core::mem::forget(self);
@@ -664,7 +648,7 @@ where
     type IntoIter = core::slice::Iter<'a, E>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.as_slice().into_iter()
+        self.as_slice().iter()
     }
 }
 
@@ -677,7 +661,7 @@ where
     type IntoIter = core::slice::IterMut<'a, E>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.as_mut_slice().into_iter()
+        self.as_mut_slice().iter_mut()
     }
 }
 
@@ -792,11 +776,6 @@ where
     fn eq(&self, other: &List<E, B, I>) -> bool {
         &self[..] == other.as_slice()
     }
-
-    #[inline]
-    fn ne(&self, other: &List<E, B, I>) -> bool {
-        &self[..] != other.as_slice()
-    }
 }
 
 #[cfg(feature = "nightly")]
@@ -809,11 +788,6 @@ where
     #[inline]
     fn eq(&self, other: &[V; N]) -> bool {
         self.as_slice() == &other[..]
-    }
-
-    #[inline]
-    fn ne(&self, other: &[V; N]) -> bool {
-        self.as_slice() != &other[..]
     }
 }
 
