@@ -7,6 +7,7 @@ use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ptr;
 
+// TODO: Should this be unsafe to implement? Soundness of unsafe code depends on this, right!?
 pub trait AsIndex: Copy + Sized {
     fn from_usize(value: usize) -> Self;
     fn to_usize(self) -> usize;
@@ -397,6 +398,47 @@ where
         self.get_mut(index).unwrap()
     }
 }
+
+macro_rules! _impl_idx_range {
+    ($self:ident, $idx:ident: $r:ty, $lo:expr, $hi:expr) => {
+        impl<E, B, I> core::ops::Index<$r> for List<E, B, I>
+        where
+            B: AsRef<[MaybeUninit<E>]> + AsMut<[MaybeUninit<E>]>,
+            I: AsIndex + PartialOrd,
+        {
+            type Output = [E];
+            #[allow(unused_variables)]
+            fn index(&self, $idx: $r) -> &Self::Output {
+                let $self = self;
+                let start = $lo;
+                let end = $hi;
+                &self.as_slice()[start..end]
+            }
+        }
+
+        impl<E, B, I> core::ops::IndexMut<$r> for List<E, B, I>
+        where
+            B: AsRef<[MaybeUninit<E>]> + AsMut<[MaybeUninit<E>]>,
+            I: AsIndex + PartialOrd,
+        {
+            #[allow(unused_variables)]
+            fn index_mut(&mut self, $idx: $r) -> &mut Self::Output {
+                let (start, end) = {
+                    let $self = &self;
+                    ($lo, $hi)
+                };
+                &mut self.as_mut_slice()[start..end]
+            }
+        }
+    };
+}
+
+_impl_idx_range! { s, index: core::ops::Range<I>, index.start.to_usize(), index.end.to_usize() }
+_impl_idx_range! { s, index: core::ops::RangeFrom<I>, index.start.to_usize(), s.len() }
+_impl_idx_range! { s, index: core::ops::RangeFull, 0, s.len() }
+_impl_idx_range! { s, index: core::ops::RangeInclusive<I>, index.start().to_usize(), index.end().to_usize() + 1 }
+_impl_idx_range! { s, index: core::ops::RangeTo<I>, 0, index.end.to_usize() }
+_impl_idx_range! { s, index: core::ops::RangeToInclusive<I>, 0, index.end.to_usize() + 1 }
 
 impl<E, B, I> core::convert::AsRef<[E]> for List<E, B, I>
 where
