@@ -1,4 +1,24 @@
-use crate::list::{AsIndex, BoxSliceList, BoxArrayList, List};
+//! Arena-based memory management.
+//!
+//! An arena controls a contiguous region of memory, partitioning it by simply
+//! incrementing a pointer. Once such an allocation goes out of scope, the
+//! memory cannot be reclaimed until the entire region is cleared in aggregate.
+//! This scheme has minimal runtime overhead, at the cost of potential memory
+//! fragmentation.
+//!
+//! In order to optimally utilize the borrow checker, [`Arena`] does not have
+//! a `clear` method. Instead, the underlying region is reset by dropping
+//! the arena, and may safely be freed or reused; a [`Box<'src, T>`] cannot
+//! outlive the arena it was allocated from.
+//!
+//! On the flip-side, an arena must live as long as the longest-living value
+//! inside it, leaving the remainder of the region unusable. To mitigate this,
+//! one can [construct an arena from an existing one](Arena::make_sub_arena),
+//! which will manage the remaining memory. It's not possible to allocate out
+//! of the original arena as long as such a sub-arena lives (though all previously
+//! allocated values remain accessible), resulting in stack-like behavior.
+
+use crate::list::{AsIndex, BoxArrayList, BoxSliceList, List};
 
 use core::alloc::Layout;
 use core::cmp::Ordering;
@@ -10,6 +30,12 @@ use core::ops::{Deref, DerefMut, Range};
 use core::ptr::{null_mut, NonNull};
 use core::slice::from_raw_parts_mut;
 
+/// A pointer type providing ownership of an arena allocation.
+///
+/// While the owned value will be dropped as normal, no additional overhead
+/// for memory management is incurred.
+///
+/// See the [module-level documentation](crate::arena) for more.
 pub struct Box<'src, T: ?Sized> {
     ptr: NonNull<T>,
     val: PhantomData<T>,        // Indicates this is an owning pointer
@@ -182,6 +208,9 @@ impl<I: Iterator + ?Sized> Iterator for Box<'_, I> {
     }
 }
 
+/// A memory arena, also known as a region-based allocator, or bump allocator.
+///
+/// See the the [module-level documentation](crate::arena) for more.
 pub struct Arena<'src> {
     cursor: *mut MaybeUninit<u8>,
     end: *mut MaybeUninit<u8>,
@@ -189,6 +218,16 @@ pub struct Arena<'src> {
 }
 
 impl<'src> Arena<'src> {
+    /// Constructs a new `Arena` allocating out of `buf`.
+    ///
+    /// # Examples
+    /// ```
+    /// use core::mem::MaybeUninit;
+    /// use coca::Arena;
+    ///
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let arena = Arena::from_buffer(&mut backing_region[..]);
+    /// ```
     pub fn from_buffer(buf: &'src mut [MaybeUninit<u8>]) -> Arena<'src> {
         let Range { start, end } = buf.as_mut_ptr_range();
 
@@ -199,6 +238,25 @@ impl<'src> Arena<'src> {
         }
     }
 
+    /// Constructs a new `Arena` allocating out of the free space remaining in `self`.
+    /// `self` cannot be used for allocation until the new arena is dropped.
+    ///
+    /// # Examples
+    /// ```
+    /// use core::mem::MaybeUninit;
+    /// use coca::Arena;
+    ///
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    ///
+    /// {
+    ///     let mut tmp = arena.make_sub_arena();
+    ///     let arr = tmp.alloc([0u32; 256]);      // this will take up all 1024 = 4*256 bytes...
+    ///     assert!(tmp.try_alloc(0u8).is_none()); // ...so this can't succeed
+    /// }
+    ///
+    /// assert!(arena.try_alloc([0u32; 256]).is_some()); // tmp was dropped, so the memory can be reused
+    /// ```
     pub fn make_sub_arena(&mut self) -> Arena<'_> {
         Arena {
             cursor: self.cursor,
@@ -207,6 +265,8 @@ impl<'src> Arena<'src> {
         }
     }
 
+    /// Constructs a new [`ArenaWriter`] backed by the free space remaining in `self`.
+    /// Primarily intended for use in expansions of [`fmt!`](arena::fmt).
     pub fn make_writer<'a>(&'a mut self) -> ArenaWriter<'a, 'src> {
         ArenaWriter {
             source: self,
@@ -334,7 +394,9 @@ impl<'src> Arena<'src> {
         capacity: usize,
     ) -> Option<BoxSliceList<'src, T, I>> {
         let ptr = self.try_array_raw::<T>(capacity);
-        if ptr.is_null() { return None; }
+        if ptr.is_null() {
+            return None;
+        }
         let buf = Box {
             ptr: unsafe { NonNull::new_unchecked(ptr) },
             val: PhantomData,
@@ -422,6 +484,23 @@ impl<'src> Arena<'src> {
     }
 }
 
+/// Implementor of [`core::fmt::Write`] backed by an [`Arena`].
+/// Primarily intended for use in expansions of [`fmt!`](arena::fmt).
+///
+/// # Examples
+/// ```
+/// use coca::{Arena, Box};
+/// use core::{fmt::Write, mem::MaybeUninit};
+///
+/// let mut backing_buffer = [MaybeUninit::uninit(); 1024];
+/// let mut arena = Arena::from_buffer(&mut backing_buffer[..]);
+/// let str = {
+///     let mut writer = arena.make_writer();
+///     core::write!(writer, "Testing, testing, {}, {}, {}...", 1, 2, 3).unwrap();
+///     Box::<'_, str>::from(writer)
+/// };
+/// assert_eq!(&str[..], "Testing, testing, 1, 2, 3...");
+/// ```
 pub struct ArenaWriter<'src, 'buf> {
     source: &'src mut Arena<'buf>,
     len: usize,
@@ -463,13 +542,38 @@ impl<'buf> From<ArenaWriter<'_, 'buf>> for Box<'buf, str> {
     }
 }
 
+/// Creates a `Option<Box<'_, str>>` using interpolation of runtime expressions.
+///
+/// The first argument `fmt!` receives is an [`Arena`] from which the string
+/// will be allocated.
+///
+/// The second argument is a format string. This must be a string literal.
+/// Additional parameters passed to `fmt!` replace the `{}`s contained within
+/// the formatting string in the order given unless named or positional
+/// parameters are used; see [`core::fmt`] for more information.
+///
+/// Evaluates to `None` if the arena does not have enough space remaining to
+/// contain the formatted string.
+///
+/// # Examples
+/// ```
+/// use coca::{Arena, fmt};
+/// use core::mem::MaybeUninit;
+///
+/// let mut backing_buffer = [MaybeUninit::uninit(); 16];
+/// let mut arena = Arena::from_buffer(&mut backing_buffer[..]);
+/// let output = fmt!(arena, "test").unwrap();
+/// let output = fmt!(arena, "hello {}", "world!").unwrap();
+/// assert!(fmt!(arena, "{}", ' ').is_none());
+/// ```
 #[macro_export]
 macro_rules! fmt {
     ($arena:expr, $($arg:tt)*) => {{
+        use core::fmt::Write;
         let mut writer = $arena.make_writer();
         core::write!(writer, $($arg)*)
             .ok()
-            .map(|_| Box::<'_, str>::from(writer))
+            .map(|_| $crate::Box::<'_, str>::from(writer))
     }}
 }
 
