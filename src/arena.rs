@@ -276,8 +276,14 @@ impl<'src> Arena<'src> {
 
     fn try_alloc_raw(&mut self, alloc_layout: &Layout) -> *mut MaybeUninit<u8> {
         let align_offset = self.cursor.align_offset(alloc_layout.align());
+
+        // `ptr::align_offset()` returns `usize::MAX` when aligning the pointer
+        // isn't possible, which shouldn't ever happen with a `*u8`, BUT:
+        // the implementation is free to _always_ return `usize::MAX`, so
+        // we'll leave getting rid of this check to the optimizer
         assert!(align_offset != usize::MAX);
 
+        // FIXME(soundness): I think this is technically undefined behaviour, actually?
         let result = unsafe { self.cursor.add(align_offset) };
         let new_cursor = unsafe { result.add(alloc_layout.size()) };
         if new_cursor <= self.end {
@@ -288,19 +294,67 @@ impl<'src> Arena<'src> {
         }
     }
 
+    /// Allocates memory in the arena and then places the `Default` value for T
+    /// into it.
+    ///
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient.
+    /// See [`try_alloc_default`] for a checked version that never panics.
     pub fn alloc_default<T: Default + Sized>(&mut self) -> Box<'src, T> {
         self.try_alloc(T::default()).unwrap()
     }
 
-    pub fn alloc<T: Sized>(&mut self, val: T) -> Box<'src, T> {
-        self.try_alloc(val).unwrap()
+    /// Allocates memory in the arena and then places `x` into it.
+    ///
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient.
+    /// See [`try_alloc`] for a checked version that never panics.
+    pub fn alloc<T: Sized>(&mut self, x: T) -> Box<'src, T> {
+        self.try_alloc(x).unwrap()
     }
 
+    /// Allocates memory in the arena and then places the `Default` value for T
+    /// into it.
+    ///
+    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    ///
+    /// # Examples
+    /// ```
+    /// use core::mem::MaybeUninit;
+    /// use coca::Arena;
+    ///
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    ///
+    /// for _ in 0..(1024 / 16) {
+    ///     assert_eq!(*arena.try_alloc_default::<u128>().unwrap(), 0);
+    /// }
+    ///
+    /// assert!(arena.try_alloc_default::<u128>().is_none());
+    /// ```
     pub fn try_alloc_default<T: Default + Sized>(&mut self) -> Option<Box<'src, T>> {
         self.try_alloc(T::default())
     }
 
-    pub fn try_alloc<T: Sized>(&mut self, val: T) -> Option<Box<'src, T>> {
+    /// Allocates memory in the arena and then places `x` into it.
+    ///
+    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    ///
+    /// # Examples
+    /// ```
+    /// use core::mem::MaybeUninit;
+    /// use coca::Arena;
+    ///
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    ///
+    /// for i in 0..(1024 / 16) {
+    ///     assert_eq!(*arena.try_alloc(i as u128).unwrap(), i as u128);
+    /// }
+    ///
+    /// assert!(arena.try_alloc(0xDEAD_BEEF_CAFE_BABEu128).is_none());
+    /// ```
+    pub fn try_alloc<T: Sized>(&mut self, x: T) -> Option<Box<'src, T>> {
         let ptr = self.try_alloc_raw(&Layout::new::<T>());
         if ptr.is_null() {
             return None;
@@ -308,7 +362,7 @@ impl<'src> Arena<'src> {
 
         unsafe {
             let ptr = ptr as *mut T;
-            ptr.write(val);
+            ptr.write(x);
 
             Some(Box {
                 ptr: NonNull::new_unchecked(ptr),
@@ -318,6 +372,15 @@ impl<'src> Arena<'src> {
         }
     }
 
+    /// Allocates memory in the arena and then places `count` copies of the
+    /// `Default` value for T into it.
+    ///
+    /// Consider using [`alloc_default<[T; count]>`](alloc_default) instead
+    /// when `count` is known at compile time.
+    ///
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient.
+    /// See [`try_array_default`] for a checked version that never panics.
     pub fn array_default<T>(&mut self, count: usize) -> Box<'src, [T]>
     where
         T: Copy + Default + Sized,
@@ -325,13 +388,40 @@ impl<'src> Arena<'src> {
         self.try_array(T::default(), count).unwrap()
     }
 
-    pub fn array<T>(&mut self, val: T, count: usize) -> Box<'src, [T]>
+    /// Allocates memory in the arena and then places `count` copies of `x`
+    /// into it.
+    ///
+    /// Consider using [`alloc([x; count])`](alloc) instead when `count` is
+    /// known at compile time.
+    ///
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient.
+    /// See [`try_array`] for a checked version that never panics.
+    pub fn array<T>(&mut self, x: T, count: usize) -> Box<'src, [T]>
     where
         T: Copy + Sized,
     {
-        self.try_array(val, count).unwrap()
+        self.try_array(x, count).unwrap()
     }
 
+    /// Allocates memory in the arena and then places `count` copies of the
+    /// `Default` value for T into it.
+    ///
+    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    ///
+    /// Consider using [`try_alloc_default<[T; count]>`](try_alloc_default)
+    /// instead when `count` is known at compile time.
+    ///
+    /// # Examples
+    /// ```
+    /// use core::mem::MaybeUninit;
+    /// use coca::Arena;
+    ///
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    /// let array = arena.try_array_default::<u128>(16).unwrap();
+    /// assert_eq!(&array[..], &[0; 16])
+    /// ```
     pub fn try_array_default<T>(&mut self, count: usize) -> Option<Box<'src, [T]>>
     where
         T: Copy + Default + Sized,
@@ -358,7 +448,25 @@ impl<'src> Arena<'src> {
         unsafe { from_raw_parts_mut(ptr, count) as *mut [T] as *mut [MaybeUninit<T>] }
     }
 
-    pub fn try_array<T>(&mut self, val: T, count: usize) -> Option<Box<'src, [T]>>
+    /// Allocates memory in the arena and then places `count` copies of `x`
+    /// into it.
+    ///
+    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    ///
+    /// Consider using [`try_alloc([x; count])`](try_alloc) instead when
+    /// `count` is known at compile time.
+    ///
+    /// # Examples
+    /// ```
+    /// use core::mem::MaybeUninit;
+    /// use coca::Arena;
+    ///
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    /// let array = arena.try_array(0x12345678u32, 256).unwrap();
+    /// assert_eq!(&array[..], &[0x12345678u32; 256])
+    /// ```
+    pub fn try_array<T>(&mut self, x: T, count: usize) -> Option<Box<'src, [T]>>
     where
         T: Copy + Sized,
     {
@@ -370,7 +478,7 @@ impl<'src> Arena<'src> {
         unsafe {
             let ptr = ptr as *mut T;
             for i in 0..count {
-                ptr.add(i).write(val);
+                ptr.add(i).write(x);
             }
 
             let slice = from_raw_parts_mut(ptr, count);
@@ -406,7 +514,7 @@ impl<'src> Arena<'src> {
         Some(List::from_buffer(buf))
     }
 
-    #[cfg(feature = "nighlty")]
+    #[cfg(feature = "nightly")]
     pub fn array_list<T, I: AsIndex, const N: usize>(&mut self) -> BoxArrayList<'src, T, I, N> {
         self.try_array_list().unwrap()
     }
