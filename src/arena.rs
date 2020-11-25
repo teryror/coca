@@ -228,6 +228,7 @@ impl<'src> Arena<'src> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let arena = Arena::from_buffer(&mut backing_region[..]);
     /// ```
+    #[inline]
     pub fn from_buffer(buf: &'src mut [MaybeUninit<u8>]) -> Arena<'src> {
         let Range { start, end } = buf.as_mut_ptr_range();
 
@@ -257,6 +258,7 @@ impl<'src> Arena<'src> {
     ///
     /// assert!(arena.try_alloc([0u32; 256]).is_some()); // tmp was dropped, so the memory can be reused
     /// ```
+    #[inline]
     pub fn make_sub_arena(&mut self) -> Arena<'_> {
         Arena {
             cursor: self.cursor,
@@ -267,6 +269,7 @@ impl<'src> Arena<'src> {
 
     /// Constructs a new [`ArenaWriter`] backed by the free space remaining in `self`.
     /// Primarily intended for use in expansions of [`fmt!`](arena::fmt).
+    #[inline]
     pub fn make_writer<'a>(&'a mut self) -> ArenaWriter<'a, 'src> {
         ArenaWriter {
             source: self,
@@ -274,6 +277,7 @@ impl<'src> Arena<'src> {
         }
     }
 
+    #[inline]
     fn try_alloc_raw(&mut self, alloc_layout: &Layout) -> *mut MaybeUninit<u8> {
         let align_offset = self.cursor.align_offset(alloc_layout.align());
 
@@ -283,15 +287,20 @@ impl<'src> Arena<'src> {
         // we'll leave getting rid of this check to the optimizer
         assert!(align_offset != usize::MAX);
 
-        // FIXME(soundness): I think this is technically undefined behaviour, actually?
-        let result = unsafe { self.cursor.add(align_offset) };
-        let new_cursor = unsafe { result.add(alloc_layout.size()) };
-        if new_cursor <= self.end {
-            self.cursor = new_cursor;
-            result
-        } else {
-            null_mut()
+        // we can't eagerly compute `result` and `new_cursor`, because it's UB
+        // for the result of `ptr::add` to be out of bounds, so the correct way
+        // to check bounds here is through usize arithmetic:
+        if let Some(total_bytes) = align_offset.checked_add(alloc_layout.size()) {
+            if (self.end as usize) - (self.cursor as usize) >= total_bytes {
+                let result = unsafe { self.cursor.add(align_offset) };
+                let new_cursor = unsafe { result.add(alloc_layout.size()) };
+                self.cursor = new_cursor;
+
+                return result;
+            }
         }
+
+        null_mut()
     }
 
     /// Allocates memory in the arena and then places the `Default` value for T
@@ -300,6 +309,7 @@ impl<'src> Arena<'src> {
     /// # Panics
     /// Panics if the remaining space in the arena is insufficient.
     /// See [`try_alloc_default`] for a checked version that never panics.
+    #[inline]
     pub fn alloc_default<T: Default + Sized>(&mut self) -> Box<'src, T> {
         self.try_alloc(T::default()).unwrap()
     }
@@ -309,6 +319,7 @@ impl<'src> Arena<'src> {
     /// # Panics
     /// Panics if the remaining space in the arena is insufficient.
     /// See [`try_alloc`] for a checked version that never panics.
+    #[inline]
     pub fn alloc<T: Sized>(&mut self, x: T) -> Box<'src, T> {
         self.try_alloc(x).unwrap()
     }
@@ -332,6 +343,7 @@ impl<'src> Arena<'src> {
     ///
     /// assert!(arena.try_alloc_default::<u128>().is_none());
     /// ```
+    #[inline]
     pub fn try_alloc_default<T: Default + Sized>(&mut self) -> Option<Box<'src, T>> {
         self.try_alloc(T::default())
     }
@@ -354,6 +366,7 @@ impl<'src> Arena<'src> {
     ///
     /// assert!(arena.try_alloc(0xDEAD_BEEF_CAFE_BABEu128).is_none());
     /// ```
+    #[inline]
     pub fn try_alloc<T: Sized>(&mut self, x: T) -> Option<Box<'src, T>> {
         let ptr = self.try_alloc_raw(&Layout::new::<T>());
         if ptr.is_null() {
@@ -381,6 +394,7 @@ impl<'src> Arena<'src> {
     /// # Panics
     /// Panics if the remaining space in the arena is insufficient.
     /// See [`try_array_default`] for a checked version that never panics.
+    #[inline]
     pub fn array_default<T>(&mut self, count: usize) -> Box<'src, [T]>
     where
         T: Copy + Default + Sized,
@@ -397,6 +411,7 @@ impl<'src> Arena<'src> {
     /// # Panics
     /// Panics if the remaining space in the arena is insufficient.
     /// See [`try_array`] for a checked version that never panics.
+    #[inline]
     pub fn array<T>(&mut self, x: T, count: usize) -> Box<'src, [T]>
     where
         T: Copy + Sized,
@@ -422,6 +437,7 @@ impl<'src> Arena<'src> {
     /// let array = arena.try_array_default::<u128>(16).unwrap();
     /// assert_eq!(&array[..], &[0; 16])
     /// ```
+    #[inline]
     pub fn try_array_default<T>(&mut self, count: usize) -> Option<Box<'src, [T]>>
     where
         T: Copy + Default + Sized,
@@ -429,22 +445,29 @@ impl<'src> Arena<'src> {
         self.try_array(T::default(), count)
     }
 
+    #[inline]
     fn try_array_raw<T>(&mut self, count: usize) -> *mut [MaybeUninit<T>]
     where
         T: Sized,
     {
+        let empty = unsafe {
+            // must not use null, even for empty slices, because of NonNull optimizations
+            let mut dangling = NonNull::dangling();
+            from_raw_parts_mut(dangling.as_mut(), 0) as *mut [MaybeUninit<T>]
+        };
+
         let alloc_layout = match Layout::array::<T>(count) {
             Ok(layout) => layout,
             Err(_) => {
-                return unsafe {
-                    let ptr = null_mut() as *mut T;
-                    let ptr = from_raw_parts_mut(ptr, 0) as *mut [T];
-                    ptr as *mut [MaybeUninit<T>]
-                }
+                return empty;
             }
         };
 
         let ptr = self.try_alloc_raw(&alloc_layout) as *mut T;
+        if ptr.is_null() {
+            return empty;
+        }
+
         unsafe { from_raw_parts_mut(ptr, count) as *mut [T] as *mut [MaybeUninit<T>] }
     }
 
@@ -466,6 +489,7 @@ impl<'src> Arena<'src> {
     /// let array = arena.try_array(0x12345678u32, 256).unwrap();
     /// assert_eq!(&array[..], &[0x12345678u32; 256])
     /// ```
+    #[inline]
     pub fn try_array<T>(&mut self, x: T, count: usize) -> Option<Box<'src, [T]>>
     where
         T: Copy + Sized,
@@ -490,6 +514,7 @@ impl<'src> Arena<'src> {
         }
     }
 
+    #[inline]
     pub fn list_with_capacity<T, I: AsIndex>(
         &mut self,
         capacity: usize,
@@ -497,6 +522,7 @@ impl<'src> Arena<'src> {
         self.try_list_with_capacity(capacity).unwrap()
     }
 
+    #[inline]
     pub fn try_list_with_capacity<T, I: AsIndex>(
         &mut self,
         capacity: usize,
@@ -515,11 +541,13 @@ impl<'src> Arena<'src> {
     }
 
     #[cfg(feature = "nightly")]
+    #[inline]
     pub fn array_list<T, I: AsIndex, const N: usize>(&mut self) -> BoxArrayList<'src, T, I, N> {
         self.try_array_list().unwrap()
     }
 
     #[cfg(feature = "nightly")]
+    #[inline]
     pub fn try_array_list<T, I: AsIndex, const N: usize>(
         &mut self,
     ) -> Option<BoxArrayList<'src, T, I, N>> {
@@ -538,6 +566,7 @@ impl<'src> Arena<'src> {
         Some(List::from_buffer(buf))
     }
 
+    #[inline]
     pub fn collect<T, I>(&mut self, iter: I) -> Box<'src, [T]>
     where
         T: Sized,
@@ -555,13 +584,19 @@ impl<'src> Arena<'src> {
         let align_offset = self.cursor.align_offset(alloc_layout.align());
         assert!(align_offset != usize::MAX);
 
+        let bytes_remaining = (self.end as usize) - (self.cursor as usize);
+        if bytes_remaining < align_offset {
+            return None;
+        }
+
+        let item_capacity = (bytes_remaining - align_offset) / core::mem::size_of::<T>();
+
         let base = unsafe { self.cursor.add(align_offset) as *mut T };
         let mut count = 0usize;
         let mut cursor = base;
 
         for val in iter {
-            let next_cursor = unsafe { cursor.offset(1) };
-            if (next_cursor as *mut MaybeUninit<u8>) > self.end {
+            if count == item_capacity {
                 for i in 0..count {
                     unsafe {
                         base.add(i).drop_in_place();
@@ -571,12 +606,11 @@ impl<'src> Arena<'src> {
                 return None;
             }
 
+            count += 1;
             unsafe {
                 cursor.write(val);
+                cursor = cursor.add(1);
             }
-
-            count += 1;
-            cursor = next_cursor;
         }
 
         self.cursor = cursor as *mut MaybeUninit<u8>;
@@ -616,9 +650,8 @@ pub struct ArenaWriter<'src, 'buf> {
 
 impl Write for ArenaWriter<'_, '_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        let new_cursor = unsafe { self.source.cursor.add(s.len()) };
-
-        if new_cursor > self.source.end {
+        let bytes_remaining = (self.source.end as usize) - (self.source.cursor as usize);
+        if s.len() > bytes_remaining {
             return fmt::Result::Err(fmt::Error);
         }
 
@@ -627,7 +660,7 @@ impl Write for ArenaWriter<'_, '_> {
                 .copy_to_nonoverlapping(self.source.cursor as *mut u8, s.len());
         }
 
-        self.source.cursor = new_cursor;
+        self.source.cursor = unsafe { self.source.cursor.add(s.len()) };
         self.len += s.len();
 
         Ok(())
