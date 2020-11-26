@@ -18,8 +18,6 @@
 //! of the original arena as long as such a sub-arena lives (though all previously
 //! allocated values remain accessible), resulting in stack-like behavior.
 
-use crate::list::{AsIndex, BoxArrayList, BoxSliceList, List};
-
 use core::alloc::Layout;
 use core::cmp::Ordering;
 use core::fmt::{self, Debug, Display, Formatter, Pointer, Write};
@@ -27,7 +25,7 @@ use core::hash::{Hash, Hasher};
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut, Range};
-use core::ptr::{null_mut, NonNull};
+use core::ptr::{null_mut, slice_from_raw_parts_mut, NonNull};
 use core::slice::from_raw_parts_mut;
 
 /// A pointer type providing ownership of an arena allocation.
@@ -64,20 +62,6 @@ impl<T: ?Sized> AsRef<T> for Box<'_, T> {
 impl<T: ?Sized> AsMut<T> for Box<'_, T> {
     fn as_mut(&mut self) -> &mut T {
         unsafe { self.ptr.as_mut() }
-    }
-}
-
-#[cfg(feature = "nightly")]
-impl<T, const N: usize> AsRef<[T]> for Box<'_, [T; N]> {
-    fn as_ref(&self) -> &[T] {
-        &self[..]
-    }
-}
-
-#[cfg(feature = "nightly")]
-impl<T, const N: usize> AsMut<[T]> for Box<'_, [T; N]> {
-    fn as_mut(&mut self) -> &mut [T] {
-        &mut self[..]
     }
 }
 
@@ -462,25 +446,19 @@ impl<'src> Arena<'src> {
     where
         T: Sized,
     {
-        let empty = unsafe {
-            // must not use null, even for empty slices, because of NonNull optimizations
-            let mut dangling = NonNull::dangling();
-            from_raw_parts_mut(dangling.as_mut(), 0) as *mut [MaybeUninit<T>]
-        };
-
         let alloc_layout = match Layout::array::<T>(count) {
             Ok(layout) => layout,
             Err(_) => {
-                return empty;
+                return slice_from_raw_parts_mut(null_mut(), 0);
             }
         };
 
-        let ptr = self.try_alloc_raw(&alloc_layout) as *mut T;
+        let ptr = self.try_alloc_raw(&alloc_layout) as *mut MaybeUninit<T>;
         if ptr.is_null() {
-            return empty;
+            return slice_from_raw_parts_mut(null_mut(), 0);
         }
 
-        unsafe { from_raw_parts_mut(ptr, count) as *mut [T] as *mut [MaybeUninit<T>] }
+        slice_from_raw_parts_mut(ptr, count)
     }
 
     /// Allocates memory in the arena and then places `count` copies of `x`
@@ -528,136 +506,6 @@ impl<'src> Arena<'src> {
                 src: PhantomData,
             })
         }
-    }
-
-    /// Allocates memory in the arena for `count` values of type T, and then
-    /// constructs a [`List`] using that memory, which can be indexed by values
-    /// of type I.
-    ///
-    /// Consider using [`array_list::<T, count>`](array_list) instead when the
-    /// required capacity is known at compile time.
-    ///
-    /// # Panics
-    /// Panics if the remaining space in the arena is insufficient.
-    /// See [`try_list_with_capacity`] for a checked version that never panics.
-    #[inline]
-    pub fn list_with_capacity<T, I: AsIndex>(
-        &mut self,
-        capacity: usize,
-    ) -> BoxSliceList<'src, T, I> {
-        self.try_list_with_capacity(capacity).unwrap()
-    }
-
-    /// Allocates memory in the arena for `count` values of type T, and then
-    /// constructs a [`List`] using that memory, which can be indexed by values
-    /// of type I.
-    ///
-    /// Returns [`None`] if the remaining space in the arena is insufficient.
-    ///
-    /// Consider using [`try_array_list::<T, count>`](try_array_list) instead
-    /// when the required capacity is known at compile time.
-    ///
-    /// # Examples
-    /// ```
-    /// use core::mem::{MaybeUninit, size_of, size_of_val};
-    /// use coca::Arena;
-    ///
-    /// # fn test() -> Option<()> {
-    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
-    ///
-    /// // Make an empty list of i64, indexed by usize, with capacity for 100 elements:
-    /// let mut list = arena.try_list_with_capacity::<i64, usize>(100)?;
-    ///
-    /// assert_eq!(list.len(), 0);
-    /// assert_eq!(list.capacity(), 100);
-    ///
-    /// // The list consists of a length (usize), and a boxed slice, which is a {pointer, length}:
-    /// assert_eq!(size_of_val(&list), 3 * size_of::<usize>());
-    /// # Some(())
-    /// # }
-    /// # assert!(test().is_some());
-    /// ```
-    #[inline]
-    pub fn try_list_with_capacity<T, I: AsIndex>(
-        &mut self,
-        capacity: usize,
-    ) -> Option<BoxSliceList<'src, T, I>> {
-        let ptr = self.try_array_raw::<T>(capacity);
-        if ptr.is_null() {
-            return None;
-        }
-        let buf = Box {
-            ptr: unsafe { NonNull::new_unchecked(ptr) },
-            val: PhantomData,
-            src: PhantomData,
-        };
-
-        Some(List::from_buffer(buf))
-    }
-
-    /// Allocates memory in the arena for N values of type T, and then
-    /// constructs a [`List`] using that memory, which can be indexed by values
-    /// of type I.
-    ///
-    /// Because this method uses const generics, it requires the `nightly` feature.
-    ///
-    /// # Panics
-    /// Panics if the remaining space in the arena is insufficient.
-    /// See [`try_array_list`] for a checked version that never panics.
-    #[cfg(any(feature = "nightly", doc))]
-    #[inline]
-    pub fn array_list<T, I: AsIndex, const N: usize>(&mut self) -> BoxArrayList<'src, T, I, N> {
-        self.try_array_list().unwrap()
-    }
-
-    /// Allocates memory in the arena for N values of type T, and then
-    /// constructs a [`List`] using that memory, which can be indexed by values
-    /// of type I.
-    ///
-    /// Returns [`None`] if the remaining space in the arena is insufficient.
-    ///
-    /// Because this method uses const generics, it requires the `nightly` feature.
-    ///
-    /// # Examples
-    /// ```
-    /// use core::mem::{MaybeUninit, size_of, size_of_val};
-    /// use coca::Arena;
-    ///
-    /// # fn test() -> Option<()> {
-    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
-    ///
-    /// // Make an empty list of i64, indexed by usize, with capacity for 100 elements:
-    /// let mut list = arena.try_array_list::<i64, usize, 100>()?;
-    ///
-    /// assert_eq!(list.len(), 0);
-    /// assert_eq!(list.capacity(), 100);
-    ///
-    /// // The list consists of a length (usize), and a boxed array, the capacity is static:
-    /// assert_eq!(size_of_val(&list), 2 * size_of::<usize>());
-    /// # Some(())
-    /// # }
-    /// # assert!(test().is_some());
-    /// ```
-    #[cfg(any(feature = "nightly", doc))]
-    #[inline]
-    pub fn try_array_list<T, I: AsIndex, const N: usize>(
-        &mut self,
-    ) -> Option<BoxArrayList<'src, T, I, N>> {
-        let alloc_layout = Layout::new::<[T; N]>();
-        let ptr = self.try_alloc_raw(&alloc_layout) as *mut [T; N];
-        if ptr.is_null() {
-            return None;
-        }
-
-        let buf = Box {
-            ptr: unsafe { NonNull::new_unchecked(ptr as *mut [MaybeUninit<T>; N]) },
-            val: PhantomData,
-            src: PhantomData,
-        };
-
-        Some(List::from_buffer(buf))
     }
 
     /// Transforms an iterator into a boxed slice in the arena.
@@ -846,6 +694,67 @@ macro_rules! fmt {
     }}
 }
 
+#[cfg(any(doc, feature = "tinyvec"))]
+impl<'src> Arena<'src> {
+    /// Constructs a [`SliceVec`] with the given capacity backed by memory in
+    /// the arena.
+    ///
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient.
+    /// See [`try_slice_vec`] for a checked version that never panics.
+    pub fn slice_vec<T: Default>(&mut self, capacity: usize) -> tinyvec::SliceVec<'src, T> {
+        self.try_slice_vec(capacity).unwrap()
+    }
+
+    /// Constructs a [`SliceVec`] with the given capacity backed by memory in
+    /// the arena.
+    ///
+    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    ///
+    /// # Examples
+    /// ```
+    /// use coca::{Arena, fmt};
+    /// use core::mem::MaybeUninit;
+    ///
+    /// # fn test() -> Option<()> {
+    /// let mut backing_buffer = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from_buffer(&mut backing_buffer[..]);
+    ///
+    /// let mut squares = arena.try_slice_vec::<i64>(128)?;
+    /// let shouldnt_work = arena.try_slice_vec::<u8>(1);
+    /// assert!(shouldnt_work.is_none());
+    ///
+    /// assert_eq!(squares.len(), 0);
+    /// assert_eq!(squares.capacity(), 128);
+    ///
+    /// for x in 1..=128 { squares.push(x * x) }
+    /// assert_eq!(&squares[..8], &[1, 4, 9, 16, 25, 36, 49, 64]);
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
+    /// ```
+    pub fn try_slice_vec<T: Default>(
+        &mut self,
+        capacity: usize,
+    ) -> Option<tinyvec::SliceVec<'src, T>> {
+        let ptr = self.try_array_raw::<T>(capacity);
+        if ptr.is_null() {
+            return None;
+        }
+
+        let slice = unsafe {
+            let ptr = ptr as *mut T;
+            for i in 0..capacity {
+                ptr.add(i).write(T::default());
+            }
+
+            from_raw_parts_mut(ptr, capacity)
+        };
+
+        Some(tinyvec::SliceVec::from_slice_len(slice, 0))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -962,25 +871,5 @@ mod tests {
             output.as_ref(),
             "LinkedList { val: 1, next: Some(LinkedList { val: 0, next: None }) }"
         );
-    }
-
-    #[test]
-    fn lists() {
-        let mut backing_memory = [MaybeUninit::uninit(); 256];
-        let mut arena = Arena::from_buffer(&mut backing_memory[..]);
-
-        let mut list_a = arena.list_with_capacity::<i32, usize>(32);
-        let mut list_b = arena.list_with_capacity::<i32, usize>(32);
-        assert!(arena.try_alloc(0u8).is_none());
-
-        for i in 1..=32 {
-            list_a.push(i);
-        }
-
-        for i in &list_a {
-            list_b.push(-i);
-        }
-
-        assert_eq!(&list_b.as_slice()[..8], &[-1, -2, -3, -4, -5, -6, -7, -8]);
     }
 }
