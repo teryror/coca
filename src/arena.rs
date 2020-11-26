@@ -514,6 +514,16 @@ impl<'src> Arena<'src> {
         }
     }
 
+    /// Allocates memory in the arena for `count` values of type T, and then
+    /// constructs a [`List`] using that memory, which can be indexed by values
+    /// of type I.
+    ///
+    /// Consider using [`array_list::<T, count>`](array_list) instead when the
+    /// required capacity is known at compile time.
+    ///
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient.
+    /// See [`try_list_with_capacity`] for a checked version that never panics.
     #[inline]
     pub fn list_with_capacity<T, I: AsIndex>(
         &mut self,
@@ -522,6 +532,32 @@ impl<'src> Arena<'src> {
         self.try_list_with_capacity(capacity).unwrap()
     }
 
+    /// Allocates memory in the arena for `count` values of type T, and then
+    /// constructs a [`List`] using that memory, which can be indexed by values
+    /// of type I.
+    ///
+    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    ///
+    /// Consider using [`try_array_list::<T, count>`](try_array_list) instead
+    /// when the required capacity is known at compile time.
+    ///
+    /// # Examples
+    /// ```
+    /// use core::mem::{MaybeUninit, size_of, size_of_val};
+    /// use coca::Arena;
+    ///
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    ///
+    /// // Make an empty list of i64, indexed by usize, with capacity for 100 elements:
+    /// let mut list = arena.try_list_with_capacity::<i64, usize>(100).unwrap();
+    ///
+    /// assert_eq!(list.len(), 0);
+    /// assert_eq!(list.capacity(), 100);
+    ///
+    /// // The list consists of a length (usize), and a boxed slice, which is a {pointer, length}:
+    /// assert_eq!(size_of_val(&list), 3 * size_of::<usize>());
+    /// ```
     #[inline]
     pub fn try_list_with_capacity<T, I: AsIndex>(
         &mut self,
@@ -540,13 +576,47 @@ impl<'src> Arena<'src> {
         Some(List::from_buffer(buf))
     }
 
-    #[cfg(feature = "nightly")]
+    /// Allocates memory in the arena for N values of type T, and then
+    /// constructs a [`List`] using that memory, which can be indexed by values
+    /// of type I.
+    ///
+    /// Because this method uses const generics, it requires the `nightly` feature.
+    ///
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient.
+    /// See [`try_array_list`] for a checked version that never panics.
+    #[cfg(any(feature = "nightly", doc))]
     #[inline]
     pub fn array_list<T, I: AsIndex, const N: usize>(&mut self) -> BoxArrayList<'src, T, I, N> {
         self.try_array_list().unwrap()
     }
 
-    #[cfg(feature = "nightly")]
+    /// Allocates memory in the arena for N values of type T, and then
+    /// constructs a [`List`] using that memory, which can be indexed by values
+    /// of type I.
+    ///
+    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    ///
+    /// Because this method uses const generics, it requires the `nightly` feature.
+    ///
+    /// # Examples
+    /// ```
+    /// use core::mem::{MaybeUninit, size_of, size_of_val};
+    /// use coca::Arena;
+    ///
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    ///
+    /// // Make an empty list of i64, indexed by usize, with capacity for 100 elements:
+    /// let mut list = arena.try_array_list::<i64, usize, 100>().unwrap();
+    ///
+    /// assert_eq!(list.len(), 0);
+    /// assert_eq!(list.capacity(), 100);
+    ///
+    /// // The list consists of a length (usize), and a boxed array, the capacity is static:
+    /// assert_eq!(size_of_val(&list), 2 * size_of::<usize>());
+    /// ```
+    #[cfg(any(feature = "nightly", doc))]
     #[inline]
     pub fn try_array_list<T, I: AsIndex, const N: usize>(
         &mut self,
@@ -566,6 +636,11 @@ impl<'src> Arena<'src> {
         Some(List::from_buffer(buf))
     }
 
+    /// Transforms an iterator into a boxed slice in the arena.
+    ///
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient to exhaust
+    /// the iterator. See [`try_collect`] for a checked version that never panics.
     #[inline]
     pub fn collect<T, I>(&mut self, iter: I) -> Box<'src, [T]>
     where
@@ -575,6 +650,24 @@ impl<'src> Arena<'src> {
         self.try_collect(iter).unwrap()
     }
 
+    /// Transforms an iterator into a boxed slice in the arena.
+    ///
+    /// Returns [`None`] if the remaining space in the arena is insufficient
+    /// to exhaust the iterator.
+    ///
+    /// # Examples
+    /// ```
+    /// use core::mem::{MaybeUninit, size_of, size_of_val};
+    /// use coca::Arena;
+    ///
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    ///
+    /// let a = [1, 2, 3];
+    /// let doubled = arena.try_collect(a.iter().map(|&x| x * 2)).unwrap();
+    ///
+    /// assert_eq!(&doubled[..], &[2, 4, 6]);
+    /// ```
     pub fn try_collect<T, I>(&mut self, iter: I) -> Option<Box<'src, [T]>>
     where
         T: Sized,
