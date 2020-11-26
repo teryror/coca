@@ -334,14 +334,18 @@ impl<'src> Arena<'src> {
     /// use core::mem::MaybeUninit;
     /// use coca::Arena;
     ///
+    /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
     ///
     /// for _ in 0..(1024 / 16) {
-    ///     assert_eq!(*arena.try_alloc_default::<u128>().unwrap(), 0);
+    ///     assert_eq!(*arena.try_alloc_default::<u128>()?, 0);
     /// }
     ///
     /// assert!(arena.try_alloc_default::<u128>().is_none());
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
     /// ```
     #[inline]
     pub fn try_alloc_default<T: Default + Sized>(&mut self) -> Option<Box<'src, T>> {
@@ -357,14 +361,18 @@ impl<'src> Arena<'src> {
     /// use core::mem::MaybeUninit;
     /// use coca::Arena;
     ///
+    /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
     ///
     /// for i in 0..(1024 / 16) {
-    ///     assert_eq!(*arena.try_alloc(i as u128).unwrap(), i as u128);
+    ///     assert_eq!(*arena.try_alloc(i as u128)?, i as u128);
     /// }
     ///
     /// assert!(arena.try_alloc(0xDEAD_BEEF_CAFE_BABEu128).is_none());
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
     /// ```
     #[inline]
     pub fn try_alloc<T: Sized>(&mut self, x: T) -> Option<Box<'src, T>> {
@@ -432,10 +440,14 @@ impl<'src> Arena<'src> {
     /// use core::mem::MaybeUninit;
     /// use coca::Arena;
     ///
+    /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
-    /// let array = arena.try_array_default::<u128>(16).unwrap();
-    /// assert_eq!(&array[..], &[0; 16])
+    /// let array = arena.try_array_default::<u128>(16)?;
+    /// assert_eq!(&array[..], &[0; 16]);
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
     /// ```
     #[inline]
     pub fn try_array_default<T>(&mut self, count: usize) -> Option<Box<'src, [T]>>
@@ -484,10 +496,14 @@ impl<'src> Arena<'src> {
     /// use core::mem::MaybeUninit;
     /// use coca::Arena;
     ///
+    /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
-    /// let array = arena.try_array(0x12345678u32, 256).unwrap();
-    /// assert_eq!(&array[..], &[0x12345678u32; 256])
+    /// let array = arena.try_array(0x12345678u32, 256)?;
+    /// assert_eq!(&array[..], &[0x12345678u32; 256]);
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
     /// ```
     #[inline]
     pub fn try_array<T>(&mut self, x: T, count: usize) -> Option<Box<'src, [T]>>
@@ -546,17 +562,21 @@ impl<'src> Arena<'src> {
     /// use core::mem::{MaybeUninit, size_of, size_of_val};
     /// use coca::Arena;
     ///
+    /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
     ///
     /// // Make an empty list of i64, indexed by usize, with capacity for 100 elements:
-    /// let mut list = arena.try_list_with_capacity::<i64, usize>(100).unwrap();
+    /// let mut list = arena.try_list_with_capacity::<i64, usize>(100)?;
     ///
     /// assert_eq!(list.len(), 0);
     /// assert_eq!(list.capacity(), 100);
     ///
     /// // The list consists of a length (usize), and a boxed slice, which is a {pointer, length}:
     /// assert_eq!(size_of_val(&list), 3 * size_of::<usize>());
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
     /// ```
     #[inline]
     pub fn try_list_with_capacity<T, I: AsIndex>(
@@ -604,17 +624,21 @@ impl<'src> Arena<'src> {
     /// use core::mem::{MaybeUninit, size_of, size_of_val};
     /// use coca::Arena;
     ///
+    /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
     ///
     /// // Make an empty list of i64, indexed by usize, with capacity for 100 elements:
-    /// let mut list = arena.try_array_list::<i64, usize, 100>().unwrap();
+    /// let mut list = arena.try_array_list::<i64, usize, 100>()?;
     ///
     /// assert_eq!(list.len(), 0);
     /// assert_eq!(list.capacity(), 100);
     ///
     /// // The list consists of a length (usize), and a boxed array, the capacity is static:
     /// assert_eq!(size_of_val(&list), 2 * size_of::<usize>());
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
     /// ```
     #[cfg(any(feature = "nightly", doc))]
     #[inline]
@@ -660,13 +684,17 @@ impl<'src> Arena<'src> {
     /// use core::mem::{MaybeUninit, size_of, size_of_val};
     /// use coca::Arena;
     ///
+    /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
     ///
     /// let a = [1, 2, 3];
-    /// let doubled = arena.try_collect(a.iter().map(|&x| x * 2)).unwrap();
+    /// let doubled = arena.try_collect(a.iter().map(|&x| x * 2))?;
     ///
     /// assert_eq!(&doubled[..], &[2, 4, 6]);
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
     /// ```
     pub fn try_collect<T, I>(&mut self, iter: I) -> Option<Box<'src, [T]>>
     where
@@ -727,14 +755,17 @@ impl<'src> Arena<'src> {
 /// use coca::{Arena, Box};
 /// use core::{fmt::Write, mem::MaybeUninit};
 ///
+/// # fn main() -> Result<(), core::fmt::Error> {
 /// let mut backing_buffer = [MaybeUninit::uninit(); 1024];
 /// let mut arena = Arena::from_buffer(&mut backing_buffer[..]);
 /// let str = {
 ///     let mut writer = arena.make_writer();
-///     core::write!(writer, "Testing, testing, {}, {}, {}...", 1, 2, 3).unwrap();
+///     core::write!(writer, "Testing, testing, {}, {}, {}...", 1, 2, 3)?;
 ///     Box::<'_, str>::from(writer)
 /// };
 /// assert_eq!(&str[..], "Testing, testing, 1, 2, 3...");
+/// # Ok(())
+/// # }
 /// ```
 pub struct ArenaWriter<'src, 'buf> {
     source: &'src mut Arena<'buf>,
@@ -794,11 +825,15 @@ impl<'buf> From<ArenaWriter<'_, 'buf>> for Box<'buf, str> {
 /// use coca::{Arena, fmt};
 /// use core::mem::MaybeUninit;
 ///
+/// # fn test() -> Option<()> {
 /// let mut backing_buffer = [MaybeUninit::uninit(); 16];
 /// let mut arena = Arena::from_buffer(&mut backing_buffer[..]);
-/// let output = fmt!(arena, "test").unwrap();
-/// let output = fmt!(arena, "hello {}", "world!").unwrap();
+/// let output = fmt!(arena, "test")?;
+/// let output = fmt!(arena, "hello {}", "world!")?;
 /// assert!(fmt!(arena, "{}", ' ').is_none());
+/// # Some(())
+/// # }
+/// # assert!(test().is_some());
 /// ```
 #[macro_export]
 macro_rules! fmt {
