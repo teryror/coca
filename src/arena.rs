@@ -3,20 +3,50 @@
 //! An arena controls a contiguous region of memory, partitioning it by simply
 //! incrementing a pointer. Once such an allocation goes out of scope, the
 //! memory cannot be reclaimed until the entire region is cleared in aggregate.
-//! This scheme has minimal runtime overhead, at the cost of potential memory
+//! This scheme has minimal runtime overhead, at the cost of internal memory
 //! fragmentation.
 //!
 //! In order to optimally utilize the borrow checker, [`Arena`] does not have
 //! a `clear` method. Instead, the underlying region is reset by dropping
-//! the arena, and may safely be freed or reused; a [`Box<'src, T>`] cannot
-//! outlive the arena it was allocated from.
+//! the arena, and may then be freed or reused safely; you'll get an error if a
+//! [`Box<'_, T>`](Box) pointing into it still lives. So this won't compile:
 //!
-//! On the flip-side, an arena must live as long as the longest-living value
-//! inside it, leaving the remainder of the region unusable. To mitigate this,
-//! one can [construct an arena from an existing one](Arena::make_sub_arena),
-//! which will manage the remaining memory. It's not possible to allocate out
-//! of the original arena as long as such a sub-arena lives (though all previously
-//! allocated values remain accessible), resulting in stack-like behavior.
+//! ```compile_fail
+//! use core::mem::MaybeUninit;
+//! use coca::{Arena, Box};
+//!
+//! let bad_array = {
+//!     let mut backing_region = [MaybeUninit::uninit(); 256];
+//!     let mut arena = Arena::from_buffer(&mut backing_region[..]);
+//!     arena.array_default::<i32>(10)
+//! };
+//! ```
+//!
+//! This makes it wasteful to mix long-lived allocations with short-lived ones
+//! in the same arena. One solution is to [construct a temporary sub-arena][sub]
+//! using the remaining memory. It is not possible to allocate out of the
+//! original arena as long as pointers into such a sub-arena are in use (though
+//! all previously allocated values remain accessible). Sub-arenas may be
+//! nested arbitrarily, resulting in stack-like behavior, which is sufficient
+//! for many allocation patterns.
+//!
+//! [sub]: Arena::make_sub_arena
+//!
+//! Note that this is legal, but **strongly discouraged**:
+//!
+//! ```no_run
+//! # use core::mem::MaybeUninit;
+//! # use coca::{Arena, Box};
+//! // callers must drop the return value before they can allocate from `arena` again!
+//! fn semi_bad_array<'a>(arena: &'a mut Arena) -> Box<'a, [i32]> {
+//!     let mut sub = arena.make_sub_arena();
+//!     sub.array_default(10)
+//! }
+//! ```
+//!
+//! As a general rule, a `Box` should not outlive the arena it was allocated from.
+//! If temporary allocations are required where an arena allocated value is to
+//! be returned, consider using [`Arena::try_reserve`].
 
 use core::alloc::Layout;
 use core::cmp::Ordering;
@@ -38,6 +68,25 @@ pub struct Box<'src, T: ?Sized> {
     ptr: NonNull<T>,
     val: PhantomData<T>,        // Indicates this is an owning pointer
     src: PhantomData<&'src ()>, // Indicates this pointer must not outlive 'src
+}
+
+impl<'src, T: Sized> Box<'src, MaybeUninit<T>> {
+    /// Places `x` into the allocation and converts `self` into a pointer to T.
+    ///
+    /// See [`Arena::try_reserve`] for example usage.
+    pub fn init(mut self, x: T) -> Box<'src, T> {
+        let ptr = self.as_mut_ptr();
+        core::mem::forget(self);
+
+        unsafe {
+            ptr.write(x);
+            Box {
+                ptr: NonNull::new_unchecked(ptr),
+                val: PhantomData,
+                src: PhantomData,
+            }
+        }
+    }
 }
 
 impl<T: ?Sized> Deref for Box<'_, T> {
@@ -236,11 +285,12 @@ impl<'src> Arena<'src> {
     ///
     /// {
     ///     let mut tmp = arena.make_sub_arena();
-    ///     let arr = tmp.alloc([0u32; 256]);      // this will take up all 1024 = 4*256 bytes...
+    ///     let arr = tmp.alloc([0u32; 256]);      // this takes up all 1024 = 4*256 bytes...
     ///     assert!(tmp.try_alloc(0u8).is_none()); // ...so this can't succeed
     /// }
     ///
-    /// assert!(arena.try_alloc([0u32; 256]).is_some()); // tmp was dropped, so the memory can be reused
+    /// // tmp was dropped, so the memory can be reused:
+    /// assert!(arena.try_alloc([0u32; 256]).is_some());
     /// ```
     #[inline]
     pub fn make_sub_arena(&mut self) -> Arena<'_> {
@@ -248,16 +298,6 @@ impl<'src> Arena<'src> {
             cursor: self.cursor,
             end: self.end,
             src: PhantomData,
-        }
-    }
-
-    /// Constructs a new [`ArenaWriter`] backed by the free space remaining in `self`.
-    /// Primarily intended for use in expansions of [`fmt!`](arena::fmt).
-    #[inline]
-    pub fn make_writer<'a>(&'a mut self) -> ArenaWriter<'a, 'src> {
-        ArenaWriter {
-            source: self,
-            len: 0,
         }
     }
 
@@ -291,21 +331,12 @@ impl<'src> Arena<'src> {
     /// into it.
     ///
     /// # Panics
-    /// Panics if the remaining space in the arena is insufficient.
-    /// See [`try_alloc_default`] for a checked version that never panics.
+    /// Panics if the remaining space in the arena is insufficient. See
+    /// [`try_alloc_default`](Arena::try_alloc_default) for a checked version
+    /// that never panics.
     #[inline]
     pub fn alloc_default<T: Default + Sized>(&mut self) -> Box<'src, T> {
         self.try_alloc(T::default()).unwrap()
-    }
-
-    /// Allocates memory in the arena and then places `x` into it.
-    ///
-    /// # Panics
-    /// Panics if the remaining space in the arena is insufficient.
-    /// See [`try_alloc`] for a checked version that never panics.
-    #[inline]
-    pub fn alloc<T: Sized>(&mut self, x: T) -> Box<'src, T> {
-        self.try_alloc(x).unwrap()
     }
 
     /// Allocates memory in the arena and then places the `Default` value for T
@@ -334,6 +365,16 @@ impl<'src> Arena<'src> {
     #[inline]
     pub fn try_alloc_default<T: Default + Sized>(&mut self) -> Option<Box<'src, T>> {
         self.try_alloc(T::default())
+    }
+
+    /// Allocates memory in the arena and then places `x` into it.
+    ///
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient. See
+    /// [`try_alloc`](Arena::try_alloc) for a checked version that never panics.
+    #[inline]
+    pub fn alloc<T: Sized>(&mut self, x: T) -> Box<'src, T> {
+        self.try_alloc(x).unwrap()
     }
 
     /// Allocates memory in the arena and then places `x` into it.
@@ -377,15 +418,66 @@ impl<'src> Arena<'src> {
         }
     }
 
+    /// Allocates memory in the arena, leaving it uninitialized.
+    ///
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient. See
+    /// [`try_reserve`](Arena::try_reserve) for a checked version that never panics.
+    #[inline]
+    pub fn reserve<T: Sized>(&mut self) -> Box<'src, MaybeUninit<T>> {
+        self.try_reserve().unwrap()
+    }
+
+    /// Allocates memory in the arena, leaving it uninitialized.
+    ///
+    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    ///
+    /// # Examples
+    /// ```
+    /// use core::mem::MaybeUninit;
+    /// use coca::Arena;
+    ///
+    /// # fn test() -> Option<()> {
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    ///
+    /// let total = {
+    ///     let reserved = arena.try_reserve::<i32>()?;
+    ///     let mut tmp = arena.make_sub_arena();
+    ///     let a = tmp.alloc(5);
+    ///     let b = tmp.alloc(7);
+    ///     reserved.init(*a + *b)
+    /// };
+    ///
+    /// assert_eq!(*total, 12);
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
+    /// ```
+    #[inline]
+    pub fn try_reserve<T: Sized>(&mut self) -> Option<Box<'src, MaybeUninit<T>>> {
+        let ptr = self.try_alloc_raw(&Layout::new::<T>()) as *mut MaybeUninit<T>;
+        if ptr.is_null() {
+            return None;
+        }
+
+        Some(Box {
+            ptr: unsafe { NonNull::new_unchecked(ptr) },
+            val: PhantomData,
+            src: PhantomData,
+        })
+    }
+
     /// Allocates memory in the arena and then places `count` copies of the
     /// `Default` value for T into it.
     ///
-    /// Consider using [`alloc_default<[T; count]>`](alloc_default) instead
-    /// when `count` is known at compile time.
+    /// Consider using [`alloc_default<[T; count]>`](Arena::alloc_default)
+    /// instead when `count` is known at compile time.
     ///
     /// # Panics
     /// Panics if the remaining space in the arena is insufficient.
-    /// See [`try_array_default`] for a checked version that never panics.
+    /// See [`try_array_default`](Arena::try_array_default) for a checked
+    /// version that never panics.
     #[inline]
     pub fn array_default<T>(&mut self, count: usize) -> Box<'src, [T]>
     where
@@ -394,29 +486,12 @@ impl<'src> Arena<'src> {
         self.try_array(T::default(), count).unwrap()
     }
 
-    /// Allocates memory in the arena and then places `count` copies of `x`
-    /// into it.
-    ///
-    /// Consider using [`alloc([x; count])`](alloc) instead when `count` is
-    /// known at compile time.
-    ///
-    /// # Panics
-    /// Panics if the remaining space in the arena is insufficient.
-    /// See [`try_array`] for a checked version that never panics.
-    #[inline]
-    pub fn array<T>(&mut self, x: T, count: usize) -> Box<'src, [T]>
-    where
-        T: Copy + Sized,
-    {
-        self.try_array(x, count).unwrap()
-    }
-
     /// Allocates memory in the arena and then places `count` copies of the
     /// `Default` value for T into it.
     ///
     /// Returns [`None`] if the remaining space in the arena is insufficient.
     ///
-    /// Consider using [`try_alloc_default<[T; count]>`](try_alloc_default)
+    /// Consider using [`try_alloc_default<[T; count]>`](Arena::try_alloc_default)
     /// instead when `count` is known at compile time.
     ///
     /// # Examples
@@ -439,6 +514,23 @@ impl<'src> Arena<'src> {
         T: Copy + Default + Sized,
     {
         self.try_array(T::default(), count)
+    }
+
+    /// Allocates memory in the arena and then places `count` copies of `x`
+    /// into it.
+    ///
+    /// Consider using [`alloc([x; count])`](Arena::alloc) instead when `count`
+    /// is known at compile time.
+    ///
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient.
+    /// See [`try_array`](Arena::try_array) for a checked version that never panics.
+    #[inline]
+    pub fn array<T>(&mut self, x: T, count: usize) -> Box<'src, [T]>
+    where
+        T: Copy + Sized,
+    {
+        self.try_array(x, count).unwrap()
     }
 
     #[inline]
@@ -466,7 +558,7 @@ impl<'src> Arena<'src> {
     ///
     /// Returns [`None`] if the remaining space in the arena is insufficient.
     ///
-    /// Consider using [`try_alloc([x; count])`](try_alloc) instead when
+    /// Consider using [`try_alloc([x; count])`](Arena::try_alloc) instead when
     /// `count` is known at compile time.
     ///
     /// # Examples
@@ -512,7 +604,8 @@ impl<'src> Arena<'src> {
     ///
     /// # Panics
     /// Panics if the remaining space in the arena is insufficient to exhaust
-    /// the iterator. See [`try_collect`] for a checked version that never panics.
+    /// the iterator. See [`try_collect`](Arena::try_collect) for a checked
+    /// version that never panics.
     #[inline]
     pub fn collect<T, I>(&mut self, iter: I) -> Box<'src, [T]>
     where
@@ -593,28 +686,46 @@ impl<'src> Arena<'src> {
             })
         }
     }
+
+    /// Constructs a new [`ArenaWriter`] backed by the free space remaining in `self`.
+    ///
+    /// The arena cannot be used for allocation until the writer is dropped.
+    ///
+    /// Primarily intended for use in expansions of [`fmt!`]. This should only
+    /// be used explicitly where format strings don't work as well.
+    ///
+    /// # Examples
+    /// ```
+    /// use coca::{Arena, Box};
+    /// use core::{fmt::Write, mem::MaybeUninit};
+    ///
+    /// # fn main() -> Result<(), core::fmt::Error> {
+    /// let parts = ["Hello", ",", " ", "World", "!"];
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    ///
+    /// let mut writer = arena.make_writer();
+    /// for s in parts.iter() {
+    ///     writer.write_str(s)?;
+    /// }
+    ///
+    /// let combined: Box::<'_, str> = writer.into();
+    /// assert_eq!(combined.as_ref(), "Hello, World!");
+    /// # Ok(())
+    /// # }
+    #[inline]
+    pub fn make_writer<'a>(&'a mut self) -> ArenaWriter<'a, 'src> {
+        ArenaWriter {
+            source: self,
+            len: 0,
+        }
+    }
 }
 
 /// Implementor of [`core::fmt::Write`] backed by an [`Arena`].
-/// Primarily intended for use in expansions of [`fmt!`](arena::fmt).
+/// Primarily intended for use in expansions of [`fmt!`].
 ///
-/// # Examples
-/// ```
-/// use coca::{Arena, Box};
-/// use core::{fmt::Write, mem::MaybeUninit};
-///
-/// # fn main() -> Result<(), core::fmt::Error> {
-/// let mut backing_buffer = [MaybeUninit::uninit(); 1024];
-/// let mut arena = Arena::from_buffer(&mut backing_buffer[..]);
-/// let str = {
-///     let mut writer = arena.make_writer();
-///     core::write!(writer, "Testing, testing, {}, {}, {}...", 1, 2, 3)?;
-///     Box::<'_, str>::from(writer)
-/// };
-/// assert_eq!(&str[..], "Testing, testing, 1, 2, 3...");
-/// # Ok(())
-/// # }
-/// ```
+/// See [`Arena::make_writer`] for example usage.
 pub struct ArenaWriter<'src, 'buf> {
     source: &'src mut Arena<'buf>,
     len: usize,
@@ -674,8 +785,8 @@ impl<'buf> From<ArenaWriter<'_, 'buf>> for Box<'buf, str> {
 /// use core::mem::MaybeUninit;
 ///
 /// # fn test() -> Option<()> {
-/// let mut backing_buffer = [MaybeUninit::uninit(); 16];
-/// let mut arena = Arena::from_buffer(&mut backing_buffer[..]);
+/// let mut backing_region = [MaybeUninit::uninit(); 16];
+/// let mut arena = Arena::from_buffer(&mut backing_region[..]);
 /// let output = fmt!(arena, "test")?;
 /// let output = fmt!(arena, "hello {}", "world!")?;
 /// assert!(fmt!(arena, "{}", ' ').is_none());
@@ -694,20 +805,22 @@ macro_rules! fmt {
     }}
 }
 
-#[cfg(any(doc, feature = "tinyvec"))]
+/// These methods require the optional dependency on `tinyvec`.
+#[cfg(feature = "tinyvec")]
 impl<'src> Arena<'src> {
-    /// Constructs a [`SliceVec`] with the given capacity backed by memory in
-    /// the arena.
+    /// Constructs a [`tinyvec::SliceVec`] with the given capacity backed by
+    /// memory in the arena.
     ///
     /// # Panics
-    /// Panics if the remaining space in the arena is insufficient.
-    /// See [`try_slice_vec`] for a checked version that never panics.
+    /// Panics if the remaining space in the arena is insufficient. See
+    /// [`try_slice_vec`](Arena::try_slice_vec) for a checked version that
+    /// never panics.
     pub fn slice_vec<T: Default>(&mut self, capacity: usize) -> tinyvec::SliceVec<'src, T> {
         self.try_slice_vec(capacity).unwrap()
     }
 
-    /// Constructs a [`SliceVec`] with the given capacity backed by memory in
-    /// the arena.
+    /// Constructs a [`tinyvec::SliceVec`] with the given capacity backed by
+    /// memory in the arena.
     ///
     /// Returns [`None`] if the remaining space in the arena is insufficient.
     ///
@@ -717,8 +830,8 @@ impl<'src> Arena<'src> {
     /// use core::mem::MaybeUninit;
     ///
     /// # fn test() -> Option<()> {
-    /// let mut backing_buffer = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_buffer[..]);
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
     ///
     /// let mut squares = arena.try_slice_vec::<i64>(128)?;
     /// let shouldnt_work = arena.try_slice_vec::<u8>(1);
@@ -762,8 +875,8 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let mut backing_store = [MaybeUninit::uninit(); 256];
-        let mut arena = Arena::from_buffer(&mut backing_store[..]);
+        let mut backing_region = [MaybeUninit::uninit(); 256];
+        let mut arena = Arena::from_buffer(&mut backing_region[..]);
 
         enum BinTree<'a> {
             Leaf(i32),
@@ -804,8 +917,8 @@ mod tests {
 
     #[test]
     fn collect_iter() {
-        let mut backing_memory = [MaybeUninit::uninit(); 256];
-        let mut arena = Arena::from_buffer(&mut backing_memory[..]);
+        let mut backing_region = [MaybeUninit::uninit(); 256];
+        let mut arena = Arena::from_buffer(&mut backing_region[..]);
         let nums = arena.collect(0..60i32);
 
         assert_eq!(nums.len(), 60);
@@ -845,8 +958,8 @@ mod tests {
 
     #[test]
     fn format_strings() {
-        let mut backing_memory = [MaybeUninit::uninit(); 256];
-        let mut arena = Arena::from_buffer(&mut backing_memory[..]);
+        let mut backing_region = [MaybeUninit::uninit(); 256];
+        let mut arena = Arena::from_buffer(&mut backing_region[..]);
 
         #[derive(Debug)]
         struct LinkedList<'a> {
