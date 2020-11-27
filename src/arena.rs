@@ -2,14 +2,14 @@
 //!
 //! An arena controls a contiguous region of memory, partitioning it by simply
 //! incrementing a pointer. Once such an allocation goes out of scope, the
-//! memory cannot be reclaimed until the entire region is cleared in aggregate.
+//! memory cannot be reused until the entire region is cleared in aggregate.
 //! This scheme has minimal runtime overhead, at the cost of internal memory
 //! fragmentation.
 //!
-//! In order to optimally utilize the borrow checker, [`Arena`] does not have
-//! a `clear` method. Instead, the underlying region is reset by dropping
-//! the arena, and may then be freed or reused safely; you'll get an error if a
-//! [`Box<'_, T>`](Box) pointing into it still lives. So this won't compile:
+//! In order to guarantee safety, [`Arena`] cannot implement a `clear` method.
+//! Instead, the underlying region is reset by dropping the arena, and may then
+//! be freed or reused safely; you'll get an error if a [`Box<'_, T>`](Box)
+//! pointing into it still lives. So this won't compile:
 //!
 //! ```compile_fail
 //! use core::mem::MaybeUninit;
@@ -24,15 +24,12 @@
 //!
 //! This makes it wasteful to mix long-lived allocations with short-lived ones
 //! in the same arena. One solution is to [construct a temporary sub-arena][sub]
-//! using the remaining memory. It is not possible to allocate out of the
-//! original arena as long as pointers into such a sub-arena are in use (though
-//! all previously allocated values remain accessible). Sub-arenas may be
-//! nested arbitrarily, resulting in stack-like behavior, which is sufficient
-//! for many allocation patterns.
+//! using the remaining memory. Sub-arenas may be nested arbitrarily, resulting
+//! in stack-like behavior, which is sufficient for many allocation patterns.
 //!
 //! [sub]: Arena::make_sub_arena
 //!
-//! Note that this is legal, but **strongly discouraged**:
+//! Note that this is legal but **strongly discouraged**:
 //!
 //! ```no_run
 //! # use core::mem::MaybeUninit;
@@ -44,9 +41,9 @@
 //! }
 //! ```
 //!
-//! As a general rule, a `Box` should not outlive the arena it was allocated from.
-//! If temporary allocations are required where an arena allocated value is to
-//! be returned, consider using [`Arena::try_reserve`].
+//! A `Box` should not outlive the arena it was allocated from. If temporary
+//! allocations are required where an arena allocated value is to be returned,
+//! consider using [`Arena::try_reserve`].
 
 use core::alloc::Layout;
 use core::cmp::Ordering;
