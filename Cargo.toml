@@ -8,6 +8,7 @@ edition = "2018"
 
 [features]
 default = ["tinyvec"]
+alloc = ["tinyvec/alloc"] # should be ["tinyvec?/alloc"], see https://github.com/rust-lang/cargo/issues/8832
 
 [dependencies.tinyvec]
 version = "1.1.0"
