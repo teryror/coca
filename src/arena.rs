@@ -17,7 +17,7 @@
 //!
 //! let bad_array = {
 //!     let mut backing_region = [MaybeUninit::uninit(); 256];
-//!     let mut arena = Arena::from_buffer(&mut backing_region);
+//!     let mut arena = Arena::from(&mut backing_region[..]);
 //!     arena.array_default::<i32>(10)
 //! };
 //! ```
@@ -247,7 +247,7 @@ pub struct Arena<'src> {
     src: PhantomData<&'src mut ()>, // Ensures you can't allocate out of the source arena while this one is still alive
 }
 
-impl<'src> Arena<'src> {
+impl<'src> From<&'src mut [MaybeUninit<u8>]> for Arena<'src> {
     /// Constructs a new `Arena` allocating out of `buf`.
     ///
     /// # Examples
@@ -256,10 +256,10 @@ impl<'src> Arena<'src> {
     /// use coca::Arena;
     ///
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let arena = Arena::from_buffer(&mut backing_region);
+    /// let arena = Arena::from(&mut backing_region[..]);
     /// ```
     #[inline]
-    pub fn from_buffer(buf: &'src mut [MaybeUninit<u8>]) -> Arena<'src> {
+    fn from(buf: &mut [MaybeUninit<u8>]) -> Self {
         let Range { start, end } = buf.as_mut_ptr_range();
 
         Arena {
@@ -267,6 +267,25 @@ impl<'src> Arena<'src> {
             end,
             src: PhantomData,
         }
+    }
+}
+
+impl Debug for Arena<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        core::write!(f, "Arena({:p}..{:p})", self.cursor, self.end)
+    }
+}
+
+impl<'src> Arena<'src> {
+    /// Calculates the size of the space remaining in the arena in bytes.
+    ///
+    /// An allocation is not guaranteed to succeed even when the returned value
+    /// is greater than or equal to the requested number of bytes, because
+    /// proper alignment may require additional padding. Use the `try_` methods
+    /// to handle allocation failure.
+    #[inline]
+    pub fn bytes_remaining(&self) -> usize {
+        (self.end as usize) - (self.cursor as usize)
     }
 
     /// Constructs a new `Arena` allocating out of the free space remaining in `self`.
@@ -278,7 +297,7 @@ impl<'src> Arena<'src> {
     /// use coca::Arena;
     ///
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region);
+    /// let mut arena = Arena::from(&mut backing_region[..]);
     ///
     /// {
     ///     let mut tmp = arena.make_sub_arena();
@@ -312,7 +331,7 @@ impl<'src> Arena<'src> {
         // for the result of `ptr::add` to be out of bounds, so the correct way
         // to check bounds here is through usize arithmetic:
         if let Some(total_bytes) = align_offset.checked_add(alloc_layout.size()) {
-            if (self.end as usize) - (self.cursor as usize) >= total_bytes {
+            if self.bytes_remaining() >= total_bytes {
                 let result = unsafe { self.cursor.add(align_offset) };
                 let new_cursor = unsafe { result.add(alloc_layout.size()) };
                 self.cursor = new_cursor;
@@ -348,7 +367,7 @@ impl<'src> Arena<'src> {
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region);
+    /// let mut arena = Arena::from(&mut backing_region[..]);
     ///
     /// for _ in 0..(1024 / 16) {
     ///     assert_eq!(*arena.try_alloc_default::<u128>()?, 0);
@@ -385,7 +404,7 @@ impl<'src> Arena<'src> {
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region);
+    /// let mut arena = Arena::from(&mut backing_region[..]);
     ///
     /// for i in 0..(1024 / 16) {
     ///     assert_eq!(*arena.try_alloc(i as u128)?, i as u128);
@@ -436,7 +455,7 @@ impl<'src> Arena<'src> {
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region);
+    /// let mut arena = Arena::from(&mut backing_region[..]);
     ///
     /// let total = {
     ///     let reserved = arena.try_reserve::<i32>()?;
@@ -498,7 +517,7 @@ impl<'src> Arena<'src> {
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region);
+    /// let mut arena = Arena::from(&mut backing_region[..]);
     /// let array = arena.try_array_default::<u128>(16)?;
     /// assert_eq!(&array[..], &[0; 16]);
     /// # Some(())
@@ -565,7 +584,7 @@ impl<'src> Arena<'src> {
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region);
+    /// let mut arena = Arena::from(&mut backing_region[..]);
     /// let array = arena.try_array(0x12345678u32, 256)?;
     /// assert_eq!(&array[..], &[0x12345678u32; 256]);
     /// # Some(())
@@ -624,7 +643,7 @@ impl<'src> Arena<'src> {
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region);
+    /// let mut arena = Arena::from(&mut backing_region[..]);
     ///
     /// let a = [1, 2, 3];
     /// let doubled = arena.try_collect(a.iter().map(|&x| x * 2))?;
@@ -643,7 +662,7 @@ impl<'src> Arena<'src> {
         let align_offset = self.cursor.align_offset(alloc_layout.align());
         assert!(align_offset != usize::MAX);
 
-        let bytes_remaining = (self.end as usize) - (self.cursor as usize);
+        let bytes_remaining = self.bytes_remaining();
         if bytes_remaining < align_offset {
             return None;
         }
@@ -699,7 +718,7 @@ impl<'src> Arena<'src> {
     /// # fn main() -> Result<(), core::fmt::Error> {
     /// let parts = ["Hello", ",", " ", "World", "!"];
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region);
+    /// let mut arena = Arena::from(&mut backing_region[..]);
     ///
     /// let mut writer = arena.make_writer();
     /// for s in parts.iter() {
@@ -730,7 +749,7 @@ pub struct ArenaWriter<'src, 'buf> {
 
 impl Write for ArenaWriter<'_, '_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        let bytes_remaining = (self.source.end as usize) - (self.source.cursor as usize);
+        let bytes_remaining = self.source.bytes_remaining();
         if s.len() > bytes_remaining {
             return fmt::Result::Err(fmt::Error);
         }
@@ -783,7 +802,7 @@ impl<'buf> From<ArenaWriter<'_, 'buf>> for Box<'buf, str> {
 ///
 /// # fn test() -> Option<()> {
 /// let mut backing_region = [MaybeUninit::uninit(); 16];
-/// let mut arena = Arena::from_buffer(&mut backing_region);
+/// let mut arena = Arena::from(&mut backing_region[..]);
 /// let output = fmt!(arena, "test")?;
 /// let output = fmt!(arena, "hello {}", "world!")?;
 /// assert!(fmt!(arena, "{}", ' ').is_none());
@@ -828,7 +847,7 @@ impl<'src> Arena<'src> {
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region);
+    /// let mut arena = Arena::from(&mut backing_region[..]);
     ///
     /// let mut squares = arena.try_slice_vec::<i64>(128)?;
     /// assert!(arena.try_slice_vec::<u8>(1).is_none());
@@ -884,7 +903,7 @@ mod tests {
 
         const ARENA_SIZE: usize = 321;
         let mut backing_region = [MaybeUninit::uninit(); ARENA_SIZE];
-        let mut arena = Arena::from_buffer(&mut backing_region);
+        let mut arena = Arena::from(&mut backing_region[..]);
 
         let mut taken_count = 0;
         let drop_count = Cell::new(0);
@@ -904,7 +923,7 @@ mod tests {
     #[test]
     fn format_boxed_debug_struct() {
         let mut backing_region = [MaybeUninit::uninit(); 256];
-        let mut arena = Arena::from_buffer(&mut backing_region);
+        let mut arena = Arena::from(&mut backing_region[..]);
 
         #[derive(Debug)]
         struct LinkedList<'a> {
@@ -928,6 +947,27 @@ mod tests {
         assert_eq!(
             output.as_ref(),
             "LinkedList { val: 1, next: Some(LinkedList { val: 0, next: None }) }"
+        );
+    }
+
+    #[test]
+    fn debug_impl() {
+        let mut backing_region_a = [MaybeUninit::uninit(); 256];
+        let mut arena_a = Arena::from(&mut backing_region_a[..]);
+
+        let mut backing_region_b = [MaybeUninit::uninit(); 256];
+        let arena_b = Arena::from(&mut backing_region_b[..]);
+
+        let output = fmt!(arena_a, "{:?}", arena_b).unwrap();
+        assert_eq!(&output[..8], "Arena(0x");
+
+        let chars_per_ptr = (output.len() - 13) / 2;
+        assert_eq!(&output[8 + chars_per_ptr..12 + chars_per_ptr], "..0x");
+        assert_eq!(&output[12 + 2 * chars_per_ptr..], ")");
+
+        assert_eq!(
+            &output[chars_per_ptr..][6..8],
+            &output[2 * chars_per_ptr..][10..12]
         );
     }
 }

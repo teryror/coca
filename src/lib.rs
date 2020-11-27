@@ -11,8 +11,8 @@
 //!
 //! # Features
 //! - [`tinyvec`] (optional dependency): Implements convenience methods on
-//!   `Arena` for allocating `SliceVec`.
-//! - [`alloc`]: Implements [`HeapRegion`] for more convenient initialization.
+//!   `Arena` for allocating `SliceVec`. Enabled by default.
+//! - `alloc`: Implements `HeapRegion` for more convenient initialization.
 //!   Also enables `tinyvec/alloc`.
 
 #[cfg(feature = "alloc")]
@@ -21,14 +21,6 @@ pub extern crate alloc;
 
 pub mod arena;
 pub use crate::arena::{Arena, Box};
-
-/// Re-export of [`tinyvec`].
-#[cfg(feature = "tinyvec")]
-pub mod vec {
-    #[cfg(feature = "alloc")]
-    pub use tinyvec::TinyVec;
-    pub use tinyvec::{ArrayVec, SliceVec};
-}
 
 #[cfg(feature = "alloc")]
 mod heapregion {
@@ -43,7 +35,7 @@ mod heapregion {
     /// ```
     /// use coca::{Arena, HeapRegion};
     /// let mut backing_region = HeapRegion::with_capacity(1024 * 1024);
-    /// let arena = Arena::from_buffer(backing_region.as_mut());
+    /// let arena = Arena::from(backing_region.as_mut());
     /// ```
     pub struct HeapRegion<T = u8> {
         buf: Box<[MaybeUninit<T>]>,
