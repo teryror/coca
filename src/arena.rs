@@ -17,7 +17,7 @@
 //!
 //! let bad_array = {
 //!     let mut backing_region = [MaybeUninit::uninit(); 256];
-//!     let mut arena = Arena::from_buffer(&mut backing_region[..]);
+//!     let mut arena = Arena::from_buffer(&mut backing_region);
 //!     arena.array_default::<i32>(10)
 //! };
 //! ```
@@ -256,7 +256,7 @@ impl<'src> Arena<'src> {
     /// use coca::Arena;
     ///
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let arena = Arena::from_buffer(&mut backing_region[..]);
+    /// let arena = Arena::from_buffer(&mut backing_region);
     /// ```
     #[inline]
     pub fn from_buffer(buf: &'src mut [MaybeUninit<u8>]) -> Arena<'src> {
@@ -278,7 +278,7 @@ impl<'src> Arena<'src> {
     /// use coca::Arena;
     ///
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    /// let mut arena = Arena::from_buffer(&mut backing_region);
     ///
     /// {
     ///     let mut tmp = arena.make_sub_arena();
@@ -348,7 +348,7 @@ impl<'src> Arena<'src> {
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    /// let mut arena = Arena::from_buffer(&mut backing_region);
     ///
     /// for _ in 0..(1024 / 16) {
     ///     assert_eq!(*arena.try_alloc_default::<u128>()?, 0);
@@ -385,7 +385,7 @@ impl<'src> Arena<'src> {
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    /// let mut arena = Arena::from_buffer(&mut backing_region);
     ///
     /// for i in 0..(1024 / 16) {
     ///     assert_eq!(*arena.try_alloc(i as u128)?, i as u128);
@@ -436,7 +436,7 @@ impl<'src> Arena<'src> {
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    /// let mut arena = Arena::from_buffer(&mut backing_region);
     ///
     /// let total = {
     ///     let reserved = arena.try_reserve::<i32>()?;
@@ -498,7 +498,7 @@ impl<'src> Arena<'src> {
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    /// let mut arena = Arena::from_buffer(&mut backing_region);
     /// let array = arena.try_array_default::<u128>(16)?;
     /// assert_eq!(&array[..], &[0; 16]);
     /// # Some(())
@@ -565,7 +565,7 @@ impl<'src> Arena<'src> {
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    /// let mut arena = Arena::from_buffer(&mut backing_region);
     /// let array = arena.try_array(0x12345678u32, 256)?;
     /// assert_eq!(&array[..], &[0x12345678u32; 256]);
     /// # Some(())
@@ -624,7 +624,7 @@ impl<'src> Arena<'src> {
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    /// let mut arena = Arena::from_buffer(&mut backing_region);
     ///
     /// let a = [1, 2, 3];
     /// let doubled = arena.try_collect(a.iter().map(|&x| x * 2))?;
@@ -699,7 +699,7 @@ impl<'src> Arena<'src> {
     /// # fn main() -> Result<(), core::fmt::Error> {
     /// let parts = ["Hello", ",", " ", "World", "!"];
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    /// let mut arena = Arena::from_buffer(&mut backing_region);
     ///
     /// let mut writer = arena.make_writer();
     /// for s in parts.iter() {
@@ -783,7 +783,7 @@ impl<'buf> From<ArenaWriter<'_, 'buf>> for Box<'buf, str> {
 ///
 /// # fn test() -> Option<()> {
 /// let mut backing_region = [MaybeUninit::uninit(); 16];
-/// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+/// let mut arena = Arena::from_buffer(&mut backing_region);
 /// let output = fmt!(arena, "test")?;
 /// let output = fmt!(arena, "hello {}", "world!")?;
 /// assert!(fmt!(arena, "{}", ' ').is_none());
@@ -828,11 +828,10 @@ impl<'src> Arena<'src> {
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from_buffer(&mut backing_region[..]);
+    /// let mut arena = Arena::from_buffer(&mut backing_region);
     ///
     /// let mut squares = arena.try_slice_vec::<i64>(128)?;
-    /// let shouldnt_work = arena.try_slice_vec::<u8>(1);
-    /// assert!(shouldnt_work.is_none());
+    /// assert!(arena.try_slice_vec::<u8>(1).is_none());
     ///
     /// assert_eq!(squares.len(), 0);
     /// assert_eq!(squares.capacity(), 128);
@@ -868,69 +867,9 @@ impl<'src> Arena<'src> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::mem::size_of;
 
     #[test]
-    fn it_works() {
-        let mut backing_region = [MaybeUninit::uninit(); 256];
-        let mut arena = Arena::from_buffer(&mut backing_region[..]);
-
-        enum BinTree<'a> {
-            Leaf(i32),
-            Branch(Box<'a, BinTree<'a>>, Box<'a, BinTree<'a>>),
-        }
-
-        let a = arena.alloc(BinTree::Leaf(0));
-        let b = arena.alloc(BinTree::Leaf(1));
-        let mut c = arena.alloc(BinTree::Branch(a, b));
-
-        {
-            let mut sub_arena = arena.make_sub_arena();
-
-            match c.as_mut() {
-                BinTree::Branch(left, _) => {
-                    // NOTE: This is legal _only_ because we move c into _e later on!
-                    *left = sub_arena.alloc(BinTree::Leaf(2));
-                }
-                BinTree::Leaf(_) => {}
-            }
-
-            let d = sub_arena.alloc(BinTree::Leaf(0));
-            let _e = sub_arena.alloc(BinTree::Branch(c, d));
-        };
-
-        let mut arr = arena.array_default::<i32>(4);
-        assert_eq!(arr.as_ref(), &[0, 0, 0, 0]);
-
-        arr[0] = 0;
-        arr[1] = 1;
-        arr[2] = 4;
-        arr[3] = 9;
-
-        assert_eq!(size_of::<Option<Box<'_, BinTree>>>(), size_of::<usize>());
-        assert_eq!(size_of::<Box<'_, [i32]>>(), 2 * size_of::<usize>());
-        assert_eq!(arr.len(), 4);
-    }
-
-    #[test]
-    fn collect_iter() {
-        let mut backing_region = [MaybeUninit::uninit(); 256];
-        let mut arena = Arena::from_buffer(&mut backing_region[..]);
-        let nums = arena.collect(0..60i32);
-
-        assert_eq!(nums.len(), 60);
-        assert_eq!(&nums[0..8], &[0, 1, 2, 3, 4, 5, 6, 7]);
-        assert_eq!(&nums[52..], &[52, 53, 54, 55, 56, 57, 58, 59]);
-
-        // Assert that all values taken from the iterator are correctly dropped
-        // if there's not enough space available to exhaust it.
-        //
-        // At this point, there should be 16 free bytes left in the arena,
-        // enough to store 2 or 4 references (depending on the size of a
-        // pointer). One additional value will be pulled from the iterator
-        // (though it won't be written into the arena), at which point it and
-        // all previously written values should be dropped.
-
+    fn failed_collect_drops_taken_items() {
         use core::cell::Cell;
         struct Droppable<'a> {
             drop_count: &'a Cell<usize>,
@@ -943,20 +882,29 @@ mod tests {
             }
         }
 
-        let drop_count = Cell::new(0);
+        const ARENA_SIZE: usize = 321;
+        let mut backing_region = [MaybeUninit::uninit(); ARENA_SIZE];
+        let mut arena = Arena::from_buffer(&mut backing_region);
 
-        let result = arena.try_collect((0..8).map(|_| Droppable {
-            drop_count: &drop_count,
+        let mut taken_count = 0;
+        let drop_count = Cell::new(0);
+        let result = arena.try_collect((0..100).map(|_| {
+            taken_count += 1;
+            Droppable {
+                drop_count: &drop_count,
+            }
         }));
 
         assert!(result.is_none());
-        assert_eq!(drop_count.get(), 1 + 16 / core::mem::size_of::<Droppable>());
+        assert_eq!(taken_count, drop_count.get());
+
+        assert!(arena.try_array_default::<u8>(ARENA_SIZE).is_some());
     }
 
     #[test]
-    fn format_strings() {
+    fn format_boxed_debug_struct() {
         let mut backing_region = [MaybeUninit::uninit(); 256];
-        let mut arena = Arena::from_buffer(&mut backing_region[..]);
+        let mut arena = Arena::from_buffer(&mut backing_region);
 
         #[derive(Debug)]
         struct LinkedList<'a> {
