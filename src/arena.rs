@@ -68,20 +68,76 @@ pub struct Box<'src, T: ?Sized> {
 }
 
 impl<'src, T: Sized> Box<'src, MaybeUninit<T>> {
-    /// Places `x` into the allocation and converts `self` into a pointer to T.
+    /// Converts `self` into a pointer to T.
     ///
-    /// See [`Arena::try_reserve`] for example usage.
-    pub fn init(mut self, x: T) -> Box<'src, T> {
+    /// # Safety
+    /// It is up to the caller to guarantee that the `MaybeUninit<T>` really is
+    /// in an initialized state. Calling this when the content is not yet fully
+    /// initialized causes undefined behavior.
+    ///
+    /// See the type-level documentation on [`MaybeUninit`] for more information
+    /// about this initialization invariant.
+    #[inline]
+    pub unsafe fn assume_init(mut self) -> Box<'src, T> {
         let ptr = self.as_mut_ptr();
         core::mem::forget(self);
 
+        Box {
+            ptr: NonNull::new_unchecked(ptr),
+            val: PhantomData,
+            src: PhantomData,
+        }
+    }
+
+    /// Places `x` into the allocation and converts `self` into a pointer to T.
+    ///
+    /// See [`Arena::try_reserve`] for example usage.
+    #[inline]
+    pub fn init(mut self, x: T) -> Box<'src, T> {
+        let ptr = self.as_mut_ptr();
+
         unsafe {
             ptr.write(x);
-            Box {
-                ptr: NonNull::new_unchecked(ptr),
-                val: PhantomData,
-                src: PhantomData,
+            self.assume_init()
+        }
+    }
+}
+
+impl<'src, T: Sized> Box<'src, [MaybeUninit<T>]> {
+    /// Converts `self` into a pointer to \[T\].
+    ///
+    /// # Safety
+    /// It is up to the caller to guarantee that each `MaybeUninit<T>` in the
+    /// slice really is in an initialized state. Calling this when the content
+    /// is not yet fully initialized causes undefined behavior.
+    ///
+    /// See the type-level documentation on [`MaybeUninit`] for more information
+    /// about this initialization invariant.
+    #[inline]
+    pub unsafe fn assume_init(mut self) -> Box<'src, [T]> {
+        let ptr = self.as_mut_ptr() as *mut T;
+        let len = self.len();
+        core::mem::forget(self);
+
+        Box {
+            ptr: NonNull::new_unchecked(slice_from_raw_parts_mut(ptr, len)),
+            val: PhantomData,
+            src: PhantomData,
+        }
+    }
+
+    /// Calls `f` once with each index into `self`, placing the returned value
+    /// at that position, and then converts `self` into a pointer to \[T\].
+    ///
+    /// See [`Arena::try_reserve_array`] for example usage.
+    #[inline]
+    pub fn init_with<F: Fn(usize) -> T>(mut self, f: F) -> Box<'src, [T]> {
+        unsafe {
+            for i in 0..self.len() {
+                self[i].as_mut_ptr().write(f(i));
             }
+
+            self.assume_init()
         }
     }
 }
@@ -352,7 +408,7 @@ impl<'src> Arena<'src> {
     /// that never panics.
     #[inline]
     pub fn alloc_default<T: Default + Sized>(&mut self) -> Box<'src, T> {
-        self.try_alloc(T::default()).unwrap()
+        self.try_reserve().unwrap().init(T::default())
     }
 
     /// Allocates memory in the arena and then places the `Default` value for T
@@ -380,7 +436,7 @@ impl<'src> Arena<'src> {
     /// ```
     #[inline]
     pub fn try_alloc_default<T: Default + Sized>(&mut self) -> Option<Box<'src, T>> {
-        self.try_alloc(T::default())
+        self.try_reserve().map(|b| b.init(T::default()))
     }
 
     /// Allocates memory in the arena and then places `x` into it.
@@ -390,7 +446,7 @@ impl<'src> Arena<'src> {
     /// [`try_alloc`](Arena::try_alloc) for a checked version that never panics.
     #[inline]
     pub fn alloc<T: Sized>(&mut self, x: T) -> Box<'src, T> {
-        self.try_alloc(x).unwrap()
+        self.try_reserve().unwrap().init(x)
     }
 
     /// Allocates memory in the arena and then places `x` into it.
@@ -417,21 +473,7 @@ impl<'src> Arena<'src> {
     /// ```
     #[inline]
     pub fn try_alloc<T: Sized>(&mut self, x: T) -> Option<Box<'src, T>> {
-        let ptr = self.try_alloc_raw(&Layout::new::<T>());
-        if ptr.is_null() {
-            return None;
-        }
-
-        unsafe {
-            let ptr = ptr as *mut T;
-            ptr.write(x);
-
-            Some(Box {
-                ptr: NonNull::new_unchecked(ptr),
-                val: PhantomData,
-                src: PhantomData,
-            })
-        }
+        self.try_reserve().map(|b| b.init(x))
     }
 
     /// Allocates memory in the arena, leaving it uninitialized.
@@ -484,6 +526,57 @@ impl<'src> Arena<'src> {
         })
     }
 
+    /// Allocates memory in the arena, leaving it uninitialized.
+    ///
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient. See
+    /// [`try_reserve_array`](Arena::try_reserve_array) for a checked version
+    /// that never panics.
+    #[inline]
+    pub fn reserve_array<T: Sized>(&mut self, count: usize) -> Box<'src, [MaybeUninit<T>]> {
+        self.try_reserve_array(count).unwrap()
+    }
+
+    /// Allocates memory in the arena, leaving it uninitialized.
+    ///
+    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    ///
+    /// # Examples
+    /// ```
+    /// use core::mem::MaybeUninit;
+    /// use coca::Arena;
+    ///
+    /// # fn test() -> Option<()> {
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from(&mut backing_region[..]);
+    ///
+    /// let sums = arena
+    ///     .try_reserve_array::<usize>(100)?
+    ///     .init_with(|n| (n * (n + 1)) / 2);
+    /// assert!(arena.try_reserve_array::<usize>(100).is_none());
+    ///
+    /// assert_eq!(&sums[..10], [0, 1, 3, 6, 10, 15, 21, 28, 36, 45]);
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
+    /// ```
+    #[inline]
+    pub fn try_reserve_array<T: Sized>(
+        &mut self,
+        count: usize,
+    ) -> Option<Box<'src, [MaybeUninit<T>]>> {
+        let ptr = self.try_array_raw(count);
+        if ptr.is_null() {
+            return None;
+        }
+
+        Some(Box {
+            ptr: unsafe { NonNull::new_unchecked(ptr) },
+            val: PhantomData,
+            src: PhantomData,
+        })
+    }
+
     /// Allocates memory in the arena and then places `count` copies of the
     /// `Default` value for T into it.
     ///
@@ -497,9 +590,11 @@ impl<'src> Arena<'src> {
     #[inline]
     pub fn array_default<T>(&mut self, count: usize) -> Box<'src, [T]>
     where
-        T: Copy + Default + Sized,
+        T: Default + Sized,
     {
-        self.try_array(T::default(), count).unwrap()
+        self.try_reserve_array(count)
+            .unwrap()
+            .init_with(|_| T::default())
     }
 
     /// Allocates memory in the arena and then places `count` copies of the
@@ -527,9 +622,10 @@ impl<'src> Arena<'src> {
     #[inline]
     pub fn try_array_default<T>(&mut self, count: usize) -> Option<Box<'src, [T]>>
     where
-        T: Copy + Default + Sized,
+        T: Default + Sized,
     {
-        self.try_array(T::default(), count)
+        self.try_reserve_array(count)
+            .map(|b| b.init_with(|_| T::default()))
     }
 
     /// Allocates memory in the arena and then places `count` copies of `x`
@@ -546,7 +642,7 @@ impl<'src> Arena<'src> {
     where
         T: Copy + Sized,
     {
-        self.try_array(x, count).unwrap()
+        self.try_reserve_array(count).unwrap().init_with(|_| x)
     }
 
     #[inline]
@@ -596,24 +692,7 @@ impl<'src> Arena<'src> {
     where
         T: Copy + Sized,
     {
-        let ptr = self.try_array_raw::<T>(count);
-        if ptr.is_null() {
-            return None;
-        }
-
-        unsafe {
-            let ptr = ptr as *mut T;
-            for i in 0..count {
-                ptr.add(i).write(x);
-            }
-
-            let slice = from_raw_parts_mut(ptr, count);
-            Some(Box {
-                ptr: NonNull::new_unchecked(slice),
-                val: PhantomData,
-                src: PhantomData,
-            })
-        }
+        self.try_reserve_array(count).map(|b| b.init_with(|_| x))
     }
 
     /// Transforms an iterator into a boxed slice in the arena.
