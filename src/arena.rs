@@ -407,8 +407,11 @@ impl<'src> Arena<'src> {
     /// [`try_alloc_default`](Arena::try_alloc_default) for a checked version
     /// that never panics.
     #[inline]
+    #[track_caller]
     pub fn alloc_default<T: Default + Sized>(&mut self) -> Box<'src, T> {
-        self.try_reserve().unwrap().init(T::default())
+        self.try_reserve()
+            .expect("unexpected allocation failure in `alloc_default`")
+            .init(T::default())
     }
 
     /// Allocates memory in the arena and then places the `Default` value for T
@@ -445,8 +448,11 @@ impl<'src> Arena<'src> {
     /// Panics if the remaining space in the arena is insufficient. See
     /// [`try_alloc`](Arena::try_alloc) for a checked version that never panics.
     #[inline]
+    #[track_caller]
     pub fn alloc<T: Sized>(&mut self, x: T) -> Box<'src, T> {
-        self.try_reserve().unwrap().init(x)
+        self.try_reserve()
+            .expect("unexpected allocation failure in `alloc`")
+            .init(x)
     }
 
     /// Allocates memory in the arena and then places `x` into it.
@@ -482,8 +488,10 @@ impl<'src> Arena<'src> {
     /// Panics if the remaining space in the arena is insufficient. See
     /// [`try_reserve`](Arena::try_reserve) for a checked version that never panics.
     #[inline]
+    #[track_caller]
     pub fn reserve<T: Sized>(&mut self) -> Box<'src, MaybeUninit<T>> {
-        self.try_reserve().unwrap()
+        self.try_reserve()
+            .expect("unexpected allocation failure in `reserve`")
     }
 
     /// Allocates memory in the arena, leaving it uninitialized.
@@ -533,8 +541,10 @@ impl<'src> Arena<'src> {
     /// [`try_reserve_array`](Arena::try_reserve_array) for a checked version
     /// that never panics.
     #[inline]
+    #[track_caller]
     pub fn reserve_array<T: Sized>(&mut self, count: usize) -> Box<'src, [MaybeUninit<T>]> {
-        self.try_reserve_array(count).unwrap()
+        self.try_reserve_array(count)
+            .expect("unexpected allocation failure in `reserve_array`")
     }
 
     /// Allocates memory in the arena, leaving it uninitialized.
@@ -588,12 +598,13 @@ impl<'src> Arena<'src> {
     /// See [`try_array_default`](Arena::try_array_default) for a checked
     /// version that never panics.
     #[inline]
+    #[track_caller]
     pub fn array_default<T>(&mut self, count: usize) -> Box<'src, [T]>
     where
         T: Default + Sized,
     {
         self.try_reserve_array(count)
-            .unwrap()
+            .expect("unexpected allocation failure in `array_default`")
             .init_with(|_| T::default())
     }
 
@@ -638,11 +649,14 @@ impl<'src> Arena<'src> {
     /// Panics if the remaining space in the arena is insufficient.
     /// See [`try_array`](Arena::try_array) for a checked version that never panics.
     #[inline]
+    #[track_caller]
     pub fn array<T>(&mut self, x: T, count: usize) -> Box<'src, [T]>
     where
         T: Copy + Sized,
     {
-        self.try_reserve_array(count).unwrap().init_with(|_| x)
+        self.try_reserve_array(count)
+            .expect("unexpected allocation failure in `array`")
+            .init_with(|_| x)
     }
 
     #[inline]
@@ -702,12 +716,14 @@ impl<'src> Arena<'src> {
     /// the iterator. See [`try_collect`](Arena::try_collect) for a checked
     /// version that never panics.
     #[inline]
+    #[track_caller]
     pub fn collect<T, I>(&mut self, iter: I) -> Box<'src, [T]>
     where
         T: Sized,
         I: IntoIterator<Item = T>,
     {
-        self.try_collect(iter).unwrap()
+        self.try_collect(iter)
+            .expect("unexpected allocation failure in `collect`")
     }
 
     /// Transforms an iterator into a boxed slice in the arena.
@@ -910,8 +926,10 @@ impl<'src> Arena<'src> {
     /// Panics if the remaining space in the arena is insufficient. See
     /// [`try_slice_vec`](Arena::try_slice_vec) for a checked version that
     /// never panics.
+    #[track_caller]
     pub fn slice_vec<T: Default>(&mut self, capacity: usize) -> tinyvec::SliceVec<'src, T> {
-        self.try_slice_vec(capacity).unwrap()
+        self.try_slice_vec(capacity)
+            .expect("unexpected allocation failure in `slice_vec`")
     }
 
     /// Constructs a [`tinyvec::SliceVec`] with the given capacity backed by
