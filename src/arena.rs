@@ -45,6 +45,9 @@
 //! allocations are required where an arena allocated value is to be returned,
 //! consider using [`Arena::try_reserve`].
 
+use crate::storage::Capacity;
+use crate::vec::ArenaVec;
+
 use core::alloc::Layout;
 use core::cmp::Ordering;
 use core::fmt::{self, Debug, Display, Formatter, Pointer, Write};
@@ -54,6 +57,13 @@ use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut, Range};
 use core::ptr::{null_mut, slice_from_raw_parts_mut, NonNull};
 use core::slice::from_raw_parts_mut;
+
+// TODO: Monitoring features
+//  - add a high water mark (peak utilization) that includes usage of sub-arenas!
+//    -> figure out a way to do that which doesn't require special client-side setup
+//  - track impact of individual allocation sites (see core::panic::Location::caller),
+//    might require alloc for a growable Vec, see if that's avoidable
+//    might also just be out of scope for v0.1, maybe just wait and see what people think?
 
 /// A pointer type providing ownership of an arena allocation.
 ///
@@ -709,6 +719,52 @@ impl<'src> Arena<'src> {
         self.try_reserve_array(count).map(|b| b.init_with(|_| x))
     }
 
+    /// Constructs a [`ArenaVec`] with the given capacity.
+    ///
+    /// # Panics
+    /// Panics if the specified capacity cannot be represented by a `usize`, or
+    /// if the remaining space in the arena is insufficient. See
+    /// [`try_vec`](Arena::try_vec) for a checked version.
+    #[track_caller]
+    pub fn vec<T, I: Capacity>(&mut self, capacity: I) -> ArenaVec<'src, T, I> {
+        self.try_vec(capacity)
+            .expect("unexpected allocation failure in `vec`")
+    }
+
+    /// Constructs an [`ArenaVec`] with the given capacity.
+    ///
+    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    ///
+    /// # Panics
+    /// Panics if the specified capacity cannot be represented by a `usize`.
+    ///
+    /// # Examples
+    /// ```
+    /// use coca::{Arena, fmt};
+    /// use core::mem::MaybeUninit;
+    ///
+    /// # fn test() -> Option<()> {
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from(&mut backing_region[..]);
+    ///
+    /// let mut squares = arena.try_vec::<i64, usize>(128)?;
+    /// assert!(arena.try_vec::<u8, usize>(1).is_none());
+    ///
+    /// assert_eq!(squares.len(), 0);
+    /// assert_eq!(squares.capacity(), 128);
+    ///
+    /// for x in 1..=128 { squares.push(x * x) }
+    /// assert_eq!(&squares[..8], &[1, 4, 9, 16, 25, 36, 49, 64]);
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
+    /// ```
+    pub fn try_vec<T, I: Capacity>(&mut self, capacity: I) -> Option<ArenaVec<'src, T, I>> {
+        Some(ArenaVec::<T, I>::from(
+            self.try_reserve_array(capacity.into_usize())?,
+        ))
+    }
+
     /// Transforms an iterator into a boxed slice in the arena.
     ///
     /// # Panics
@@ -914,70 +970,6 @@ macro_rules! fmt {
             .ok()
             .map(|_| $crate::Box::<'_, str>::from(writer))
     }}
-}
-
-/// These methods require the optional dependency on `tinyvec`.
-#[cfg(feature = "tinyvec")]
-impl<'src> Arena<'src> {
-    /// Constructs a [`tinyvec::SliceVec`] with the given capacity backed by
-    /// memory in the arena.
-    ///
-    /// # Panics
-    /// Panics if the remaining space in the arena is insufficient. See
-    /// [`try_slice_vec`](Arena::try_slice_vec) for a checked version that
-    /// never panics.
-    #[track_caller]
-    pub fn slice_vec<T: Default>(&mut self, capacity: usize) -> tinyvec::SliceVec<'src, T> {
-        self.try_slice_vec(capacity)
-            .expect("unexpected allocation failure in `slice_vec`")
-    }
-
-    /// Constructs a [`tinyvec::SliceVec`] with the given capacity backed by
-    /// memory in the arena.
-    ///
-    /// Returns [`None`] if the remaining space in the arena is insufficient.
-    ///
-    /// # Examples
-    /// ```
-    /// use coca::{Arena, fmt};
-    /// use core::mem::MaybeUninit;
-    ///
-    /// # fn test() -> Option<()> {
-    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from(&mut backing_region[..]);
-    ///
-    /// let mut squares = arena.try_slice_vec::<i64>(128)?;
-    /// assert!(arena.try_slice_vec::<u8>(1).is_none());
-    ///
-    /// assert_eq!(squares.len(), 0);
-    /// assert_eq!(squares.capacity(), 128);
-    ///
-    /// for x in 1..=128 { squares.push(x * x) }
-    /// assert_eq!(&squares[..8], &[1, 4, 9, 16, 25, 36, 49, 64]);
-    /// # Some(())
-    /// # }
-    /// # assert!(test().is_some());
-    /// ```
-    pub fn try_slice_vec<T: Default>(
-        &mut self,
-        capacity: usize,
-    ) -> Option<tinyvec::SliceVec<'src, T>> {
-        let ptr = self.try_array_raw::<T>(capacity);
-        if ptr.is_null() {
-            return None;
-        }
-
-        let slice = unsafe {
-            let ptr = ptr as *mut T;
-            for i in 0..capacity {
-                ptr.add(i).write(T::default());
-            }
-
-            from_raw_parts_mut(ptr, capacity)
-        };
-
-        Some(tinyvec::SliceVec::from_slice_len(slice, 0))
-    }
 }
 
 #[cfg(test)]

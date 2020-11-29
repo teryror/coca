@@ -7,9 +7,6 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["tinyvec"]
-alloc = ["tinyvec/alloc"] # should be ["tinyvec?/alloc"], see https://github.com/rust-lang/cargo/issues/8832
-
-[dependencies.tinyvec]
-version = "1.1.0"
-optional = true
+default = ["alloc", "nightly"]
+alloc = []
+nightly = []
