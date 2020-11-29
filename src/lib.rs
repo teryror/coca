@@ -1,5 +1,6 @@
 #![no_std]
 #![cfg_attr(feature = "nightly", feature(min_const_generics))]
+#![cfg_attr(docs_rs, feature(doc_cfg))]
 #![warn(missing_docs)]
 
 //! Allocation-free data structures with constant capacity.
@@ -26,14 +27,13 @@ pub mod storage;
 pub mod vec;
 
 pub use crate::arena::{Arena, Box};
-pub use crate::storage::{ArenaStorage, SliceStorage};
-pub use crate::vec::SliceVec;
-
-#[cfg(feature = "nightly")]
-pub use crate::{
-    storage::InlineStorage,
-    vec::{ArrayVec, TiArrayVec},
-};
 
 #[cfg(feature = "alloc")]
 pub use crate::storage::HeapStorage;
+#[cfg(feature = "nightly")]
+pub use crate::storage::InlineStorage;
+pub use crate::storage::{ArenaStorage, SliceStorage};
+
+pub use crate::vec::SliceVec;
+#[cfg(feature = "nightly")]
+pub use crate::vec::{ArrayVec, TiArrayVec};

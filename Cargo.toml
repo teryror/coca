@@ -10,3 +10,7 @@ edition = "2018"
 default = ["alloc", "nightly"]
 alloc = []
 nightly = []
+
+[package.metadata.docs.rs]
+features = ["alloc", "nightly"]
+rustdoc-args = ["--cfg", "docs_rs"]

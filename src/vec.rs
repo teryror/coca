@@ -847,10 +847,12 @@ where
 }
 
 #[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 /// A vector using a heap-allocated slice for storage.
 pub type HeapVec<E, I = usize> = Vec<E, crate::HeapStorage<E>, I>;
 
 #[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 impl<E, I> HeapVec<E, I>
 where
     E: Copy,
@@ -868,13 +870,16 @@ where
 
 /// A vector using an inline array for storage.
 #[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub type ArrayVec<E, const C: usize> = Vec<E, crate::InlineStorage<E, C>, usize>;
 
 /// A vector using an inline array for storage, generic over the index type.
 #[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub type TiArrayVec<E, Index, const C: usize> = Vec<E, crate::InlineStorage<E, C>, Index>;
 
 #[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<E, I, const C: usize> Vec<E, [MaybeUninit<E>; C], I>
 where
     I: Capacity,
@@ -901,6 +906,7 @@ where
 }
 
 #[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<E, I, const C: usize> Default for Vec<E, [MaybeUninit<E>; C], I>
 where
     I: Capacity,
@@ -911,6 +917,7 @@ where
 }
 
 #[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<E, I, const C: usize> core::clone::Clone for Vec<E, [MaybeUninit<E>; C], I>
 where
     E: Clone,
@@ -931,6 +938,7 @@ where
 }
 
 #[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<E, I, const C: usize> From<&[E]> for Vec<E, [MaybeUninit<E>; C], I>
 where
     E: Clone,
@@ -954,6 +962,7 @@ where
 }
 
 #[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<E, I, const C: usize> From<&mut [E]> for Vec<E, [MaybeUninit<E>; C], I>
 where
     E: Clone,
@@ -977,6 +986,7 @@ where
 }
 
 #[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<V, E, B, I, const N: usize> core::cmp::PartialEq<Vec<E, B, I>> for [V; N]
 where
     V: core::cmp::PartialEq<E>,
@@ -990,6 +1000,7 @@ where
 }
 
 #[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<V, E, B, I, const N: usize> core::cmp::PartialEq<[V; N]> for Vec<E, B, I>
 where
     E: core::cmp::PartialEq<V>,

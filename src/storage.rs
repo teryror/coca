@@ -231,9 +231,11 @@ unsafe impl<T> ContiguousStorage<T> for ArenaStorage<'_, T> {
 /// Shorthand for [`alloc::Box<[MaybeUninit<T>]>`](alloc::boxed::Box) for use
 /// with generic data structures.
 #[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 pub type HeapStorage<T> = alloc::boxed::Box<[MaybeUninit<T>]>;
 
 #[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 unsafe impl<T> ContiguousStorage<T> for HeapStorage<T> {
     #[inline]
     fn storage(&self) -> &[MaybeUninit<T>] {
@@ -247,9 +249,11 @@ unsafe impl<T> ContiguousStorage<T> for HeapStorage<T> {
 
 /// Shorthand for `[MaybeUninit<T>; C]` for use with generic data structures.
 #[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub type InlineStorage<T, const C: usize> = [MaybeUninit<T>; C];
 
 #[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 unsafe impl<T, const C: usize> ContiguousStorage<T> for InlineStorage<T, C> {
     #[inline]
     fn storage(&self) -> &[MaybeUninit<T>] {
@@ -262,6 +266,7 @@ unsafe impl<T, const C: usize> ContiguousStorage<T> for InlineStorage<T, C> {
 }
 
 #[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 unsafe impl<'a, T, const C: usize> ContiguousStorage<T> for &'a mut [MaybeUninit<T>; C] {
     #[inline]
     fn storage(&self) -> &[MaybeUninit<T>] {
@@ -278,6 +283,7 @@ unsafe impl<'a, T, const C: usize> ContiguousStorage<T> for &'a mut [MaybeUninit
 }
 
 #[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 unsafe impl<'a, T, const C: usize> ContiguousStorage<T> for crate::Box<'a, [MaybeUninit<T>; C]> {
     #[inline]
     fn storage(&self) -> &[MaybeUninit<T>] {
@@ -293,6 +299,7 @@ unsafe impl<'a, T, const C: usize> ContiguousStorage<T> for crate::Box<'a, [Mayb
     }
 }
 #[cfg(all(feature = "nightly", feature = "alloc"))]
+#[cfg_attr(docs_rs, doc(cfg(all(feature = "alloc", feature = "nightly"))))]
 unsafe impl<'a, T, const C: usize> ContiguousStorage<T> for alloc::boxed::Box<[MaybeUninit<T>; C]> {
     #[inline]
     fn storage(&self) -> &[MaybeUninit<T>] {
