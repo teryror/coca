@@ -63,6 +63,8 @@ where
     I: Capacity,
 {
     fn from(buf: B) -> Self {
+        I::from_usize(buf.storage().len()); // panics if I cannot index the whole array
+
         Vec {
             len: I::from_usize(0),
             buf,
@@ -111,7 +113,7 @@ where
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
-    /// let mut vec = coca::vec::SliceVec::<u32, usize>::from(&mut backing_region[..]);
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3);
     /// assert_eq!(vec.pop(), Some(3));
     /// assert_eq!(vec, &[1, 2][..]);
@@ -148,7 +150,7 @@ where
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
-    /// let mut vec = coca::vec::SliceVec::<u32, usize>::from(&mut backing_region[..]);
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3);
     /// assert_eq!(vec.get(1), Some(&2));
     /// assert_eq!(vec.get(3), None);
@@ -181,7 +183,7 @@ where
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
-    /// let mut vec = coca::vec::SliceVec::<u32, usize>::from(&mut backing_region[..]);
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
     /// assert!(vec.try_push(1).is_ok());
     /// assert!(vec.try_push(2).is_ok());
     /// assert!(vec.try_push(3).is_ok());
@@ -228,7 +230,7 @@ where
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-    /// let mut vec = coca::vec::SliceVec::<u32, usize>::from(&mut backing_region[..]);
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4);
     ///
     /// vec.truncate(6);
@@ -270,7 +272,7 @@ where
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-    /// let mut vec = coca::vec::SliceVec::<u32, usize>::from(&mut backing_region[..]);
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4);
     ///
     /// vec.swap(0, 2);
@@ -294,7 +296,7 @@ where
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-    /// let mut vec = coca::vec::SliceVec::<u32, usize>::from(&mut backing_region[..]);
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4);
     ///
     /// vec.swap_remove(1);
@@ -355,7 +357,7 @@ where
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-    /// let mut vec = coca::vec::SliceVec::<u32, usize>::from(&mut backing_region[..]);
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3);
     ///
     /// assert!(vec.try_insert(3, 4).is_ok());
@@ -401,7 +403,7 @@ where
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-    /// let mut vec = coca::vec::SliceVec::<u32, usize>::from(&mut backing_region[..]);
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3);
     /// vec.remove(0);
     ///
@@ -442,7 +444,7 @@ where
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-    /// let mut vec = coca::vec::SliceVec::<u32, usize>::from(&mut backing_region[..]);
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4);
     /// vec.retain(|&x| x % 2 == 0);
     ///
@@ -451,7 +453,7 @@ where
     /// The exact order may be useful for tracking external state, like an index.
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-    /// let mut vec = coca::vec::SliceVec::<u32, usize>::from(&mut backing_region[..]);
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4);
     /// let keep = [false, true, true, false];
     /// let mut i = 0;
@@ -495,7 +497,7 @@ where
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
-    /// let mut vec = coca::vec::SliceVec::<u32, usize>::from(&mut backing_region[..]);
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4); vec.push(5);
     /// let mut iter = vec.drain(1..3);
     /// assert_eq!(iter.next(), Some(2));
@@ -799,7 +801,7 @@ where
 /// # Example
 /// ```
 /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-/// let mut vec = coca::vec::SliceVec::<u32, usize>::from(&mut backing_region[..]);
+/// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
 /// # vec.push(1); vec.push(2);
 /// let mut iter: coca::vec::IntoIterator<_, _, _> = vec.into_iter();
 /// # assert_eq!(iter.next(), Some(1));
@@ -1037,6 +1039,8 @@ where
 {
     /// Constructs a new, empty `HeapVec<E, I>` with the specified capacity.
     pub fn with_capacity(capacity: usize) -> Self {
+        I::from_usize(capacity); // panics if I cannot index the whole slice
+
         Vec {
             len: I::from_usize(0),
             buf: alloc::vec![MaybeUninit::uninit(); capacity].into_boxed_slice(),
@@ -1065,8 +1069,7 @@ where
     ///
     /// # Examples
     /// ```
-    /// use coca::ArrayVec;
-    /// let vec = ArrayVec::<u32, 6>::new();
+    /// let vec = coca::ArrayVec::<u32, 6>::new();
     /// assert_eq!(vec.capacity(), 6);
     /// assert_eq!(vec.len(), 0);
     /// ```
@@ -1122,6 +1125,7 @@ where
     I: Capacity,
 {
     fn from(source: &[E]) -> Self {
+        I::from_usize(C); // panics if I cannot index the whole array
         if source.len() > C {
             panic!(
                 "source should not have more than {} elements (has {})",
@@ -1146,6 +1150,7 @@ where
     I: Capacity,
 {
     fn from(source: &mut [E]) -> Self {
+        I::from_usize(C); // panics if I cannot index the whole array
         if source.len() > C {
             panic!(
                 "source should not have more than {} elements (has {})",
@@ -1245,7 +1250,7 @@ mod tests {
             core::mem::MaybeUninit::<Droppable>::uninit(),
         ];
 
-        let mut vec = SliceVec::<Droppable, usize>::from(&mut backing_region[..]);
+        let mut vec = SliceVec::<Droppable>::from(&mut backing_region[..]);
         for i in 1..=8 {
             vec.push(Droppable {
                 value: i,
