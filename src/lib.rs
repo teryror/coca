@@ -12,6 +12,8 @@
 //! These generally require the user to supply memory to work with.
 //!
 //! # Features
+//! - `profile`: Enables memory profiling in arenas; see the
+//!   [module-level documentation](arena#memory-profiling) for details.
 //! - `nightly`: Adds trait implementations and convenience functions that require
 //!   the nightly-only `feature(min_const_generics)`, allowing inlining of
 //!   [`ContiguousStorage`](storage::ContiguousStorage).

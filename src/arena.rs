@@ -44,6 +44,18 @@
 //! A `Box` should not outlive the arena it was allocated from. If temporary
 //! allocations are required where an arena allocated value is to be returned,
 //! consider using [`Arena::try_reserve`].
+//!
+//! # Memory Profiling
+//! During development, it is common practice to provide arenas with more
+//! memory than is assumed necessary, and track their peak utilization to
+//! aid in determining a more appropriate size for deployment.
+//!
+//! To accomodate this, the `profile` feature enables the [`Arena::utilization`]
+//! method and its return type, [`UtilizationProfile`]. Note that this requires
+//! an allocation for some meta data when creating an arena from a buffer, which
+//! may panic on buffers smaller than 40 bytes (the exact threshold depends on
+//! your target platform's pointer size and the alignment of the passed buffer).
+//! This does not apply to creating sub-arenas.
 
 use crate::storage::Capacity;
 use crate::vec::ArenaVec;
@@ -57,13 +69,6 @@ use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut, Range};
 use core::ptr::{null_mut, slice_from_raw_parts_mut, NonNull};
 use core::slice::from_raw_parts_mut;
-
-// TODO: Monitoring features
-//  - add a high water mark (peak utilization) that includes usage of sub-arenas!
-//    -> figure out a way to do that which doesn't require special client-side setup
-//  - track impact of individual allocation sites (see core::panic::Location::caller),
-//    might require alloc for a growable Vec, see if that's avoidable
-//    might also just be out of scope for v0.1, maybe just wait and see what people think?
 
 /// A pointer type providing ownership of an arena allocation.
 ///
@@ -304,6 +309,34 @@ impl<I: Iterator + ?Sized> Iterator for Box<'_, I> {
     }
 }
 
+#[cfg(feature = "profile")]
+#[derive(Copy, Clone)]
+struct ProfileMetaData {
+    initial_cursor_pos: usize,
+    peak_cursor_pos: usize,
+    allocation_count: usize,
+    failed_allocations: usize,
+}
+
+/// A summary of all allocations from an arena and all its sub-arenas from it
+/// since its creation.
+///
+/// Note that every call to `ArenaWrite::write_str` individually counts towards
+/// `allocation_count` and, if unsuccessful, `failed_allocations`, so strings
+/// created with [`fmt!`] are counted as multiple allocations.
+#[cfg(feature = "profile")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "profile")))]
+#[derive(Copy, Clone, Debug)]
+pub struct UtilizationProfile {
+    /// The maximum number of occupied bytes at any point in time, including padding.
+    pub peak_utilization: usize,
+    /// The total number of allocations attempted, including failed allocations.
+    pub allocation_count: usize,
+    /// The total number of attempted allocations for which the remaining space
+    /// was insufficient.
+    pub failed_allocations: usize,
+}
+
 /// A memory arena, also known as a region-based allocator, or bump allocator.
 ///
 /// See the the [module-level documentation](crate::arena) for more.
@@ -316,6 +349,12 @@ pub struct Arena<'src> {
 impl<'src> From<&'src mut [MaybeUninit<u8>]> for Arena<'src> {
     /// Constructs a new `Arena` allocating out of `buf`.
     ///
+    /// # Panics
+    /// When compiled with the `profile` feature, panics if `buf` is too small
+    /// to fit the profiling meta data. The exact threshold depends on the size
+    /// of `usize` on the target platform, and the alignment of `buf`, but this
+    /// is guaranteed to succeed if `buf.len() >= 40`.
+    ///
     /// # Examples
     /// ```
     /// use core::mem::MaybeUninit;
@@ -327,6 +366,35 @@ impl<'src> From<&'src mut [MaybeUninit<u8>]> for Arena<'src> {
     #[inline]
     fn from(buf: &mut [MaybeUninit<u8>]) -> Self {
         let Range { start, end } = buf.as_mut_ptr_range();
+
+        #[cfg(feature = "profile")]
+        let end = {
+            use core::mem::size_of;
+
+            let layout = Layout::new::<ProfileMetaData>();
+            let align_offset = end.align_offset(layout.align());
+            assert!(align_offset < size_of::<usize>());
+
+            let end_of_meta = end
+                .wrapping_add(align_offset)
+                .wrapping_sub(size_of::<usize>());
+            let new_end = end_of_meta.wrapping_sub(layout.size());
+            assert!(start <= new_end);
+            assert!(new_end < end_of_meta);
+            assert!(end_of_meta <= end);
+
+            let meta = new_end as *mut ProfileMetaData;
+            unsafe {
+                meta.write(ProfileMetaData {
+                    initial_cursor_pos: start as usize,
+                    peak_cursor_pos: start as usize,
+                    allocation_count: 0,
+                    failed_allocations: 0,
+                });
+            }
+
+            new_end
+        };
 
         Arena {
             cursor: start,
@@ -367,12 +435,12 @@ impl<'src> Arena<'src> {
     ///
     /// {
     ///     let mut tmp = arena.make_sub_arena();
-    ///     let arr = tmp.alloc([0u32; 256]);      // this takes up all 1024 = 4*256 bytes...
-    ///     assert!(tmp.try_alloc(0u8).is_none()); // ...so this can't succeed
+    ///     let arr = tmp.alloc([0u32; 200]);              // this takes up 800 / 1024 bytes...
+    ///     assert!(tmp.try_alloc([0u32; 100]).is_none()); // ...so this can't succeed
     /// }
     ///
     /// // tmp was dropped, so the memory can be reused:
-    /// assert!(arena.try_alloc([0u32; 256]).is_some());
+    /// assert!(arena.try_alloc([0u32; 200]).is_some());
     /// ```
     #[inline]
     pub fn make_sub_arena(&mut self) -> Arena<'_> {
@@ -393,6 +461,11 @@ impl<'src> Arena<'src> {
         // we'll leave getting rid of this check to the optimizer
         assert!(align_offset != usize::MAX);
 
+        #[cfg(feature = "profile")]
+        {
+            self.profile_meta_data_mut().allocation_count += 1;
+        }
+
         // we can't eagerly compute `result` and `new_cursor`, because it's UB
         // for the result of `ptr::add` to be out of bounds, so the correct way
         // to check bounds here is through usize arithmetic:
@@ -402,8 +475,21 @@ impl<'src> Arena<'src> {
                 let new_cursor = unsafe { result.add(alloc_layout.size()) };
                 self.cursor = new_cursor;
 
+                #[cfg(feature = "profile")]
+                {
+                    let meta = self.profile_meta_data_mut();
+                    if meta.peak_cursor_pos < new_cursor as usize {
+                        meta.peak_cursor_pos = new_cursor as usize;
+                    }
+                }
+
                 return result;
             }
+        }
+
+        #[cfg(feature = "profile")]
+        {
+            self.profile_meta_data_mut().failed_allocations += 1;
         }
 
         null_mut()
@@ -438,11 +524,15 @@ impl<'src> Arena<'src> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from(&mut backing_region[..]);
     ///
-    /// for _ in 0..(1024 / 16) {
-    ///     assert_eq!(*arena.try_alloc_default::<u128>()?, 0);
+    /// loop {
+    ///     if let Some(ptr) = arena.try_alloc_default::<u128>() {
+    ///         assert_eq!(*ptr, 0);
+    ///     } else {
+    ///         break;
+    ///     }
     /// }
     ///
-    /// assert!(arena.try_alloc_default::<u128>().is_none());
+    /// assert!(arena.bytes_remaining() < 32);
     /// # Some(())
     /// # }
     /// # assert!(test().is_some());
@@ -478,11 +568,15 @@ impl<'src> Arena<'src> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from(&mut backing_region[..]);
     ///
-    /// for i in 0..(1024 / 16) {
-    ///     assert_eq!(*arena.try_alloc(i as u128)?, i as u128);
+    /// loop {
+    ///     if let Some(ptr) = arena.try_alloc(0xDEAD_BEEFu32) {
+    ///         assert_eq!(*ptr, 0xDEAD_BEEF);
+    ///     } else {
+    ///         break;
+    ///     }
     /// }
     ///
-    /// assert!(arena.try_alloc(0xDEAD_BEEF_CAFE_BABEu128).is_none());
+    /// assert!(arena.bytes_remaining() < 8);
     /// # Some(())
     /// # }
     /// # assert!(test().is_some());
@@ -576,6 +670,7 @@ impl<'src> Arena<'src> {
     /// assert!(arena.try_reserve_array::<usize>(100).is_none());
     ///
     /// assert_eq!(&sums[..10], [0, 1, 3, 6, 10, 15, 21, 28, 36, 45]);
+    /// assert_eq!(sums.last(), Some(&4950));
     /// # Some(())
     /// # }
     /// # assert!(test().is_some());
@@ -705,8 +800,8 @@ impl<'src> Arena<'src> {
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from(&mut backing_region[..]);
-    /// let array = arena.try_array(0x12345678u32, 256)?;
-    /// assert_eq!(&array[..], &[0x12345678u32; 256]);
+    /// let array = arena.try_array(0x12345678u32, 200)?;
+    /// assert_eq!(&array[..], &[0x12345678u32; 200]);
     /// # Some(())
     /// # }
     /// # assert!(test().is_some());
@@ -747,13 +842,13 @@ impl<'src> Arena<'src> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from(&mut backing_region[..]);
     ///
-    /// let mut squares = arena.try_vec::<i64, usize>(128)?;
-    /// assert!(arena.try_vec::<u8, usize>(1).is_none());
+    /// let mut squares = arena.try_vec::<i64, usize>(100)?;
+    /// assert!(arena.try_vec::<i64, usize>(100).is_none());
     ///
     /// assert_eq!(squares.len(), 0);
-    /// assert_eq!(squares.capacity(), 128);
+    /// assert_eq!(squares.capacity(), 100);
     ///
-    /// for x in 1..=128 { squares.push(x * x) }
+    /// for x in 1..=100 { squares.push(x * x) }
     /// assert_eq!(&squares[..8], &[1, 4, 9, 16, 25, 36, 49, 64]);
     /// # Some(())
     /// # }
@@ -813,8 +908,17 @@ impl<'src> Arena<'src> {
         let align_offset = self.cursor.align_offset(alloc_layout.align());
         assert!(align_offset != usize::MAX);
 
+        #[cfg(feature = "profile")]
+        {
+            self.profile_meta_data_mut().allocation_count += 1;
+        }
+
         let bytes_remaining = self.bytes_remaining();
         if bytes_remaining < align_offset {
+            #[cfg(feature = "profile")]
+            {
+                self.profile_meta_data_mut().failed_allocations += 1;
+            }
             return None;
         }
 
@@ -832,6 +936,11 @@ impl<'src> Arena<'src> {
                     }
                 }
 
+                #[cfg(feature = "profile")]
+                {
+                    self.profile_meta_data_mut().failed_allocations += 1;
+                }
+
                 return None;
             }
 
@@ -843,6 +952,14 @@ impl<'src> Arena<'src> {
         }
 
         self.cursor = cursor as *mut MaybeUninit<u8>;
+
+        #[cfg(feature = "profile")]
+        {
+            let meta = self.profile_meta_data_mut();
+            if meta.peak_cursor_pos < cursor as usize {
+                meta.peak_cursor_pos = cursor as usize;
+            }
+        }
 
         unsafe {
             let slice = from_raw_parts_mut(base, count);
@@ -889,6 +1006,58 @@ impl<'src> Arena<'src> {
     }
 }
 
+#[cfg(feature = "profile")]
+impl Arena<'_> {
+    /// Returns a profile of all allocations from the arena and all sub-arenas created from it.
+    ///
+    /// # Examples
+    /// ```
+    /// use core::mem::MaybeUninit;
+    /// use coca::Arena;
+    ///
+    /// let mut backing_region = [MaybeUninit::uninit(); 256];
+    /// let mut arena = Arena::from(&mut backing_region[..]);
+    ///
+    /// {
+    ///     let mut tmp = arena.make_sub_arena();
+    ///     let _ = tmp.array_default::<u8>(100);
+    /// }
+    /// {
+    ///     let mut tmp = arena.make_sub_arena();
+    ///     let _ = tmp.array_default::<u8>(50);
+    ///     let _ = tmp.try_array_default::<u8>(200);
+    /// }
+    /// {
+    ///     let mut tmp = arena.make_sub_arena();
+    ///     let _ = tmp.array_default::<u8>(200);
+    /// }
+    ///
+    /// let profile = arena.utilization();
+    /// assert_eq!(profile.peak_utilization, 200);
+    /// assert_eq!(profile.allocation_count, 4);
+    /// assert_eq!(profile.failed_allocations, 1);
+    /// ```
+    #[inline]
+    pub fn utilization(&self) -> UtilizationProfile {
+        let &ProfileMetaData {
+            initial_cursor_pos,
+            peak_cursor_pos,
+            allocation_count,
+            failed_allocations,
+        } = unsafe { (self.end as *const ProfileMetaData).as_ref().unwrap() };
+        UtilizationProfile {
+            peak_utilization: peak_cursor_pos - initial_cursor_pos,
+            allocation_count,
+            failed_allocations,
+        }
+    }
+
+    #[inline]
+    fn profile_meta_data_mut(&mut self) -> &mut ProfileMetaData {
+        unsafe { (self.end as *mut ProfileMetaData).as_mut().unwrap() }
+    }
+}
+
 /// Implementor of [`core::fmt::Write`] backed by an [`Arena`].
 /// Primarily intended for use in expansions of [`fmt!`].
 ///
@@ -902,6 +1071,11 @@ impl Write for ArenaWriter<'_, '_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let bytes_remaining = self.source.bytes_remaining();
         if s.len() > bytes_remaining {
+            #[cfg(feature = "profile")]
+            {
+                self.source.profile_meta_data_mut().allocation_count += 1;
+                self.source.profile_meta_data_mut().failed_allocations += 1;
+            }
             return fmt::Result::Err(fmt::Error);
         }
 
@@ -912,6 +1086,17 @@ impl Write for ArenaWriter<'_, '_> {
 
         self.source.cursor = unsafe { self.source.cursor.add(s.len()) };
         self.len += s.len();
+
+        #[cfg(feature = "profile")]
+        {
+            let cursor = self.source.cursor as usize;
+            let meta = self.source.profile_meta_data_mut();
+
+            meta.allocation_count += 1;
+            if meta.peak_cursor_pos < cursor {
+                meta.peak_cursor_pos = cursor;
+            }
+        }
 
         Ok(())
     }
@@ -952,11 +1137,10 @@ impl<'buf> From<ArenaWriter<'_, 'buf>> for Box<'buf, str> {
 /// use core::mem::MaybeUninit;
 ///
 /// # fn test() -> Option<()> {
-/// let mut backing_region = [MaybeUninit::uninit(); 16];
+/// let mut backing_region = [MaybeUninit::uninit(); 256];
 /// let mut arena = Arena::from(&mut backing_region[..]);
 /// let output = fmt!(arena, "test")?;
 /// let output = fmt!(arena, "hello {}", "world!")?;
-/// assert!(fmt!(arena, "{}", ' ').is_none());
 /// # Some(())
 /// # }
 /// # assert!(test().is_some());
@@ -1006,7 +1190,13 @@ mod tests {
         assert!(result.is_none());
         assert_eq!(taken_count, drop_count.get());
 
-        assert!(arena.try_array_default::<u8>(ARENA_SIZE).is_some());
+        let alloc_for_arena_size = arena.try_array_default::<u8>(ARENA_SIZE);
+        if cfg!(feature = "profile") {
+            // because of inserted metadata:
+            assert!(alloc_for_arena_size.is_none());
+        } else {
+            assert!(alloc_for_arena_size.is_some());
+        }
     }
 
     #[test]
@@ -1053,10 +1243,5 @@ mod tests {
         let chars_per_ptr = (output.len() - 13) / 2;
         assert_eq!(&output[8 + chars_per_ptr..12 + chars_per_ptr], "..0x");
         assert_eq!(&output[12 + 2 * chars_per_ptr..], ")");
-
-        assert_eq!(
-            &output[chars_per_ptr..][6..8],
-            &output[2 * chars_per_ptr..][10..12]
-        );
     }
 }
