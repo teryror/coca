@@ -107,7 +107,7 @@ where
     /// let mut vec = coca::vec::SliceVec::<u32, usize>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3);
     /// assert_eq!(vec.pop(), Some(3));
-    /// assert_eq!(vec, [1, 2]);
+    /// assert_eq!(vec, &[1, 2][..]);
     /// ```
     #[inline]
     pub fn pop(&mut self) -> Option<E> {
@@ -225,10 +225,10 @@ where
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4);
     ///
     /// vec.truncate(6);
-    /// assert_eq!(vec, [1, 2, 3, 4]);
+    /// assert_eq!(vec, &[1, 2, 3, 4][..]);
     ///
     /// vec.truncate(2);
-    /// assert_eq!(vec, [1, 2]);
+    /// assert_eq!(vec, &[1, 2][..]);
     /// ```
     pub fn truncate(&mut self, len: I) {
         let new_len = len.into_usize();
@@ -267,7 +267,7 @@ where
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4);
     ///
     /// vec.swap(0, 2);
-    /// assert_eq!(vec, [3, 2, 1, 4]);
+    /// assert_eq!(vec, &[3, 2, 1, 4][..]);
     /// ```
     #[inline]
     pub fn swap(&mut self, fst: I, snd: I) {
@@ -291,7 +291,7 @@ where
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4);
     ///
     /// vec.swap_remove(1);
-    /// assert_eq!(vec, [1, 4, 3]);
+    /// assert_eq!(vec, &[1, 4, 3][..]);
     /// ```
     #[inline]
     pub fn swap_remove(&mut self, index: I) -> E {
@@ -353,7 +353,7 @@ where
     ///
     /// assert!(vec.try_insert(3, 4).is_ok());
     /// assert!(vec.try_insert(4, 5).is_err());
-    /// assert_eq!(vec, [1, 2, 3, 4]);
+    /// assert_eq!(vec, &[1, 2, 3, 4][..]);
     /// ```
     pub fn try_insert(&mut self, index: I, element: E) -> Result<(), E> {
         #[cold]
@@ -398,7 +398,7 @@ where
     /// vec.push(1); vec.push(2); vec.push(3);
     /// vec.remove(0);
     ///
-    /// assert_eq!(vec, [2, 3]);
+    /// assert_eq!(vec, &[2, 3][..]);
     /// ```
     pub fn remove(&mut self, index: I) -> E {
         #[cold]
@@ -439,7 +439,7 @@ where
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4);
     /// vec.retain(|&x| x % 2 == 0);
     ///
-    /// assert_eq!(vec, [2, 4]);
+    /// assert_eq!(vec, &[2, 4][..]);
     /// ```
     /// The exact order may be useful for tracking external state, like an index.
     /// ```
@@ -450,7 +450,7 @@ where
     /// let mut i = 0;
     /// vec.retain(|_| (keep[i], i += 1).0);
     ///
-    /// assert_eq!(vec, [2, 3]);
+    /// assert_eq!(vec, &[2, 3][..]);
     /// ```
     pub fn retain<F>(&mut self, mut f: F)
     where
@@ -794,6 +794,15 @@ where
 {
 }
 
+impl<E, B, I> core::iter::FusedIterator for IntoIterator<E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+}
+
+// TODO: Drain iterator, possibly Splice
+
 impl<E, B, I> IntoIter for Vec<E, B, I>
 where
     B: ContiguousStorage<E>,
@@ -806,7 +815,6 @@ where
         let end = self.len;
         #[allow(clippy::uninit_assumed_init)]
         let buf = core::mem::replace(&mut self.buf, unsafe {
-            // This is safe because we're going from MaybeUninit<[_]> to [MaybeUninit<_>]
             MaybeUninit::uninit().assume_init()
         });
         core::mem::forget(self);
