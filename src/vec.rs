@@ -53,9 +53,9 @@ where
 }
 
 /// A vector using any mutable slice for storage.
-pub type SliceVec<'a, E, I = usize> = Vec<E, crate::SliceStorage<'a, E>, I>;
+pub type SliceVec<'a, E, I = usize> = Vec<E, crate::storage::SliceStorage<'a, E>, I>;
 /// A vector using an arena-allocated slice for storage.
-pub type ArenaVec<'a, E, I = usize> = Vec<E, crate::ArenaStorage<'a, E>, I>;
+pub type ArenaVec<'a, E, I = usize> = Vec<E, crate::storage::ArenaStorage<'a, E>, I>;
 
 impl<E, B, I> From<B> for Vec<E, B, I>
 where
@@ -1026,7 +1026,7 @@ where
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 /// A vector using a heap-allocated slice for storage.
-pub type HeapVec<E, I = usize> = Vec<E, crate::HeapStorage<E>, I>;
+pub type HeapVec<E, I = usize> = Vec<E, crate::storage::HeapStorage<E>, I>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
@@ -1048,12 +1048,12 @@ where
 /// A vector using an inline array for storage.
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub type ArrayVec<E, const C: usize> = Vec<E, crate::InlineStorage<E, C>, usize>;
+pub type ArrayVec<E, const C: usize> = Vec<E, crate::storage::InlineStorage<E, C>, usize>;
 
 /// A vector using an inline array for storage, generic over the index type.
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub type TiArrayVec<E, Index, const C: usize> = Vec<E, crate::InlineStorage<E, C>, Index>;
+pub type TiArrayVec<E, Index, const C: usize> = Vec<E, crate::storage::InlineStorage<E, C>, Index>;
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]

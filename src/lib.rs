@@ -30,12 +30,7 @@ pub mod vec;
 
 pub use crate::arena::{Arena, Box};
 
-#[cfg(feature = "alloc")]
-pub use crate::storage::HeapStorage;
-#[cfg(feature = "nightly")]
-pub use crate::storage::InlineStorage;
-pub use crate::storage::{ArenaStorage, SliceStorage};
-
 pub use crate::vec::SliceVec;
 #[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub use crate::vec::{ArrayVec, TiArrayVec};
