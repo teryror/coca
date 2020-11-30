@@ -15,8 +15,8 @@
 //! require a runtime representation of their capacity.
 //!
 //! The `alloc` feature allows using [owned slices](HeapVec) for storage. Note
-//! that such a vector still does not reallocate - this may be useful in where
-//! domain logic dictates a length limit on a list.
+//! that such a vector still does not reallocate - this may be useful in cases
+//! where domain logic dictates a length limit on a list.
 //!
 //! Specifying an index type smaller than `usize`, such as `u16` or even `u8`,
 //! can aid in struct size optimization, especially with `ArrayVec`. It's also
@@ -34,6 +34,7 @@ use core::hash::{Hash, Hasher};
 use core::iter::{IntoIterator as IntoIter, Iterator};
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
+use core::ops::RangeBounds;
 use core::ptr;
 
 /// A contiguous growable array type with constant capacity.
@@ -85,6 +86,12 @@ where
     #[inline]
     pub fn len(&self) -> usize {
         self.len.into_usize()
+    }
+
+    #[inline]
+    fn set_len(&mut self, new_len: I) {
+        debug_assert!(new_len.into_usize() <= self.capacity());
+        self.len = new_len;
     }
 
     /// Returns `true` if the vector contains no elements.
@@ -472,6 +479,63 @@ where
             self.truncate(I::from_usize(len - del));
         }
     }
+
+    /// Creates a draining iterator that removes the specified range in the vector
+    /// and yields the removed items.
+    ///
+    /// When the iterator **is** dropped, all elements in the range are removed
+    /// from the vector, even if the iterator was not fully consumed. If the
+    /// iterator **is not** dropped (with [`core::mem::forget`] for example),
+    /// it is unspecified how many elements are removed.
+    ///
+    /// # Panics
+    /// Panics if the starting point is greater than the end point or if the end
+    /// point is greater than the length of the vector.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
+    /// let mut vec = coca::vec::SliceVec::<u32, usize>::from(&mut backing_region[..]);
+    /// vec.push(1); vec.push(2); vec.push(3); vec.push(4); vec.push(5);
+    /// let mut iter = vec.drain(1..3);
+    /// assert_eq!(iter.next(), Some(2));
+    /// assert_eq!(iter.next(), Some(3));
+    /// assert_eq!(iter.next(), None);
+    /// drop(iter);
+    /// assert_eq!(vec, &[1, 4, 5][..]);
+    /// ```
+    pub fn drain<'a, R: RangeBounds<I>>(&'a mut self, range: R) -> Drain<'a, E, B, I> {
+        use core::ops::Bound;
+        let start = match range.start_bound() {
+            Bound::Included(x) => x.into_usize(),
+            Bound::Excluded(x) => x.into_usize().saturating_add(1),
+            Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(x) => x.into_usize().saturating_add(1),
+            Bound::Excluded(x) => x.into_usize(),
+            Bound::Unbounded => 0,
+        };
+        assert!(
+            start <= self.len(),
+            "Vec::drain Illegal range, {} to {}",
+            start,
+            end
+        );
+        assert!(
+            end <= self.len(),
+            "Vec::drain Range ends at {} but length is only {}",
+            end,
+            self.len()
+        );
+        Drain {
+            parent: self,
+            target_start: start,
+            front_index: start,
+            back_index: end,
+            target_end: end,
+        }
+    }
 }
 
 impl<E, B, I> core::ops::Deref for Vec<E, B, I>
@@ -560,9 +624,9 @@ macro_rules! _impl_idx_range {
 _impl_idx_range! { s, index: core::ops::Range<I>, index.start.into_usize(), index.end.into_usize() }
 _impl_idx_range! { s, index: core::ops::RangeFrom<I>, index.start.into_usize(), s.len() }
 _impl_idx_range! { s, index: core::ops::RangeFull, 0, s.len() }
-_impl_idx_range! { s, index: core::ops::RangeInclusive<I>, index.start().into_usize(), index.end().into_usize() + 1 }
+_impl_idx_range! { s, index: core::ops::RangeInclusive<I>, index.start().into_usize(), index.end().into_usize().saturating_add(1) }
 _impl_idx_range! { s, index: core::ops::RangeTo<I>, 0, index.end.into_usize() }
-_impl_idx_range! { s, index: core::ops::RangeToInclusive<I>, 0, index.end.into_usize() + 1 }
+_impl_idx_range! { s, index: core::ops::RangeToInclusive<I>, 0, index.end.into_usize().saturating_add(1) }
 
 impl<E, B, I> core::convert::AsRef<[E]> for Vec<E, B, I>
 where
@@ -715,6 +779,18 @@ where
     }
 }
 
+impl<E, B, Idx> core::iter::Extend<E> for Vec<E, B, Idx>
+where
+    B: ContiguousStorage<E>,
+    Idx: Capacity,
+{
+    fn extend<I: core::iter::IntoIterator<Item = E>>(&mut self, iter: I) {
+        for element in iter {
+            self.push(element);
+        }
+    }
+}
+
 /// An iterator that moves out of a vector.
 ///
 /// This `struct` is created by the `into_iter` method on [`Vec`] (provided by
@@ -753,6 +829,7 @@ where
         (size, Some(size))
     }
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let start = self.start.into_usize();
         let end = self.end.into_usize();
@@ -772,6 +849,7 @@ where
     B: ContiguousStorage<E>,
     I: Capacity,
 {
+    #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         let start = self.start.into_usize();
         let end = self.end.into_usize();
@@ -801,7 +879,15 @@ where
 {
 }
 
-// TODO: Drain iterator, possibly Splice
+impl<E, B, I> Drop for IntoIterator<E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn drop(&mut self) {
+        self.for_each(drop);
+    }
+}
 
 impl<E, B, I> IntoIter for Vec<E, B, I>
 where
@@ -851,6 +937,89 @@ where
 
     fn into_iter(self) -> Self::IntoIter {
         self.as_mut_slice().iter_mut()
+    }
+}
+
+/// A draining iterator for `Vec<T>`.
+///
+/// This `struct` is created by [`Vec::drain`]. See its documentation for more.
+pub struct Drain<'p, E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    parent: &'p mut Vec<E, B, I>,
+    target_start: usize,
+    front_index: usize,
+    back_index: usize,
+    target_end: usize,
+}
+
+impl<'p, E, B, I> core::iter::Iterator for Drain<'p, E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    type Item = E;
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = self.back_index - self.front_index;
+        (size, Some(size))
+    }
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.front_index != self.back_index {
+            let out = unsafe { self.parent.as_slice().as_ptr().add(self.front_index).read() };
+            self.front_index += 1;
+            Some(out)
+        } else {
+            None
+        }
+    }
+}
+
+impl<'p, E, B, I> core::iter::DoubleEndedIterator for Drain<'p, E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.front_index != self.back_index {
+            self.back_index -= 1;
+            unsafe { Some(self.parent.as_slice().as_ptr().add(self.back_index).read()) }
+        } else {
+            None
+        }
+    }
+}
+
+impl<'p, E, B, I> core::iter::ExactSizeIterator for Drain<'p, E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+}
+
+impl<'p, E, B, I> core::iter::FusedIterator for Drain<'p, E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+}
+
+impl<'p, E, B, I> Drop for Drain<'p, E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn drop(&mut self) {
+        self.for_each(drop);
+        let count = self.target_end - self.target_start;
+        let targets = &mut self.parent.as_mut_slice()[self.target_start..];
+        targets.rotate_left(count);
+
+        let new_len = I::from_usize(self.parent.len() - count);
+        self.parent.set_len(new_len);
     }
 }
 
@@ -1044,5 +1213,60 @@ mod tests {
                 2 * size_of::<usize>()
             );
         }
+    }
+
+    #[test]
+    fn iterators_take_and_drop_correctly() {
+        use core::cell::Cell;
+
+        #[derive(Clone)]
+        struct Droppable<'a> {
+            value: usize,
+            counter: &'a Cell<usize>,
+        }
+
+        impl Drop for Droppable<'_> {
+            fn drop(&mut self) {
+                let count = self.counter.get();
+                self.counter.set(count + 1);
+            }
+        }
+
+        let drop_count = Cell::new(0usize);
+
+        let mut backing_region = [
+            core::mem::MaybeUninit::<Droppable>::uninit(),
+            core::mem::MaybeUninit::<Droppable>::uninit(),
+            core::mem::MaybeUninit::<Droppable>::uninit(),
+            core::mem::MaybeUninit::<Droppable>::uninit(),
+            core::mem::MaybeUninit::<Droppable>::uninit(),
+            core::mem::MaybeUninit::<Droppable>::uninit(),
+            core::mem::MaybeUninit::<Droppable>::uninit(),
+            core::mem::MaybeUninit::<Droppable>::uninit(),
+        ];
+
+        let mut vec = SliceVec::<Droppable, usize>::from(&mut backing_region[..]);
+        for i in 1..=8 {
+            vec.push(Droppable {
+                value: i,
+                counter: &drop_count,
+            });
+        }
+
+        let mut drain_iter = vec.drain(2..=5);
+        assert_eq!(drain_iter.next_back().unwrap().value, 6);
+        assert_eq!(drop_count.get(), 1);
+
+        drop(drain_iter);
+        assert_eq!(drop_count.get(), 4);
+
+        let mut into_iter = vec.into_iter();
+        assert_eq!(into_iter.next().unwrap().value, 1);
+        assert_eq!(into_iter.next().unwrap().value, 2);
+        assert_eq!(into_iter.next().unwrap().value, 7);
+        assert_eq!(drop_count.get(), 7);
+
+        drop(into_iter);
+        assert_eq!(drop_count.get(), 8);
     }
 }
