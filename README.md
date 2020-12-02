@@ -1,0 +1,60 @@
+# coca - Data Structures with Constant Capacity
+
+Allocation-free data structures that make do with the memory they're given.
+
+This makes their temporal performance more consistent, and the memory footprint
+dead-simple to predict - but it also means insertions can easily fail, so you'll
+need proof you can't break the limit, or a graceful recovery path, which is good
+practice in memory-constrained environments anyway.
+
+Currently, two main components are provided:
+
+- `Arena`, a bump-/stack-allocator, plus `Box<'a, T>` the corresponding smart
+  pointer, and
+- `Vec`, a bounded, growable array, generic over not only the element type, but
+  also the underlying storage type ([as in this recent proposal][generic-vec])
+  and the index type (inspired by [`typed-index-collections`][ticollections]).
+
+  [generic-vec]: https://internals.rust-lang.org/t/is-custom-allocators-the-right-abstraction/13460
+  [ticollections]: https://crates.io/crates/typed-index-collections
+
+This crate is still in early development! Currently on the roadmap (in no
+particular order):
+
+- A [`slotmap`][slotmap]-style pool-allocator,
+- a deque (double-ended queue, or ringbuffer) implementation, with similar
+  generic parameters as `Vec`,
+- a binary heap (priority queue) implemented on top of `Vec`.
+
+  [slotmap]: https://crates.io/crates/slotmap
+
+## Constructive Feedback and Contributions Welcome!
+
+## Getting Started
+
+To add coca as a dependency, add this to your project's `Cargo.toml`:
+
+```toml
+[dependencies]
+coca = "0.1"
+```
+
+## Optional Features
+
+- `alloc`: By default, coca is `no_std` compatible; this feature flag enables
+  some trait implementations for conveniently working with heap-allocated storage.
+- `nightly`: If you're working with the nightly rust toolchain, you can enable
+  this feature to get access to `InlineStorage` and `ArrayVec`, both of which
+  are implemented using the nightly-only `min_const_generics` feature; this flag
+  will eventually be removed.
+- `profile`: Enables memory profiling in arenas; see the module-level documentation
+  for details.
+
+## License
+
+Licensed under either [Apache License, Version 2.0](LICENSE-APACHE) or
+[Zlib license](LICENSE-ZLIB) at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in this crate by you, as defined in the Apache-2.0 license, shall
+be dual licensed as above, without any additional terms or conditions.

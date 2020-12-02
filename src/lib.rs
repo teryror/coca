@@ -1,4 +1,5 @@
 #![no_std]
+#![doc(html_root_url = "https://docs.rs/coca/0.1.0")]
 #![cfg_attr(feature = "nightly", feature(min_const_generics))]
 #![cfg_attr(docs_rs, feature(doc_cfg))]
 #![warn(missing_docs)]

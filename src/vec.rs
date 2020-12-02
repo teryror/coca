@@ -28,6 +28,10 @@
 //! Checked versions of these methods are provided ([`try_push`](Vec::try_push),
 //! [`try_insert`](Vec::try_insert)).
 
+// Both the implementation and documentation of this module was adapted in parts
+// from tinyvec::SliceVec (Copyright (c) 2019 by Daniel "Lokathor" Gee), and the
+// Rust standard library Vec.
+
 use crate::storage::{Capacity, ContiguousStorage};
 
 use core::hash::{Hash, Hasher};
