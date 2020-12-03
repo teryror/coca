@@ -27,10 +27,12 @@
 //! such as [`push`](Vec::push) and [`insert`](Vec::insert), may fail.
 //! Checked versions of these methods are provided ([`try_push`](Vec::try_push),
 //! [`try_insert`](Vec::try_insert)).
-
-// Both the implementation and documentation of this module was adapted in parts
-// from tinyvec::SliceVec (Copyright (c) 2019 by Daniel "Lokathor" Gee), and the
-// Rust standard library Vec.
+//!
+//! ---
+//!
+//! Parts of the implementation and documentation of this module were adapted
+//! from the Rust standard library Vec, and from `tinyvec::SliceVec` (Copyright
+//! (c) 2019 by Daniel "Lokathor" Gee).
 
 use crate::storage::{Capacity, ContiguousStorage};
 
@@ -57,8 +59,21 @@ where
 }
 
 /// A vector using any mutable slice for storage.
+/// 
+/// # Examples
+/// ```
+/// use core::mem::MaybeUninit;
+/// let mut backing_array = [MaybeUninit::<char>::uninit(); 32];
+/// let (slice1, slice2) = (&mut backing_array[..]).split_at_mut(16);
+/// let mut vec1 = coca::SliceVec::<_>::from(slice1);
+/// let mut vec2 = coca::SliceVec::<_>::from(slice2);
+/// assert_eq!(vec1.capacity(), 16);
+/// assert_eq!(vec2.capacity(), 16);
+/// ```
 pub type SliceVec<'a, E, I = usize> = Vec<E, crate::storage::SliceStorage<'a, E>, I>;
 /// A vector using an arena-allocated slice for storage.
+///
+/// See [`Arena::try_vec`](crate::Arena::try_vec) for example usage.
 pub type ArenaVec<'a, E, I = usize> = Vec<E, crate::storage::ArenaStorage<'a, E>, I>;
 
 impl<E, B, I> From<B> for Vec<E, B, I>
@@ -1069,6 +1084,17 @@ where
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 /// A vector using a heap-allocated slice for storage.
+///
+/// Note this still has a fixed capacity, and will never reallocate.
+///
+/// # Examples
+/// ```
+/// let mut vec = coca::HeapVec::<char>::with_capacity(3);
+/// vec.push('a');
+/// vec.push('b');
+/// vec.push('c');
+/// assert!(vec.try_push('d').is_err());
+/// ```
 pub type HeapVec<E, I = usize> = Vec<E, crate::storage::HeapStorage<E>, I>;
 
 #[cfg(feature = "alloc")]
@@ -1091,11 +1117,27 @@ where
 }
 
 /// A vector using an inline array for storage.
+/// 
+/// # Examples
+/// ```
+/// let mut vec = coca::ArrayVec::<char, 3>::new();
+/// vec.push('a');
+/// vec.push('b');
+/// vec.push('c');
+/// assert!(vec.try_push('d').is_err());
+/// ```
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub type ArrayVec<E, const C: usize> = Vec<E, crate::storage::InlineStorage<E, C>, usize>;
 
 /// A vector using an inline array for storage, generic over the index type.
+///
+/// # Examples
+/// ```
+/// let mut vec = coca::TiArrayVec::<char, u8, 3>::new();
+/// vec.push('a');
+/// assert_eq!(vec[0u8], 'a');
+/// ```
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub type TiArrayVec<E, Index, const C: usize> = Vec<E, crate::storage::InlineStorage<E, C>, Index>;
@@ -1239,6 +1281,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[should_panic]
+    fn from_panics_for_too_large_inputs() {
+        let mut backing_array = [core::mem::MaybeUninit::<char>::uninit(); 300];
+        let _ = SliceVec::<char, u8>::from(&mut backing_array[..]);
+    }
 
     #[test]
     fn sizes_of_instantiated_types() {
