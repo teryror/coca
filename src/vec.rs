@@ -398,6 +398,43 @@ where
         Ok(())
     }
 
+    /// Places an element at position `index` within the vector, returning the
+    /// element previously stored there.
+    ///
+    /// # Panics
+    /// Panics if `index` is out of bounds.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// vec.push(1); vec.push(2); vec.push(3);
+    ///
+    /// assert_eq!(vec.replace(1, 4), 2);
+    /// assert_eq!(vec, &[1, 4, 3][..]);
+    /// ```
+    pub fn replace(&mut self, index: I, element: E) -> E {
+        #[cold]
+        #[inline(never)]
+        fn assert_failed(index: usize, len: usize) -> ! {
+            panic!(
+                "replacement index (is {}) should be < len (is {})",
+                index, len
+            );
+        }
+
+        let idx = index.into_usize();
+        let len = self.len.into_usize();
+        if idx >= len {
+            assert_failed(idx, len);
+        }
+
+        unsafe {
+            let p = self.buf.storage_mut()[idx].as_mut_ptr();
+            ptr::replace(p, element)
+        }
+    }
+
     /// Removes and returns the element at position `index` within the vector,
     /// shifting all elements after it to the left.
     ///
