@@ -1105,12 +1105,13 @@ where
     I: Capacity,
 {
     /// Constructs a new, empty `HeapVec<E, I>` with the specified capacity.
-    pub fn with_capacity(capacity: usize) -> Self {
-        I::from_usize(capacity); // panics if I cannot index the whole slice
-
+    ///
+    /// # Panics
+    /// Panics if the specified capacity cannot be represented by a `usize`.
+    pub fn with_capacity(capacity: I) -> Self {
         Vec {
             len: I::from_usize(0),
-            buf: alloc::vec![MaybeUninit::uninit(); capacity].into_boxed_slice(),
+            buf: alloc::vec![MaybeUninit::uninit(); capacity.into_usize()].into_boxed_slice(),
             elem: PhantomData,
         }
     }
@@ -1149,6 +1150,9 @@ where
     I: Capacity,
 {
     /// Constructs a new, empty `Vec` backed by an inline array.
+    ///
+    /// # Panics
+    /// Panics if `C` cannot be represented as a value of type `I`.
     ///
     /// # Examples
     /// ```
