@@ -59,7 +59,7 @@ where
 }
 
 /// A vector using any mutable slice for storage.
-/// 
+///
 /// # Examples
 /// ```
 /// use core::mem::MaybeUninit;
@@ -604,7 +604,8 @@ where
     type Target = [E];
     fn deref(&self) -> &[E] {
         unsafe {
-            core::slice::from_raw_parts(self.buf.storage()[0].as_ptr(), self.len.into_usize())
+            let ptr = self.buf.storage().as_ptr() as *const E;
+            core::slice::from_raw_parts(ptr, self.len.into_usize())
         }
     }
 }
@@ -616,10 +617,8 @@ where
 {
     fn deref_mut(&mut self) -> &mut [E] {
         unsafe {
-            core::slice::from_raw_parts_mut(
-                self.buf.storage_mut()[0].as_mut_ptr(),
-                self.len.into_usize(),
-            )
+            let ptr = self.buf.storage_mut().as_mut_ptr() as *mut E;
+            core::slice::from_raw_parts_mut(ptr, self.len.into_usize())
         }
     }
 }
@@ -955,12 +954,9 @@ where
     type Item = E;
     type IntoIter = IntoIterator<E, B, I>;
 
-    fn into_iter(mut self) -> Self::IntoIter {
+    fn into_iter(self) -> Self::IntoIter {
         let end = self.len;
-        #[allow(clippy::uninit_assumed_init)]
-        let buf = core::mem::replace(&mut self.buf, unsafe {
-            MaybeUninit::uninit().assume_init()
-        });
+        let buf = unsafe { (&self.buf as *const B).read() };
         core::mem::forget(self);
 
         IntoIterator {
@@ -1118,7 +1114,7 @@ where
 }
 
 /// A vector using an inline array for storage.
-/// 
+///
 /// # Examples
 /// ```
 /// let mut vec = coca::ArrayVec::<char, 3>::new();

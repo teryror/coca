@@ -31,10 +31,10 @@ pub mod vec;
 
 pub use crate::arena::{Arena, Box};
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+pub use crate::vec::HeapVec;
 pub use crate::vec::SliceVec;
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub use crate::vec::{ArrayVec, TiArrayVec};
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-pub use crate::vec::HeapVec;
