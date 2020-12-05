@@ -712,10 +712,8 @@ where
 {
     fn drop(&mut self) {
         unsafe {
-            ptr::drop_in_place(ptr::slice_from_raw_parts_mut(
-                self.buf.storage_mut()[0].as_mut_ptr(),
-                self.len(),
-            ))
+            let ptr = self.buf.storage_mut().as_mut_ptr() as *mut E;
+            ptr::drop_in_place(ptr::slice_from_raw_parts_mut(ptr, self.len()))
         }
     }
 }
@@ -1363,5 +1361,15 @@ mod tests {
 
         drop(into_iter);
         assert_eq!(drop_count.get(), 8);
+
+        let mut vec = SliceVec::<Droppable>::from(&mut backing_region[..]);
+        for i in 1..=8 {
+            vec.push(Droppable {
+                value: i,
+                counter: &drop_count,
+            });
+        }
+        drop(vec);
+        assert_eq!(drop_count.get(), 16);
     }
 }
