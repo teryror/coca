@@ -82,8 +82,12 @@ where
     B: ContiguousStorage<E>,
     I: Capacity,
 {
+    /// Converts a contiguous block of memory into an empty vector.
+    ///
+    /// # Panics
+    /// This may panic if the index type I cannot represent `buf.capacity()`.
     fn from(buf: B) -> Self {
-        I::from_usize(buf.storage().len()); // panics if I cannot index the whole array
+        I::from_usize(buf.storage().len());
 
         Vec {
             len: I::from_usize(0),
@@ -573,7 +577,7 @@ where
         let end = match range.end_bound() {
             Bound::Included(x) => x.into_usize().saturating_add(1),
             Bound::Excluded(x) => x.into_usize(),
-            Bound::Unbounded => 0,
+            Bound::Unbounded => self.len(),
         };
         assert!(
             start <= self.len(),
