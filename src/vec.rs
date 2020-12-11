@@ -39,6 +39,7 @@ use crate::storage::{Capacity, ContiguousStorage};
 use core::hash::{Hash, Hasher};
 use core::iter::{IntoIterator as IntoIter, Iterator};
 use core::marker::PhantomData;
+#[cfg(any(alloc, nightly))]
 use core::mem::MaybeUninit;
 use core::ops::RangeBounds;
 use core::ptr;
