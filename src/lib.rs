@@ -26,10 +26,12 @@
 pub extern crate alloc;
 
 pub mod arena;
+pub mod binary_heap;
 pub mod storage;
 pub mod vec;
 
 pub use crate::arena::{Arena, Box};
+pub use crate::binary_heap::BinaryHeap;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
