@@ -28,31 +28,42 @@ fn calc_huff_encoded_size(input: &[u8]) -> usize {
         },
     }
 
-    let mut queue = arena.vec(256usize);
+    struct Item<'a>(isize, coca::Box<'a, CodeTree<'a>>);
+    impl<'a> std::cmp::PartialEq for Item<'a> {
+        fn eq(&self, rhs: &Self) -> bool {
+            self.0.eq(&rhs.0)
+        }
+    }
+    impl<'a> std::cmp::PartialOrd for Item<'a> {
+        fn partial_cmp(&self, rhs: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(rhs))
+        }
+    }
+    impl<'a> std::cmp::Eq for Item<'a> {}
+    impl<'a> std::cmp::Ord for Item<'a> {
+        fn cmp(&self, rhs: &Self) -> std::cmp::Ordering {
+            self.0.cmp(&rhs.0).reverse()
+        }
+    }
+
+    let mut items = arena.vec(256usize);
     for (idx, freq) in freqs.iter().enumerate() {
         if *freq == 0 {
             continue;
         }
         let leaf_node = arena.alloc(CodeTree::Symbol { sym: idx as u8 });
-        queue.push((leaf_node, *freq));
+        items.push(Item(*freq, leaf_node));
     }
 
-    queue.sort_by_key(|&(_, freq)| -freq);
-
+    let mut queue = coca::BinaryHeap::<Item<'_>, _>::from(items);
     while queue.len() > 1 {
-        let (left, freq_l) = queue.pop().unwrap();
-        let (right, freq_r) = queue.pop().unwrap();
+        let Item(freq_l, left) = queue.pop().unwrap();
+        let Item(freq_r, right) = queue.pop().unwrap();
 
         let parent_node = arena.alloc(CodeTree::Composite { left, right });
         let combined_freq = freq_l + freq_r;
 
-        let search_result = queue.binary_search_by_key(&-combined_freq, |(_, f)| -f);
-        let insertion_index = match search_result {
-            Ok(i) => i,
-            Err(i) => i,
-        };
-
-        queue.insert(insertion_index, (parent_node, combined_freq));
+        queue.push(Item(combined_freq, parent_node));
     }
 
     fn find_code_lens(node: &CodeTree, recursion_level: usize, code_len_table: &mut [usize; 256]) {
@@ -66,7 +77,7 @@ fn calc_huff_encoded_size(input: &[u8]) -> usize {
     }
 
     let mut code_lens = arena.alloc([usize::MAX; 256]);
-    find_code_lens(queue.pop().unwrap().0.as_ref(), 0, code_lens.as_mut());
+    find_code_lens(queue.pop().unwrap().1.as_ref(), 0, code_lens.as_mut());
     let bits_needed: usize = (0..256).map(|i| code_lens[i] * freqs[i] as usize).sum();
 
     (bits_needed + 7) / 8
