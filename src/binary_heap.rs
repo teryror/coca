@@ -400,10 +400,8 @@ where
     I: Capacity,
 {
     fn extend<T: IntoIterator<Item = E1>>(&mut self, iter: T) {
-        let old_len = self.len();
         self.a.extend(iter);
-        let new_len = self.len();
-        for i in (old_len..new_len).rev() {
+        for i in (0..(self.a.len() / 2)).rev() {
             heapify(self.a.as_mut_slice(), i);
         }
     }
