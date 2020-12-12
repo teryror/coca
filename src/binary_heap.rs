@@ -342,6 +342,30 @@ where
         self.a.drain(..)
     }
 
+    /// Returns an iterator which retrieves elements in heap order. The retrieved
+    /// elements are removed from the original heap. The remaining elements will
+    /// be remoevd on drop in heap order.
+    ///
+    /// # Remarks
+    /// `.drain_sorted()` is O(n * log(n)), much slower than [`.drain()`](BinaryHeap::drain).
+    /// The latter is preferable in most cases.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
+    /// let mut heap = coca::BinaryHeap::<u32, _>::from(&mut backing_region[..]);
+    /// heap.push(1); heap.push(3); heap.push(5);
+    ///
+    /// let mut iter = heap.drain_sorted();
+    /// assert_eq!(iter.next(), Some(5));
+    /// drop(iter);
+    /// assert!(heap.is_empty());
+    /// ```
+    #[inline]
+    pub fn drain_sorted(&mut self) -> DrainSorted<'_, E, B, I> {
+        DrainSorted { heap: self }
+    }
+
     /// Drops all items from the binary heap.
     #[inline]
     pub fn clear(&mut self) {
@@ -382,6 +406,63 @@ where
         for i in (old_len..new_len).rev() {
             heapify(self.a.as_mut_slice(), i);
         }
+    }
+}
+
+/// A draining iterator over the elements of a `BinaryHeap`.
+///
+/// This `struct` is created by [`BinaryHeap::drain_sorted()`].
+/// See its documentation for more.
+pub struct DrainSorted<'a, E, B, I>
+where
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    heap: &'a mut BinaryHeap<E, B, I>,
+}
+
+impl<E, B, I> Iterator for DrainSorted<'_, E, B, I>
+where
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    type Item = E;
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = self.len();
+        (size, Some(size))
+    }
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.heap.pop()
+    }
+}
+
+impl<E, B, I> core::iter::ExactSizeIterator for DrainSorted<'_, E, B, I>
+where
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+}
+impl<E, B, I> core::iter::FusedIterator for DrainSorted<'_, E, B, I>
+where
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+}
+
+impl<E, B, I> Drop for DrainSorted<'_, E, B, I>
+where
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn drop(&mut self) {
+        self.for_each(drop);
     }
 }
 
