@@ -1129,6 +1129,22 @@ where
     }
 }
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+impl<E, I> Clone for AllocVec<E, I>
+where
+    E: Copy,
+    I: Capacity,
+{
+    fn clone(&self) -> Self {
+        let mut result = Self::with_capacity(I::from_usize(self.capacity()));
+        for item in self.iter() {
+            result.push(item.clone());
+        }
+        result
+    }
+}
+
 /// A vector using an inline array for storage.
 ///
 /// # Examples

@@ -419,6 +419,18 @@ where
     }
 }
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+impl<E, I> Clone for AllocHeap<E, I>
+where
+    E: Copy + Ord,
+    I: Capacity,
+{
+    fn clone(&self) -> Self {
+        BinaryHeap { a: self.a.clone() }
+    }
+}
+
 /// A binary heap using an inline array for storage.
 ///
 /// # Examples
