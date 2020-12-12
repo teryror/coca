@@ -8,6 +8,8 @@ use crate::storage::{Capacity, ContiguousStorage};
 use crate::vec::{Drain, Vec};
 
 use core::fmt;
+#[allow(unused_imports)]
+use core::mem::MaybeUninit;
 
 /// A fixed-capacity priority queue implemented with a binary heap.
 ///
@@ -380,6 +382,82 @@ where
         for i in (old_len..new_len).rev() {
             heapify(self.a.as_mut_slice(), i);
         }
+    }
+}
+
+/// A binary heap using an inline array for storage.
+///
+/// # Examples
+/// ```
+/// let mut heap = coca::ArrayHeap::<char, 3>::new();
+/// heap.push('a');
+/// heap.push('b');
+/// heap.push('c');
+/// assert_eq!(heap.peek(), Some(&'c'));
+/// ```
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+pub type ArrayHeap<E, const C: usize> = BinaryHeap<E, crate::storage::InlineStorage<E, C>, usize>;
+
+/// A binary heap using an inline array for storage, generic over the index type.
+///
+/// # Examples
+/// ```
+/// let mut heap = coca::TiArrayHeap::<char, u8, 3>::new();
+/// heap.push('a');
+/// let vec = heap.into_vec();
+/// assert_eq!(vec[0u8], 'a');
+/// ```
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+pub type TiArrayHeap<E, Index, const C: usize> =
+    BinaryHeap<E, crate::storage::InlineStorage<E, C>, Index>;
+
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+impl<E, I, const C: usize> BinaryHeap<E, [MaybeUninit<E>; C], I>
+where
+    E: Ord,
+    I: Capacity,
+{
+    /// Constructs a new, empty `BinaryHeap` backed by an inline array.
+    ///
+    /// # Panics
+    /// Panics if `C` cannot be represented as a value of type `I`.
+    ///
+    /// # Examples
+    /// ```
+    /// let heap = coca::ArrayHeap::<char, 4>::new();
+    /// assert_eq!(heap.capacity(), 4);
+    /// assert!(heap.is_empty());
+    /// ```
+    pub fn new() -> Self {
+        let a = Vec::new();
+        BinaryHeap { a }
+    }
+}
+
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+impl<E, I, const C: usize> Default for BinaryHeap<E, [MaybeUninit<E>; C], I>
+where
+    E: Ord,
+    I: Capacity,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+impl<E, I, const C: usize> Clone for BinaryHeap<E, [MaybeUninit<E>; C], I>
+where
+    E: Clone + Ord,
+    I: Capacity,
+{
+    fn clone(&self) -> Self {
+        BinaryHeap { a: self.a.clone() }
     }
 }
 

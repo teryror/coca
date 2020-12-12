@@ -31,7 +31,11 @@ pub mod storage;
 pub mod vec;
 
 pub use crate::arena::{Arena, Box};
+
 pub use crate::binary_heap::BinaryHeap;
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+pub use crate::binary_heap::{ArrayHeap, TiArrayHeap};
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
