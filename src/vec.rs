@@ -851,6 +851,19 @@ where
     }
 }
 
+impl<'a, E, B, Idx> core::iter::Extend<&'a E> for Vec<E, B, Idx>
+where
+    E: 'a + Clone,
+    B: ContiguousStorage<E>,
+    Idx: Capacity,
+{
+    fn extend<I: core::iter::IntoIterator<Item = &'a E>>(&mut self, iter: I) {
+        for element in iter {
+            self.push(element.clone());
+        }
+    }
+}
+
 /// An iterator that moves out of a vector.
 ///
 /// This `struct` is created by the `into_iter` method on [`Vec`] (provided by

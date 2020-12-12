@@ -148,6 +148,17 @@ fn heapify<T: Ord>(a: &mut [T], i: usize) {
     }
 }
 
+impl<E, B, I> fmt::Debug for BinaryHeap<E, B, I>
+where
+    E: Ord + fmt::Debug,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
+}
+
 impl<E, B, I> From<Vec<E, B, I>> for BinaryHeap<E, B, I>
 where
     E: Ord,
@@ -339,6 +350,36 @@ where
     #[inline]
     pub fn into_vec(self) -> Vec<E, B, I> {
         self.a
+    }
+}
+
+impl<E, B, I> IntoIterator for BinaryHeap<E, B, I>
+where
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    type Item = E;
+    type IntoIter = <Vec<E, B, I> as IntoIterator>::IntoIter;
+    fn into_iter(self) -> Self::IntoIter {
+        self.a.into_iter()
+    }
+}
+
+impl<E1, E2, B, I> core::iter::Extend<E1> for BinaryHeap<E2, B, I>
+where
+    Vec<E2, B, I>: core::iter::Extend<E1>,
+    E2: Ord,
+    B: ContiguousStorage<E2>,
+    I: Capacity,
+{
+    fn extend<T: IntoIterator<Item = E1>>(&mut self, iter: T) {
+        let old_len = self.len();
+        self.a.extend(iter);
+        let new_len = self.len();
+        for i in (old_len..new_len).rev() {
+            heapify(self.a.as_mut_slice(), i);
+        }
     }
 }
 
