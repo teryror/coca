@@ -385,6 +385,40 @@ where
     }
 }
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+/// A binary heap using a heap-allocated slice for storage.
+///
+/// Note this still has a fixed capacity, and will never reallocate.
+///
+/// # Examples
+/// ```
+/// let mut heap = coca::AllocHeap::<char>::with_capacity(3);
+/// heap.push('a');
+/// heap.push('b');
+/// heap.push('c');
+/// assert!(heap.try_push('d').is_err());
+/// ```
+pub type AllocHeap<E, I = usize> = BinaryHeap<E, crate::storage::HeapStorage<E>, I>;
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+impl<E, I> AllocHeap<E, I>
+where
+    E: Copy + Ord,
+    I: Capacity,
+{
+    /// Constructs a new, empty `AllocHeap<E, I>` with the specified capacity.
+    ///
+    /// # Panics
+    /// Panics if the specified capacity cannot be represented by a `usize`.
+    pub fn with_capacity(capacity: I) -> Self {
+        BinaryHeap {
+            a: Vec::with_capacity(capacity),
+        }
+    }
+}
+
 /// A binary heap using an inline array for storage.
 ///
 /// # Examples

@@ -14,7 +14,7 @@
 //! for storage, as well as referenced and (arena-)boxed arrays, which do not
 //! require a runtime representation of their capacity.
 //!
-//! The `alloc` feature allows using [owned slices](HeapVec) for storage. Note
+//! The `alloc` feature allows using [owned slices](AllocVec) for storage. Note
 //! that such a vector still does not reallocate - this may be useful in cases
 //! where domain logic dictates a length limit on a list.
 //!
@@ -1101,22 +1101,22 @@ where
 ///
 /// # Examples
 /// ```
-/// let mut vec = coca::HeapVec::<char>::with_capacity(3);
+/// let mut vec = coca::AllocVec::<char>::with_capacity(3);
 /// vec.push('a');
 /// vec.push('b');
 /// vec.push('c');
 /// assert!(vec.try_push('d').is_err());
 /// ```
-pub type HeapVec<E, I = usize> = Vec<E, crate::storage::HeapStorage<E>, I>;
+pub type AllocVec<E, I = usize> = Vec<E, crate::storage::HeapStorage<E>, I>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<E, I> HeapVec<E, I>
+impl<E, I> AllocVec<E, I>
 where
     E: Copy,
     I: Capacity,
 {
-    /// Constructs a new, empty `HeapVec<E, I>` with the specified capacity.
+    /// Constructs a new, empty `AllocVec<E, I>` with the specified capacity.
     ///
     /// # Panics
     /// Panics if the specified capacity cannot be represented by a `usize`.
@@ -1313,7 +1313,7 @@ mod tests {
         assert_eq!(size_of::<ArenaVec<u64, usize>>(), 3 * size_of::<usize>());
 
         #[cfg(feature = "alloc")]
-        assert_eq!(size_of::<HeapVec<u64, usize>>(), 3 * size_of::<usize>());
+        assert_eq!(size_of::<AllocVec<u64, usize>>(), 3 * size_of::<usize>());
 
         #[cfg(feature = "nightly")]
         {

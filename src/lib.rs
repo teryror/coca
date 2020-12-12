@@ -32,6 +32,9 @@ pub mod vec;
 
 pub use crate::arena::{Arena, Box};
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+pub use crate::binary_heap::AllocHeap;
 pub use crate::binary_heap::BinaryHeap;
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
@@ -39,7 +42,7 @@ pub use crate::binary_heap::{ArrayHeap, TiArrayHeap};
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-pub use crate::vec::HeapVec;
+pub use crate::vec::AllocVec;
 pub use crate::vec::SliceVec;
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
