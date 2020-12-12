@@ -1310,6 +1310,23 @@ where
     }
 }
 
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+impl<E, I, const N: usize> core::iter::FromIterator<E> for Vec<E, [MaybeUninit<E>; N], I>
+where
+    I: Capacity,
+{
+    /// Creates a vector backed by an inline array from an iterator.
+    ///
+    /// # Panics
+    /// Panics if the iterator yields more than `N` elements.
+    fn from_iter<It: core::iter::IntoIterator<Item = E>>(iter: It) -> Self {
+        let mut result = Self::new();
+        result.extend(iter);
+        result
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

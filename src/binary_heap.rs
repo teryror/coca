@@ -409,6 +409,23 @@ where
     }
 }
 
+impl<E, B, I> core::iter::FromIterator<E> for BinaryHeap<E, B, I>
+where
+    Vec<E, B, I>: core::iter::FromIterator<E>,
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    /// Creates a binary heap from an iterator.
+    ///
+    /// # Panics
+    /// Panics if the iterator yields more elements than the binary heap can hold.
+    fn from_iter<It: IntoIterator<Item = E>>(iter: It) -> Self {
+        let a = Vec::<E, B, I>::from_iter(iter);
+        Self::from(a)
+    }
+}
+
 /// A draining iterator over the elements of a `BinaryHeap`.
 ///
 /// This `struct` is created by [`BinaryHeap::drain_sorted()`].
