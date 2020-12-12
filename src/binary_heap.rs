@@ -7,6 +7,8 @@
 use crate::storage::{Capacity, ContiguousStorage};
 use crate::vec::{Drain, Vec};
 
+use core::fmt;
+
 /// A fixed-capacity priority queue implemented with a binary heap.
 ///
 /// This will be a max-heap, i.e. [`heap.pop()`](BinaryHeap::pop) will return
@@ -19,6 +21,82 @@ where
     I: Capacity,
 {
     a: Vec<E, B, I>,
+}
+
+/// Structure wrapping a mutable reference to the greatest item on a `BinaryHeap`.
+///
+/// This `struct` is created by the [`BinaryHeap::peek_mut()`] method. See its
+/// documentation for more.
+pub struct PeekMut<'a, E, B, I = usize>
+where
+    E: 'a + Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    heap: &'a mut BinaryHeap<E, B, I>,
+}
+
+impl<E, B, I> fmt::Debug for PeekMut<'_, E, B, I>
+where
+    E: Ord + fmt::Debug,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("PeekMut").field(&self.heap.peek()).finish()
+    }
+}
+
+impl<E, B, I> Drop for PeekMut<'_, E, B, I>
+where
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn drop(&mut self) {
+        heapify(self.heap.a.as_mut_slice(), 0);
+    }
+}
+
+impl<E, B, I> core::ops::Deref for PeekMut<'_, E, B, I>
+where
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    type Target = E;
+
+    fn deref(&self) -> &Self::Target {
+        debug_assert!(!self.heap.is_empty());
+        unsafe { self.heap.a.get_unchecked(0) }
+    }
+}
+
+impl<E, B, I> core::ops::DerefMut for PeekMut<'_, E, B, I>
+where
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        debug_assert!(!self.heap.is_empty());
+        unsafe { self.heap.a.get_unchecked_mut(0) }
+    }
+}
+
+impl<E, B, I> PeekMut<'_, E, B, I>
+where
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    /// Removes the peeked value from the heap and returns it.
+    pub fn pop(this: PeekMut<'_, E, B, I>) -> E {
+        debug_assert!(!this.heap.is_empty());
+        let value = this.heap.pop().unwrap();
+        core::mem::forget(this);
+        value
+    }
 }
 
 impl<E, B, I> From<B> for BinaryHeap<E, B, I>
@@ -98,6 +176,38 @@ where
     #[inline]
     pub fn peek(&self) -> Option<&E> {
         self.a.first()
+    }
+
+    /// Returns a mutable reference to the greatest item in the binary heap, or
+    /// [`None`] if it is empty.
+    ///
+    /// Note: If the `PeekMut` value is leaked, the heap may be left in an
+    /// inconsistent state.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
+    /// let mut heap = coca::BinaryHeap::<u32, _>::from(&mut backing_region[..]);
+    /// heap.try_push(3);
+    /// heap.try_push(5);
+    /// heap.try_push(1);
+    ///
+    /// {
+    ///     let mut val = heap.peek_mut().unwrap();
+    ///     *val = 0;
+    /// }
+    ///
+    /// assert_eq!(heap.pop(), Some(3));
+    /// assert_eq!(heap.pop(), Some(1));
+    /// assert_eq!(heap.pop(), Some(0));
+    /// ```
+    #[inline]
+    pub fn peek_mut(&mut self) -> Option<PeekMut<E, B, I>> {
+        if self.is_empty() {
+            None
+        } else {
+            Some(PeekMut { heap: self })
+        }
     }
 
     /// Removes the greatest element from the binary heap and returns it, or [`None`] if it is empty.
@@ -189,6 +299,11 @@ where
     #[inline]
     pub fn is_full(&self) -> bool {
         self.a.is_full()
+    }
+
+    /// Returns an iterator visiting all values in the underlying vector in arbitrary order.
+    pub fn iter(&self) -> impl core::iter::Iterator<Item = &E> {
+        self.a.iter()
     }
 
     /// Clears the binary heap, returning an iterator over the removed elements.
