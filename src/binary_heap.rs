@@ -766,4 +766,123 @@ mod tests {
             assert_eq!(parent(parent(rr)), i);
         }
     }
+
+    #[test]
+    fn push_and_pop_randomized_inputs() {
+        use rand_core::{RngCore, SeedableRng};
+        use rand_pcg::Pcg32;
+
+        let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 32];
+        let mut heap = SliceHeap::<_>::from(&mut backing_region[..]);
+
+        let mut rng = Pcg32::from_seed([
+            0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc,
+            0xde, 0xf0,
+        ]);
+
+        let mut newest = 0;
+        for _ in 0..32 {
+            newest = rng.next_u32();
+            heap.push(newest);
+        }
+
+        let mut prev = u32::max_value();
+        for _ in 0..1000 {
+            let x = heap.pop().unwrap();
+            assert!(x <= prev || x == newest);
+            prev = x;
+
+            newest = rng.next_u32();
+            heap.push(newest);
+        }
+    }
+
+    #[test]
+    fn iterators_take_and_drop_correctly() {
+        use core::cell::RefCell;
+
+        #[derive(Clone)]
+        struct Droppable<'a, 'b> {
+            value: usize,
+            log: &'a RefCell<crate::SliceVec<'b, usize>>,
+        }
+
+        impl PartialEq for Droppable<'_, '_> {
+            fn eq(&self, rhs: &Self) -> bool {
+                self.value == rhs.value
+            }
+        }
+
+        impl Eq for Droppable<'_, '_> {}
+
+        impl PartialOrd for Droppable<'_, '_> {
+            fn partial_cmp(&self, rhs: &Self) -> Option<core::cmp::Ordering> {
+                Some(self.cmp(rhs))
+            }
+        }
+
+        impl Ord for Droppable<'_, '_> {
+            fn cmp(&self, rhs: &Self) -> core::cmp::Ordering {
+                self.value.cmp(&rhs.value)
+            }
+        }
+
+        impl Drop for Droppable<'_, '_> {
+            fn drop(&mut self) {
+                self.log.borrow_mut().push(self.value);
+            }
+        }
+
+        let mut backing_array = [MaybeUninit::<usize>::uninit(); 16];
+        let drop_log = RefCell::new(crate::SliceVec::<_>::from(&mut backing_array[..]));
+
+        let mut backing_region = [
+            core::mem::MaybeUninit::<Droppable>::uninit(),
+            core::mem::MaybeUninit::<Droppable>::uninit(),
+            core::mem::MaybeUninit::<Droppable>::uninit(),
+            core::mem::MaybeUninit::<Droppable>::uninit(),
+            core::mem::MaybeUninit::<Droppable>::uninit(),
+            core::mem::MaybeUninit::<Droppable>::uninit(),
+            core::mem::MaybeUninit::<Droppable>::uninit(),
+            core::mem::MaybeUninit::<Droppable>::uninit(),
+        ];
+
+        let mut heap = SliceHeap::<Droppable>::from(&mut backing_region[..]);
+        for i in 1..=8 {
+            heap.push(Droppable {
+                value: i,
+                log: &drop_log,
+            });
+        }
+
+        let mut drain_iter = heap.drain_sorted();
+        assert_eq!(drain_iter.next().unwrap().value, 8);
+        assert_eq!(drain_iter.next().unwrap().value, 7);
+        assert_eq!(drop_log.borrow().len(), 2);
+
+        drop(drain_iter);
+        assert_eq!(drop_log.borrow().len(), 8);
+        assert_eq!(heap.len(), 0);
+
+        for i in 1..=8 {
+            heap.push(Droppable {
+                value: i,
+                log: &drop_log,
+            });
+        }
+
+        let mut into_iter = heap.into_iter_sorted();
+        assert_eq!(into_iter.next().unwrap().value, 8);
+        assert_eq!(into_iter.next().unwrap().value, 7);
+        assert_eq!(into_iter.next().unwrap().value, 6);
+        assert_eq!(drop_log.borrow().len(), 11);
+
+        drop(into_iter);
+        assert_eq!(drop_log.borrow().len(), 16);
+
+        assert_eq!(
+            drop_log.borrow().as_slice(),
+            &[8, 7, 6, 5, 4, 3, 2, 1, 8, 7, 6, 5, 4, 3, 2, 1]
+        );
+    }
 }

@@ -22,3 +22,7 @@ default = []
 alloc = []
 nightly = []
 profile = []
+
+[dev-dependencies]
+rand_pcg = "0.2"
+rand_core = "0.5"
