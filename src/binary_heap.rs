@@ -344,7 +344,7 @@ where
 
     /// Returns an iterator which retrieves elements in heap order. The retrieved
     /// elements are removed from the original heap. The remaining elements will
-    /// be remoevd on drop in heap order.
+    /// be removed on drop in heap order.
     ///
     /// # Remarks
     /// `.drain_sorted()` is O(n * log(n)), much slower than [`.drain()`](BinaryHeap::drain).
@@ -376,6 +376,50 @@ where
     #[inline]
     pub fn into_vec(self) -> Vec<E, B, I> {
         self.a
+    }
+
+    /// Consumes the `BinaryHeap` and returns a vector in sorted (ascending) order.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
+    /// let mut heap = coca::BinaryHeap::<u32, _>::from(&mut backing_region[..]);
+    /// heap.push(1); heap.push(5); heap.push(3); heap.push(2); heap.push(4);
+    /// let vec = heap.into_sorted_vec();
+    /// assert_eq!(vec, &[1, 2, 3, 4, 5][..]);
+    /// ```
+    pub fn into_sorted_vec(self) -> Vec<E, B, I> {
+        let mut result = self.into_vec();
+        let a = result.as_mut_slice();
+        for i in (1..a.len()).rev() {
+            a.swap(0, i);
+            heapify(&mut a[..i], 0);
+        }
+        result
+    }
+
+    /// Consumes the `BinaryHeap` and returns an iterator which yields elements
+    /// in heap order.
+    ///
+    /// When dropped, the remaining elements will be dropped in heap order.
+    ///
+    /// # Remarks
+    /// `.into_iter_sorted()` is O(n * log(n)), much slower than [`.into_iter()`](BinaryHeap::into_iter).
+    /// The latter is preferable in most cases.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
+    /// let mut heap = coca::BinaryHeap::<u32, _>::from(&mut backing_region[..]);
+    /// heap.push(1); heap.push(3); heap.push(5);
+    ///
+    /// let mut iter = heap.into_iter_sorted();
+    /// assert_eq!(iter.next(), Some(5));
+    /// assert_eq!(iter.next(), Some(3));
+    /// assert_eq!(iter.next(), Some(1));
+    /// ```
+    pub fn into_iter_sorted(self) -> IntoIterSorted<E, B, I> {
+        IntoIterSorted { heap: self }
     }
 }
 
@@ -471,6 +515,78 @@ where
 }
 
 impl<E, B, I> Drop for DrainSorted<'_, E, B, I>
+where
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn drop(&mut self) {
+        self.for_each(drop);
+    }
+}
+
+/// A consuming iterator that moves out of a `BinaryHeap`.
+///
+/// This `struct` is created by [`BinaryHeap::into_iter_sorted()`].
+/// See its documentation for more.
+#[derive(Debug)]
+pub struct IntoIterSorted<E, B, I>
+where
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    heap: BinaryHeap<E, B, I>,
+}
+
+impl<E, B, I> Iterator for IntoIterSorted<E, B, I>
+where
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    type Item = E;
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = self.heap.len();
+        (size, Some(size))
+    }
+
+    #[inline]
+    fn next(&mut self) -> Option<E> {
+        self.heap.pop()
+    }
+}
+
+impl<E, B, I> core::iter::ExactSizeIterator for IntoIterSorted<E, B, I>
+where
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+}
+impl<E, B, I> core::iter::FusedIterator for IntoIterSorted<E, B, I>
+where
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+}
+
+impl<E, B, I> Clone for IntoIterSorted<E, B, I>
+where
+    BinaryHeap<E, B, I>: Clone,
+    E: Clone + Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn clone(&self) -> Self {
+        self.heap.clone().into_iter_sorted()
+    }
+}
+
+impl<E, B, I> Drop for IntoIterSorted<E, B, I>
 where
     E: Ord,
     B: ContiguousStorage<E>,
