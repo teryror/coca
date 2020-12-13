@@ -57,6 +57,7 @@
 //! your target platform's pointer size and the alignment of the passed buffer).
 //! This does not apply to creating sub-arenas.
 
+use crate::binary_heap::ArenaHeap;
 use crate::storage::Capacity;
 use crate::vec::ArenaVec;
 
@@ -835,7 +836,7 @@ impl<'src> Arena<'src> {
     ///
     /// # Examples
     /// ```
-    /// use coca::{Arena, fmt};
+    /// use coca::Arena;
     /// use core::mem::MaybeUninit;
     ///
     /// # fn test() -> Option<()> {
@@ -856,6 +857,54 @@ impl<'src> Arena<'src> {
     /// ```
     pub fn try_vec<T, I: Capacity>(&mut self, capacity: I) -> Option<ArenaVec<'src, T, I>> {
         Some(ArenaVec::<T, I>::from(
+            self.try_reserve_array(capacity.into_usize())?,
+        ))
+    }
+
+    /// Constructs a [`ArenaHeap`] with the given capacity.
+    ///
+    /// # Panics
+    /// Panics if the specified capacity cannot be represented by a `usize`, or
+    /// if the remaining space in the arena is insufficient. See
+    /// [`try_heap`](Arena::try_heap) for a checked version.
+    #[track_caller]
+    pub fn heap<T: Ord, I: Capacity>(&mut self, capacity: I) -> ArenaHeap<'src, T, I> {
+        self.try_heap(capacity)
+            .expect("unexpected allocation failure in `heap`")
+    }
+
+    /// Constructs an [`ArenaHeap`] with the given capacity.
+    ///
+    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    ///
+    /// # Panics
+    /// Panics if the specified capacity cannot be represented by a `usize`.
+    ///
+    /// # Examples
+    /// ```
+    /// use coca::Arena;
+    /// use core::mem::MaybeUninit;
+    ///
+    /// # fn test() -> Option<()> {
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from(&mut backing_region[..]);
+    ///
+    /// let mut heap = arena.try_heap::<i64, usize>(100)?;
+    /// assert!(arena.try_heap::<i64, usize>(100).is_none());
+    ///
+    /// assert_eq!(heap.len(), 0);
+    /// assert_eq!(heap.capacity(), 100);
+    ///
+    /// for x in 1..=100 { heap.push(x) }
+    /// for x in (1..=100).rev() {
+    ///     assert_eq!(heap.pop(), Some(x));
+    /// }
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
+    /// ```
+    pub fn try_heap<T: Ord, I: Capacity>(&mut self, capacity: I) -> Option<ArenaHeap<'src, T, I>> {
+        Some(ArenaHeap::from(
             self.try_reserve_array(capacity.into_usize())?,
         ))
     }

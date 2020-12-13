@@ -25,6 +25,22 @@ where
     a: Vec<E, B, I>,
 }
 
+/// A binary heap using a mutable slice for storage.
+///
+/// # Examples
+/// ```
+/// use core::mem::MaybeUninit;
+/// let mut backing_array = [MaybeUninit::<char>::uninit(); 32];
+/// let (slice1, slice2) = (&mut backing_array[..]).split_at_mut(16);
+/// let mut heap1 = coca::SliceHeap::<_>::from(slice1);
+/// let mut heap2 = coca::SliceHeap::<_>::from(slice2);
+/// assert_eq!(heap1.capacity(), 16);
+/// assert_eq!(heap2.capacity(), 16);
+/// ```
+pub type SliceHeap<'a, E, I = usize> = BinaryHeap<E, crate::storage::SliceStorage<'a, E>, I>;
+/// A binary heap using an arena-allocated slice for storage.
+pub type ArenaHeap<'a, E, I = usize> = BinaryHeap<E, crate::storage::ArenaStorage<'a, E>, I>;
+
 /// Structure wrapping a mutable reference to the greatest item on a `BinaryHeap`.
 ///
 /// This `struct` is created by the [`BinaryHeap::peek_mut()`] method. See its
@@ -200,7 +216,7 @@ where
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
-    /// let mut heap = coca::BinaryHeap::<u32, _>::from(&mut backing_region[..]);
+    /// let mut heap = coca::SliceHeap::<_>::from(&mut backing_region[..]);
     /// heap.try_push(3);
     /// heap.try_push(5);
     /// heap.try_push(1);
@@ -227,12 +243,12 @@ where
     ///
     /// # Examples
     /// ```
-    /// use coca::{BinaryHeap, SliceVec};
+    /// use coca::{SliceHeap, SliceVec};
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
     /// let mut vec = SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(3);
     ///
-    /// let mut heap = BinaryHeap::from(vec);
+    /// let mut heap = SliceHeap::from(vec);
     ///
     /// assert_eq!(heap.pop(), Some(3));
     /// assert_eq!(heap.pop(), Some(1));
@@ -271,7 +287,7 @@ where
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
-    /// let mut heap = coca::BinaryHeap::<u32, _>::from(&mut backing_region[..]);
+    /// let mut heap = coca::SliceHeap::<_>::from(&mut backing_region[..]);
     /// heap.try_push(3);
     /// heap.try_push(5);
     /// heap.try_push(1);
@@ -325,7 +341,7 @@ where
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
-    /// let mut heap = coca::BinaryHeap::<u32, _>::from(&mut backing_region[..]);
+    /// let mut heap = coca::SliceHeap::<_>::from(&mut backing_region[..]);
     /// heap.push(1); heap.push(3);
     /// assert!(!heap.is_empty());
     ///
@@ -353,7 +369,7 @@ where
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
-    /// let mut heap = coca::BinaryHeap::<u32, _>::from(&mut backing_region[..]);
+    /// let mut heap = coca::SliceHeap::<_>::from(&mut backing_region[..]);
     /// heap.push(1); heap.push(3); heap.push(5);
     ///
     /// let mut iter = heap.drain_sorted();
@@ -383,7 +399,7 @@ where
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
-    /// let mut heap = coca::BinaryHeap::<u32, _>::from(&mut backing_region[..]);
+    /// let mut heap = coca::SliceHeap::<_>::from(&mut backing_region[..]);
     /// heap.push(1); heap.push(5); heap.push(3); heap.push(2); heap.push(4);
     /// let vec = heap.into_sorted_vec();
     /// assert_eq!(vec, &[1, 2, 3, 4, 5][..]);
@@ -410,7 +426,7 @@ where
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
-    /// let mut heap = coca::BinaryHeap::<u32, _>::from(&mut backing_region[..]);
+    /// let mut heap = coca::SliceHeap::<_>::from(&mut backing_region[..]);
     /// heap.push(1); heap.push(3); heap.push(5);
     ///
     /// let mut iter = heap.into_iter_sorted();

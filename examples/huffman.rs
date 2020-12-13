@@ -55,7 +55,7 @@ fn calc_huff_encoded_size(input: &[u8]) -> usize {
         items.push(Item(*freq, leaf_node));
     }
 
-    let mut queue = coca::BinaryHeap::<Item<'_>, _>::from(items);
+    let mut queue = coca::ArenaHeap::<Item<'_>, _>::from(items);
     while queue.len() > 1 {
         let Item(freq_l, left) = queue.pop().unwrap();
         let Item(freq_r, right) = queue.pop().unwrap();
