@@ -1,8 +1,13 @@
 //! A fixed-capacity priority queue implemented with a binary heap.
 //!
 //! Insertion and popping the largest element have O(log(n)) time complexity.
-//! Checking the largest element is O(1). Converting a vector to a binary heap
-//! can be done in-place, and has O(n) complexity.
+//! Checking the largest element is O(1).
+//!
+//! [`BinaryHeap<E, B, I>`](BinaryHeap) wraps a [`Vec<E, B, I>`](Vec) and
+//! can therefore be converted into the underlying vector type at zero cost.
+//! Converting a vector to a binary heap can be done in-place, and has O(n)
+//! complexity. A binary heap can also be converted to a sorted vector in-place,
+//! allowing it to be used for an O(n*log(n)) in-place heapsort.
 
 use crate::storage::{Capacity, ContiguousStorage};
 use crate::vec::{Drain, Vec};
@@ -16,6 +21,11 @@ use core::mem::MaybeUninit;
 /// This will be a max-heap, i.e. [`heap.pop()`](BinaryHeap::pop) will return
 /// the largest value in the queue. [`core::cmp::Reverse`] or a custom `Ord`
 /// implementation can be used to make a min-heap instead.
+///
+/// It is a logic error for an item to be modified in such a way that the
+/// item's ordering relative to any other item, as determined by the `Ord`
+/// trait, changes while it is in the heap. This is normally only possible
+/// through `Cell`, `RefCell`, global state, I/O, or unsafe code.
 pub struct BinaryHeap<E, B, I = usize>
 where
     E: Ord,
