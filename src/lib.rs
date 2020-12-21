@@ -27,6 +27,7 @@ pub extern crate alloc;
 
 pub mod arena;
 pub mod binary_heap;
+pub mod deque;
 pub mod storage;
 pub mod vec;
 
@@ -39,6 +40,8 @@ pub use crate::binary_heap::{ArenaHeap, SliceHeap};
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub use crate::binary_heap::{ArrayHeap, TiArrayHeap};
+
+pub use crate::deque::{ArenaDeque, SliceDeque};
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
