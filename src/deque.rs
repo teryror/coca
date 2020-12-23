@@ -85,6 +85,25 @@ where
         self.len.into_usize() == self.buf.capacity()
     }
 
+    /// Returns `true` if the `Deque` contains an element equal to the given value.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 3];
+    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// deque.push_back(0);
+    /// deque.push_back(1);
+    /// assert_eq!(deque.contains(&1), true);
+    /// assert_eq!(deque.contains(&10), false);
+    /// ```
+    pub fn contains(&self, x: &E) -> bool
+    where
+        E: PartialEq,
+    {
+        let (a, b) = self.as_slices();
+        a.contains(x) || b.contains(x)
+    }
+
     #[inline(always)]
     fn physical_index_unchecked(&self, index: I) -> usize {
         let index = index.into_usize();
@@ -678,6 +697,173 @@ where
             .physical_index(index)
             .expect("index out of bounds in `replace`");
         unsafe { self.buf.get_mut_ptr(index).replace(value) }
+    }
+
+    /// Retains only the elements specified by the predicate.
+    ///
+    /// In other words, remove all elements `e` such that `f(&e)` returns `false`.
+    /// This method operates in place, visiting each element exactly once in the
+    /// original order, and preserves the order of the retained elements.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 4];
+    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// deque.push_back(1);
+    /// deque.push_back(2);
+    /// deque.push_back(3);
+    /// deque.push_back(4);
+    /// deque.retain(|&x| x % 2 == 0);
+    /// assert_eq!(deque.make_contiguous(), &[2, 4][..]);
+    /// ```
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&E) -> bool,
+    {
+        let capacity = self.capacity();
+        let old_len = self.len();
+        let mut new_len = 0;
+
+        for i in 0..old_len {
+            let idx = i % capacity;
+            let src = self.buf.get_ptr(idx);
+            let retain = f(unsafe { src.as_ref().unwrap() });
+
+            if retain {
+                let dst = self.buf.get_mut_ptr(new_len % capacity);
+                unsafe { core::ptr::copy(src, dst, 1) };
+                new_len += 1;
+            } else {
+                let to_drop = self.buf.get_mut_ptr(idx);
+                unsafe { core::ptr::drop_in_place(to_drop) };
+            }
+        }
+
+        self.len = I::from_usize(new_len);
+    }
+
+    fn rotate_left_inner(&mut self, mid: usize) {
+        debug_assert!(mid * 2 <= self.len());
+
+        let cap = self.capacity();
+        let front = self.front.into_usize();
+        let back = front + self.len();
+        let contiguous = back <= cap;
+
+        let first_count = if contiguous {
+            // storage is contiguous, use the first copy to (at most) fill the right gap
+            usize::min(cap - back, mid)
+        } else {
+            // storage is discontiguous, use the first copy to (at most) shift over the right section
+            usize::min(cap - front, mid)
+        };
+
+        let src = self.buf.get_ptr(front);
+        let dst = self.buf.get_mut_ptr(back % cap);
+        unsafe { core::ptr::copy(src, dst, first_count) };
+
+        let src = self.buf.get_ptr((front + first_count) % cap);
+        let dst = self.buf.get_mut_ptr((back + first_count) % cap);
+        unsafe { core::ptr::copy(src, dst, mid - first_count) };
+
+        self.front = I::from_usize((front + mid) % cap);
+    }
+
+    fn rotate_right_inner(&mut self, k: usize) {
+        debug_assert!(k * 2 <= self.len());
+
+        let cap = self.capacity();
+        let front = self.front.into_usize();
+        let back = front + self.len();
+        let contiguous = back <= cap;
+
+        let first_count = if contiguous {
+            // storage is contiguous, use the first copy to (at most) fill the left gap
+            usize::min(front, k)
+        } else {
+            // storage is discontiguous, use the first copy to (at most) shift over the left section
+            usize::min(back % cap, k)
+        };
+
+        let src = self.buf.get_ptr((back - first_count) % cap);
+        let dst = self.buf.get_mut_ptr((front + cap - first_count) % cap);
+        unsafe { core::ptr::copy(src, dst, first_count) };
+
+        let src = self.buf.get_ptr((back + cap - k) % cap);
+        let dst = self.buf.get_mut_ptr((front + cap - k) % cap);
+        unsafe { core::ptr::copy(src, dst, k - first_count) };
+
+        self.front = I::from_usize((front + cap - k) % cap);
+    }
+
+    /// Rotates the `Deque` `mid` places to the left.
+    ///
+    /// Equivalently,
+    ///
+    /// * Rotates `mid` into the first position.
+    /// * Pops the first `mid` items and pushes them to the end.
+    /// * Rotates `len() - mid` places to the right.
+    ///
+    /// # Panics
+    /// Panics if `mid` is greater than the deque's length. Note that
+    /// `mid == len()` does *not* panic and is a no-op rotation.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 16];
+    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// for x in 0..10 { deque.push_back(x); }
+    /// for i in 1..10 {
+    ///     deque.rotate_left(3);
+    ///     assert_eq!(deque.front(), Some(&(i * 3 % 10)));
+    /// }
+    /// deque.rotate_left(3);
+    /// assert_eq!(deque.make_contiguous(), &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9][..]);
+    /// ```
+    pub fn rotate_left(&mut self, mid: I) {
+        let mid = mid.into_usize();
+        assert!(mid <= self.len());
+        let k = self.len() - mid;
+        if mid <= k {
+            self.rotate_left_inner(mid);
+        } else {
+            self.rotate_right_inner(k);
+        }
+    }
+
+    /// Rotates the `Deque` `k` places to the right.
+    ///
+    /// Equivalently,
+    ///
+    /// * Rotates the first item into position `k`.
+    /// * Pops the last `k` items and pushes them to the front.
+    /// * Rotates `len() - k` places to the left.
+    ///
+    /// # Panics
+    /// Panics if `k` is greater than the deque's length. Note that `k == len()`
+    /// does *not* panic and is a no-op rotation.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 16];
+    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// for x in 0..10 { deque.push_back(x); }
+    /// for i in 1..10 {
+    ///     deque.rotate_right(3);
+    ///     assert_eq!(deque.get(i * 3 % 10), Some(&0));
+    /// }
+    /// deque.rotate_right(3);
+    /// assert_eq!(deque.make_contiguous(), &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9][..]);
+    /// ```
+    pub fn rotate_right(&mut self, k: I) {
+        let k = k.into_usize();
+        assert!(k <= self.len());
+        let mid = self.len() - k;
+        if k <= mid {
+            self.rotate_right_inner(k);
+        } else {
+            self.rotate_left_inner(mid);
+        }
     }
 
     /// Returns a pair of slices which contain, in order, the contents of the `Deque`.
