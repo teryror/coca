@@ -199,6 +199,32 @@ where
     fn capacity(&self) -> usize {
         self.storage().len()
     }
+
+    /// Returns a pointer to the element at position `index`.
+    ///
+    /// # Safety
+    /// The resulting pointer does not need to be in bounds but it is potentially
+    /// hazardous to dereference (which requires `unsafe`).
+    ///
+    /// Even when in bounds, the value it points to may not be initialized.
+    #[inline]
+    fn get_ptr(&self, index: usize) -> *const T {
+        debug_assert!(index <= self.storage().len());
+        self.storage().as_ptr().wrapping_add(index) as _
+    }
+
+    /// Returns a mutable pointer to the element at position `index`.
+    ///
+    /// # Safety
+    /// The resulting pointer does not need to be in bounds but it is potentially
+    /// hazardous to dereference (which requires `unsafe`).
+    ///
+    /// Even when in bounds, the value it points to may not be initialized.
+    #[inline]
+    fn get_mut_ptr(&mut self, index: usize) -> *mut T {
+        debug_assert!(index <= self.storage_mut().len());
+        self.storage_mut().as_mut_ptr().wrapping_add(index) as _
+    }
 }
 
 /// Shorthand for `&'a mut [MaybeUninit<T>]` for use with generic data structures.

@@ -108,7 +108,7 @@ where
     #[inline]
     pub fn get(&self, index: I) -> Option<&E> {
         let index = self.physical_index(index)?;
-        unsafe { Some(self.buf.storage()[index].as_ptr().as_ref().unwrap()) }
+        unsafe { Some(self.buf.get_ptr(index).as_ref().unwrap()) }
     }
 
     /// Returns a mutable reference to the element at the given index, or [`None`]
@@ -118,7 +118,7 @@ where
     #[inline]
     pub fn get_mut(&mut self, index: I) -> Option<&mut E> {
         let index = self.physical_index(index)?;
-        unsafe { Some(self.buf.storage_mut()[index].as_mut_ptr().as_mut().unwrap()) }
+        unsafe { Some(self.buf.get_mut_ptr(index).as_mut().unwrap()) }
     }
 
     /// Returns a reference to the front element, or [`None`] if the `Deque` is empty.
@@ -163,7 +163,7 @@ where
         }
 
         let front = self.front.into_usize();
-        let result = unsafe { self.buf.storage()[front].as_ptr().read() };
+        let result = unsafe { self.buf.get_ptr(front).read() };
         self.front = I::from_usize(front + 1 % self.capacity());
         self.len = I::from_usize(self.len() - 1);
 
@@ -188,7 +188,7 @@ where
         }
 
         let idx = (self.front.into_usize() + self.len() - 1) % self.capacity();
-        let result = unsafe { self.buf.storage()[idx].as_ptr().read() };
+        let result = unsafe { self.buf.get_ptr(idx).read() };
         self.len = I::from_usize(self.len() - 1);
 
         Some(result)
@@ -212,7 +212,7 @@ where
         }
 
         let idx = (self.front.into_usize() + self.capacity() - 1) % self.capacity();
-        let ptr = self.buf.storage_mut()[idx].as_mut_ptr();
+        let ptr = self.buf.get_mut_ptr(idx);
         unsafe {
             ptr.write(value);
         }
@@ -252,7 +252,7 @@ where
         }
 
         let end = self.physical_index_unchecked(self.len);
-        let ptr = self.buf.storage_mut()[end].as_mut_ptr();
+        let ptr = self.buf.get_mut_ptr(end);
         unsafe {
             ptr.write(value);
         }
@@ -364,8 +364,8 @@ where
         let front = self.front.into_usize();
 
         unsafe {
-            let last = self.buf.storage()[front].as_ptr().read();
-            let hole = self.buf.storage_mut()[index].as_mut_ptr();
+            let last = self.buf.get_ptr(front).read();
+            let hole = self.buf.get_mut_ptr(index);
             self.len = I::from_usize(self.len() - 1);
             self.front = I::from_usize((front + 1) % self.capacity());
             Some(hole.replace(last))
@@ -394,8 +394,8 @@ where
         let back = (self.front.into_usize() + self.len() - 1) % self.capacity();
 
         unsafe {
-            let last = self.buf.storage()[back].as_ptr().read();
-            let hole = self.buf.storage_mut()[index].as_mut_ptr();
+            let last = self.buf.get_ptr(back).read();
+            let hole = self.buf.get_mut_ptr(index);
             self.len = I::from_usize(self.len() - 1);
             Some(hole.replace(last))
         }
@@ -458,32 +458,32 @@ where
                 // storage is contiguous, insertion point is in lower half
                 // -> shift all elements before the insertion point to the left by one
                 if distance_to_front > 0 {
-                    let dst = self.buf.storage_mut()[new_front].as_mut_ptr();
-                    let src = self.buf.storage()[front].as_ptr();
+                    let dst = self.buf.get_mut_ptr(new_front);
+                    let src = self.buf.get_ptr(front);
                     unsafe { core::ptr::copy(src, dst, 1) };
 
-                    let dst = self.buf.storage_mut()[front].as_mut_ptr();
-                    let src = self.buf.storage()[front + 1].as_ptr();
+                    let dst = self.buf.get_mut_ptr(front);
+                    let src = self.buf.get_ptr(front + 1);
                     unsafe { core::ptr::copy(src, dst, distance_to_front - 1) };
                 }
 
-                let ptr = self.buf.storage_mut()[(new_front + index) % cap].as_mut_ptr();
+                let ptr = self.buf.get_mut_ptr((new_front + index) % cap);
                 unsafe { ptr.write(value) };
             }
             (true, false, _) => {
                 // storage is contiguous, insertion point is in upper half
                 // -> shift all elements after the insertion point to the right by one
                 let physical_index = front + index;
-                let src = self.buf.storage()[physical_index].as_ptr();
-                let dst = self.buf.storage_mut()[physical_index + 1].as_mut_ptr();
+                let src = self.buf.get_ptr(physical_index);
+                let dst = self.buf.get_mut_ptr(physical_index + 1);
                 unsafe { core::ptr::copy(src, dst, distance_to_back) };
-                let ptr = self.buf.storage_mut()[physical_index].as_mut_ptr();
+                let ptr = self.buf.get_mut_ptr(physical_index);
                 unsafe { ptr.write(value) };
             }
             (false, true, false) => {
                 // storage is not contiguous, insertion point is in lower half and does not wrap
                 // -> shift all elements before the insertion point to the left by one
-                let ptr = self.buf.storage_mut()[new_front].as_mut_ptr();
+                let ptr = self.buf.get_mut_ptr(new_front);
                 unsafe {
                     ptr.write(value);
                 }
@@ -493,7 +493,7 @@ where
                 // storage is not contiguous, insertion point is in upper half and does wrap
                 // -> shift all elements after the insertion point to the right by one
                 let physical_index = (front + index) % self.capacity();
-                let ptr = self.buf.storage_mut()[physical_index + distance_to_back].as_mut_ptr();
+                let ptr = self.buf.get_mut_ptr(physical_index + distance_to_back);
                 unsafe {
                     ptr.write(value);
                 }
@@ -504,11 +504,11 @@ where
                 // storage is not contiguous, insertion point is in the lower half, but the index wraps
                 // -> shift all elements before the insertion point to the left by one, accounting for wrap
                 let physical_index = (new_front + index) % self.capacity();
-                let ptr = self.buf.storage_mut()[0].as_mut_ptr();
+                let ptr = self.buf.get_mut_ptr(0);
                 let tmp = unsafe { ptr.replace(value) };
                 self.buf.storage_mut()[..=physical_index].rotate_left(1);
 
-                let ptr = self.buf.storage_mut()[new_front].as_mut_ptr();
+                let ptr = self.buf.get_mut_ptr(new_front);
                 unsafe {
                     ptr.write(tmp);
                 }
@@ -518,12 +518,12 @@ where
                 // storage is not contiguous, insertion point is in the upper half, but the index doesn't wrap
                 // -> shift all elements after the insertion point to the right by one, accounting for wrap
                 let physical_index = (front + index) % cap;
-                let ptr = self.buf.storage_mut()[cap - 1].as_mut_ptr();
+                let ptr = self.buf.get_mut_ptr(cap - 1);
                 let tmp = unsafe { ptr.replace(value) };
                 self.buf.storage_mut()[physical_index..].rotate_right(1);
 
                 let back = back % cap;
-                let ptr = self.buf.storage_mut()[back].as_mut_ptr();
+                let ptr = self.buf.get_mut_ptr(back);
                 unsafe {
                     ptr.write(tmp);
                 }
@@ -589,7 +589,7 @@ where
         let index_wrapped = front + index >= cap;
         let physical_index = (front + index) % cap;
 
-        let ptr = self.buf.storage()[physical_index].as_ptr();
+        let ptr = self.buf.get_ptr(physical_index);
         let result = unsafe { ptr.read() };
 
         match (contiguous, move_front, index_wrapped) {
@@ -677,7 +677,7 @@ where
         let index = self
             .physical_index(index)
             .expect("index out of bounds in `replace`");
-        unsafe { self.buf.storage_mut()[index].as_mut_ptr().replace(value) }
+        unsafe { self.buf.get_mut_ptr(index).replace(value) }
     }
 
     /// Returns a pair of slices which contain, in order, the contents of the `Deque`.

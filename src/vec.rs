@@ -149,7 +149,7 @@ where
         }
 
         self.len = I::from_usize(self.len() - 1);
-        unsafe { Some(self.buf.storage()[self.len()].as_ptr().read()) }
+        unsafe { Some(self.buf.get_ptr(self.len()).read()) }
     }
 
     /// Extracts a slice containing the entire vector.
@@ -186,7 +186,7 @@ where
             return None;
         }
 
-        unsafe { Some(self.buf.storage()[index].as_ptr().as_ref().unwrap()) }
+        unsafe { Some(self.buf.get_ptr(index).as_ref().unwrap()) }
     }
 
     /// Returns a mutable reference to the element at the specified index, or
@@ -198,7 +198,7 @@ where
             return None;
         }
 
-        unsafe { Some(self.buf.storage_mut()[index].as_mut_ptr().as_mut().unwrap()) }
+        unsafe { Some(self.buf.get_mut_ptr(index).as_mut().unwrap()) }
     }
 
     /// Appends an element to the back of the vector, returning `Err(value)` if
@@ -220,10 +220,7 @@ where
         }
 
         let len = self.len();
-        let p = self.buf.storage_mut()[len].as_mut_ptr();
-        unsafe {
-            p.write(value);
-        }
+        unsafe { self.buf.get_mut_ptr(len).write(value) };
 
         self.len = I::from_usize(len + 1);
         Ok(())
@@ -272,9 +269,7 @@ where
         }
 
         for i in new_len..old_len {
-            unsafe {
-                self.buf.storage_mut()[i].as_mut_ptr().drop_in_place();
-            }
+            unsafe { self.buf.get_mut_ptr(i).drop_in_place() };
         }
 
         self.len = len;
@@ -344,8 +339,8 @@ where
         }
 
         unsafe {
-            let last = ptr::read(self.buf.storage()[len - 1].as_ptr());
-            let hole = self.buf.storage_mut()[idx].as_mut_ptr();
+            let last = self.buf.get_ptr(len - 1).read();
+            let hole = self.buf.get_mut_ptr(idx);
             self.len = I::from_usize(self.len() - 1);
             ptr::replace(hole, last)
         }
@@ -408,9 +403,9 @@ where
             assert_failed(idx, len);
         }
 
+        let p = self.buf.get_mut_ptr(idx);
         unsafe {
-            let p = self.buf.storage_mut()[idx].as_mut_ptr();
-            ptr::copy(p, p.offset(1), len - idx);
+            ptr::copy(p, p.add(1), len - idx);
             ptr::write(p, element);
         }
 
@@ -449,10 +444,8 @@ where
             assert_failed(idx, len);
         }
 
-        unsafe {
-            let p = self.buf.storage_mut()[idx].as_mut_ptr();
-            ptr::replace(p, element)
-        }
+        let p = self.buf.get_mut_ptr(idx);
+        unsafe { ptr::replace(p, element) }
     }
 
     /// Removes and returns the element at position `index` within the vector,
@@ -486,7 +479,7 @@ where
         unsafe {
             let ret;
             {
-                let p = self.buf.storage_mut()[idx].as_mut_ptr();
+                let p = self.buf.get_mut_ptr(idx);
                 ret = ptr::read(p);
                 ptr::copy(p.offset(1), p, len - idx - 1);
             }
@@ -530,7 +523,7 @@ where
         let mut del = 0;
         unsafe {
             for idx in 0..len {
-                let p = self.buf.storage_mut()[idx].as_mut_ptr();
+                let p = self.buf.get_mut_ptr(idx);
                 if !f(p.as_mut().unwrap()) {
                     del += 1;
                 } else if del > 0 {
@@ -910,7 +903,7 @@ where
             return None;
         }
 
-        let ret = unsafe { self.buf.storage()[start].as_ptr().read() };
+        let ret = unsafe { self.buf.get_ptr(start).read() };
         self.start = I::from_usize(start + 1);
 
         Some(ret)
@@ -931,7 +924,7 @@ where
         }
 
         let end = end - 1;
-        let ret = unsafe { self.buf.storage()[end].as_ptr().read() };
+        let ret = unsafe { self.buf.get_ptr(end).read() };
         self.end = I::from_usize(end);
 
         Some(ret)
