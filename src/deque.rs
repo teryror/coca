@@ -437,6 +437,8 @@ where
         let cap = self.capacity();
         let front = self.front.into_usize();
         let back = front + self.len();
+
+        // count back == cap as discontiguous to handle spill-over correctly
         let contiguous = back < self.capacity();
 
         let distance_to_front = index;
@@ -549,6 +551,110 @@ where
         if self.try_insert(index, value).is_err() {
             panic!("deque is already at capacity");
         }
+    }
+
+    /// Removes and returns the element at `index` from the `Deque`, or [`None`]
+    /// if `index` is out of bounds.
+    ///
+    /// Whichever end is closer to the removal point will be moved to fill the
+    /// gap, and all affected elements will be shifted to new positions.
+    ///
+    /// The element at index 0 is the front of the queue.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 4];
+    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// deque.push_back(1);
+    /// deque.push_back(2);
+    /// deque.push_back(3);
+    /// assert_eq!(deque.remove(1), Some(2));
+    /// assert_eq!(deque.make_contiguous(), &[1, 3][..]);
+    /// ```
+    pub fn remove(&mut self, index: I) -> Option<E> {
+        let index = index.into_usize();
+        if index >= self.len() {
+            return None;
+        }
+
+        let cap = self.capacity();
+        let front = self.front.into_usize();
+        let back = front + self.len();
+        let contiguous = back <= cap;
+
+        let distance_to_front = index;
+        let distance_to_back = self.len() - index - 1;
+        let move_front = distance_to_front < distance_to_back;
+
+        let index_wrapped = front + index >= cap;
+        let physical_index = (front + index) % cap;
+
+        let ptr = self.buf.storage()[physical_index].as_ptr();
+        let result = unsafe { ptr.read() };
+
+        match (contiguous, move_front, index_wrapped) {
+            (true, true, _) | (false, true, false) => {
+                // Storage is contiguous, index is in lower half
+                // OR Storage is discontiguous, index is in lower half, and does not wrap
+                // -> shift all elements before the index to the right
+                unsafe {
+                    let src = self.buf.storage().as_ptr().add(front);
+                    let dst = self.buf.storage_mut().as_mut_ptr().add(front + 1);
+                    core::ptr::copy(src, dst, distance_to_front);
+                }
+
+                self.front = I::from_usize((front + 1) % cap);
+            }
+            (true, false, _) | (false, false, true) => {
+                // Storage is contiguous, index is in upper half
+                // OR Storage is discontiguous, index is in upper half, and does wrap
+                // -> shift all elements after the index to the left
+                unsafe {
+                    let src = self.buf.storage().as_ptr().add(physical_index + 1);
+                    let dst = self.buf.storage_mut().as_mut_ptr().add(physical_index);
+                    core::ptr::copy(src, dst, distance_to_back);
+                }
+            }
+            (false, true, true) => {
+                // Storage is discontiguous, index is in lower half, but also wraps
+                // -> shift all elements before the index to the right, accounting for wrap
+                unsafe {
+                    let src = self.buf.storage().as_ptr();
+                    let dst = self.buf.storage_mut().as_mut_ptr().add(1);
+                    core::ptr::copy(src, dst, physical_index);
+
+                    let src = self.buf.storage().as_ptr().add(cap - 1);
+                    let dst = self.buf.storage_mut().as_mut_ptr();
+                    core::ptr::copy(src, dst, 1);
+
+                    let src = self.buf.storage().as_ptr().add(front);
+                    let dst = self.buf.storage_mut().as_mut_ptr().add(front + 1);
+                    core::ptr::copy(src, dst, cap - front - 1);
+                }
+
+                self.front = I::from_usize((front + 1) % cap);
+            }
+            (false, false, false) => {
+                // Storage is discontiguous, index is in upper half, but doesn't wrap
+                // -> shift all elements after the index to the left, accounting for wrap
+                unsafe {
+                    let src = self.buf.storage().as_ptr().add(physical_index + 1);
+                    let dst = self.buf.storage_mut().as_mut_ptr().add(physical_index);
+                    core::ptr::copy(src, dst, cap - physical_index - 1);
+
+                    let src = self.buf.storage().as_ptr();
+                    let dst = self.buf.storage_mut().as_mut_ptr().add(cap - 1);
+                    core::ptr::copy(src, dst, 1);
+
+                    let src = self.buf.storage().as_ptr().add(1);
+                    let dst = self.buf.storage_mut().as_mut_ptr();
+                    core::ptr::copy(src, dst, back % cap - 1);
+                }
+            }
+        }
+
+        self.len = I::from_usize(self.len() - 1);
+        Some(result)
     }
 
     /// Places an element at position `index` within the `Deque`, returning the
@@ -717,5 +823,51 @@ mod tests {
 
         deque.try_insert(4, 7).unwrap();
         assert_eq!(deque.as_slices(), (&[6, 5, 2, 4, 7][..], &[3, 8, 1][..]));
+    }
+
+    #[test]
+    fn all_removal_cases() {
+        let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 8];
+        let mut deque = SliceDeque::<i32>::from(&mut backing_region[..]);
+
+        deque.push_back(1);
+        deque.push_back(2);
+        deque.push_back(3);
+        deque.push_back(4);
+        assert_eq!(deque.as_slices(), (&[1, 2, 3, 4][..], &[][..]));
+
+        assert_eq!(deque.remove(2), Some(3));
+        assert_eq!(deque.as_slices(), (&[1, 2, 4][..], &[][..]));
+
+        deque.push_back(3);
+        assert_eq!(deque.remove(1), Some(2));
+        assert_eq!(deque.as_slices(), (&[1, 4, 3][..], &[][..]));
+
+        deque.push_front(2);
+        deque.push_front(5);
+        deque.push_front(6);
+        assert_eq!(deque.as_slices(), (&[6, 5][..], &[2, 1, 4, 3][..]));
+
+        assert_eq!(deque.remove(3), Some(1));
+        assert_eq!(deque.as_slices(), (&[6, 5][..], &[2, 4, 3][..]));
+
+        deque.push_back(1);
+        assert_eq!(deque.remove(2), Some(2));
+        assert_eq!(deque.as_slices(), (&[6][..], &[5, 4, 3, 1][..]));
+
+        for _ in 0..3 {
+            let x = deque.pop_back().unwrap();
+            deque.push_front(x);
+        }
+
+        assert_eq!(deque.as_slices(), (&[4, 3, 1, 6][..], &[5][..]));
+
+        assert_eq!(deque.remove(3), Some(6));
+        assert_eq!(deque.as_slices(), (&[4, 3, 1, 5][..], &[][..]));
+
+        deque.push_back(2);
+        deque.push_back(6);
+        assert_eq!(deque.remove(1), Some(3));
+        assert_eq!(deque.as_slices(), (&[4, 1, 5][..], &[2, 6][..]));
     }
 }
