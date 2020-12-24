@@ -353,7 +353,7 @@ where
     /// deque.push_back(1);
     /// deque.push_front(3);
     /// deque.swap(0, 2);
-    /// assert_eq!(deque.make_contiguous(), &[1, 2, 3]);
+    /// assert_eq!(deque, &[1, 2, 3]);
     /// ```
     pub fn swap(&mut self, i: I, j: I) {
         let i = self
@@ -380,7 +380,7 @@ where
     /// deque.push_back(2);
     /// deque.push_back(3);
     /// assert_eq!(deque.swap_remove_front(2), Some(3));
-    /// assert_eq!(deque.make_contiguous(), &[2, 1]);
+    /// assert_eq!(deque, &[2, 1]);
     /// ```
     pub fn swap_remove_front(&mut self, index: I) -> Option<E> {
         let index = self.physical_index(index)?;
@@ -410,7 +410,7 @@ where
     /// deque.push_back(2);
     /// deque.push_back(3);
     /// assert_eq!(deque.swap_remove_back(0), Some(1));
-    /// assert_eq!(deque.make_contiguous(), &[3, 2]);
+    /// assert_eq!(deque, &[3, 2]);
     /// ```
     pub fn swap_remove_back(&mut self, index: I) -> Option<E> {
         let index = self.physical_index(index)?;
@@ -442,10 +442,10 @@ where
     /// deque.push_back('a');
     /// deque.push_back('b');
     /// deque.push_back('c');
-    /// assert_eq!(deque.make_contiguous(), &['a', 'b', 'c'][..]);
+    /// assert_eq!(deque, &['a', 'b', 'c']);
     ///
     /// assert!(deque.try_insert(1, 'd').is_ok());
-    /// assert_eq!(deque.make_contiguous(), &['a', 'd', 'b', 'c'][..]);
+    /// assert_eq!(deque, &['a', 'd', 'b', 'c']);
     /// ```
     pub fn try_insert(&mut self, index: I, value: E) -> Result<(), E> {
         if self.is_full() {
@@ -592,7 +592,7 @@ where
     /// deque.push_back(2);
     /// deque.push_back(3);
     /// assert_eq!(deque.remove(1), Some(2));
-    /// assert_eq!(deque.make_contiguous(), &[1, 3][..]);
+    /// assert_eq!(deque, &[1, 3]);
     /// ```
     pub fn remove(&mut self, index: I) -> Option<E> {
         let index = index.into_usize();
@@ -694,7 +694,7 @@ where
     /// deque.push_back(2);
     /// deque.push_back(4);
     /// assert_eq!(deque.replace(2, 3), 4);
-    /// assert_eq!(deque.make_contiguous(), &[1, 2, 3][..]);
+    /// assert_eq!(deque, &[1, 2, 3]);
     /// ```
     pub fn replace(&mut self, index: I, value: E) -> E {
         let index = self
@@ -718,7 +718,7 @@ where
     /// deque.push_back(3);
     /// deque.push_back(4);
     /// deque.retain(|&x| x % 2 == 0);
-    /// assert_eq!(deque.make_contiguous(), &[2, 4][..]);
+    /// assert_eq!(deque, &[2, 4]);
     /// ```
     pub fn retain<F>(&mut self, mut f: F)
     where
@@ -822,7 +822,7 @@ where
     ///     assert_eq!(deque.front(), Some(&(i * 3 % 10)));
     /// }
     /// deque.rotate_left(3);
-    /// assert_eq!(deque.make_contiguous(), &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9][..]);
+    /// assert_eq!(deque, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     /// ```
     pub fn rotate_left(&mut self, mid: I) {
         let mid = mid.into_usize();
@@ -857,7 +857,7 @@ where
     ///     assert_eq!(deque.get(i * 3 % 10), Some(&0));
     /// }
     /// deque.rotate_right(3);
-    /// assert_eq!(deque.make_contiguous(), &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9][..]);
+    /// assert_eq!(deque, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     /// ```
     pub fn rotate_right(&mut self, k: I) {
         let k = k.into_usize();
@@ -954,10 +954,10 @@ where
     /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_back(2);
     /// deque.push_back(1);
-    /// assert_eq!(deque.make_contiguous(), &[2, 1]);
+    /// assert_eq!(deque, &[2, 1]);
     ///
     /// deque.push_front(3);
-    /// assert_eq!(deque.make_contiguous(), &[3, 2, 1]);
+    /// assert_eq!(deque, &[3, 2, 1]);
     /// ```
     pub fn make_contiguous(&mut self) -> &mut [E] {
         let front = self.front.into_usize();
@@ -1011,7 +1011,7 @@ where
     /// for num in deque.iter_mut() {
     ///     *num = *num - 2;
     /// }
-    /// assert_eq!(deque.make_contiguous(), &[3, 1, 2][..]);
+    /// assert_eq!(deque, &[3, 1, 2]);
     /// ```
     pub fn iter_mut(&mut self) -> IterMut<'_, E, B, I> {
         IterMut {
@@ -1033,7 +1033,7 @@ where
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 8];
     /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.extend(1..=5);
-    /// assert_eq!(deque.make_contiguous(), &[1, 2, 3, 4, 5][..]);
+    /// assert_eq!(deque, &[1, 2, 3, 4, 5]);
     ///
     /// let mut it = deque.range(2..4);
     /// assert_eq!(it.next(), Some(&3));
@@ -1085,10 +1085,10 @@ where
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 8];
     /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.extend(1..=5);
-    /// assert_eq!(deque.make_contiguous(), &[1, 2, 3, 4, 5][..]);
+    /// assert_eq!(deque, &[1, 2, 3, 4, 5]);
     ///
     /// deque.range_mut(2..4).for_each(|x| *x *= 2);
-    /// assert_eq!(deque.make_contiguous(), &[1, 2, 6, 8, 5][..]);
+    /// assert_eq!(deque, &[1, 2, 6, 8, 5]);
     /// ```
     pub fn range_mut<R: core::ops::RangeBounds<I>>(&mut self, range: R) -> IterMut<'_, E, B, I> {
         use core::ops::Bound;
