@@ -573,7 +573,7 @@ where
             Bound::Unbounded => self.len(),
         };
         assert!(
-            start <= self.len(),
+            start <= end,
             "Vec::drain Illegal range, {} to {}",
             start,
             end
