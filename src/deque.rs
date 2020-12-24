@@ -17,7 +17,11 @@ use crate::storage::{Capacity, ContiguousStorage};
 /// efficient sorting, you can use [`make_contiguous`](Deque::make_contiguous).
 /// It rotates the `Deque` so that its elements do not wrap, and returns a
 /// mutable slice to the now contiguous element sequence.
-pub struct Deque<E, B, I> {
+pub struct Deque<E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
     front: I,
     len: I,
     buf: B,
@@ -969,7 +973,317 @@ where
             unsafe { core::slice::from_raw_parts_mut(ptr, self.len()) }
         }
     }
+
+    /// Returns a front-to-back iterator.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 4];
+    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// deque.push_back(5);
+    /// deque.push_back(3);
+    /// deque.push_back(4);
+    ///
+    /// let mut it = deque.iter();
+    /// assert_eq!(it.next(), Some(&5));
+    /// assert_eq!(it.next(), Some(&3));
+    /// assert_eq!(it.next(), Some(&4));
+    /// assert!(it.next().is_none());
+    /// ```
+    pub fn iter(&self) -> Iter<'_, E, B, I> {
+        Iter {
+            front: self.front,
+            len: self.len,
+            buf: &self.buf,
+            _ref: PhantomData,
+        }
+    }
 }
+
+impl<E, B, I> core::ops::Index<I> for Deque<E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    type Output = E;
+
+    #[inline]
+    fn index(&self, index: I) -> &E {
+        self.get(index).expect("out of bounds access")
+    }
+}
+
+impl<E, B, I> core::ops::IndexMut<I> for Deque<E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    #[inline]
+    fn index_mut(&mut self, index: I) -> &mut E {
+        self.get_mut(index).expect("out of bounds access")
+    }
+}
+
+impl<E, B, I> Drop for Deque<E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn drop(&mut self) {
+        let (front, back) = self.as_mut_slices();
+        let front_ptr = front.as_mut_ptr();
+        let back_ptr = back.as_mut_ptr();
+        unsafe {
+            core::ptr::slice_from_raw_parts_mut(front_ptr, front.len()).drop_in_place();
+            core::ptr::slice_from_raw_parts_mut(back_ptr, back.len()).drop_in_place();
+        }
+    }
+}
+
+impl<E, B, I> core::fmt::Debug for Deque<E, B, I>
+where
+    E: core::fmt::Debug,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let (front, back) = self.as_slices();
+        f.debug_list().entries(front).entries(back).finish()
+    }
+}
+
+impl<E, B, I> core::hash::Hash for Deque<E, B, I>
+where
+    E: core::hash::Hash,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.len().hash(state);
+        let (front, back) = self.as_slices();
+        core::hash::Hash::hash_slice(front, state);
+        core::hash::Hash::hash_slice(back, state);
+    }
+}
+
+impl<AE, AB, AI, BE, BB, BI> PartialEq<Deque<BE, BB, BI>> for Deque<AE, AB, AI>
+where
+    AE: PartialEq<BE>,
+    AB: ContiguousStorage<AE>,
+    BB: ContiguousStorage<BE>,
+    AI: Capacity,
+    BI: Capacity,
+{
+    fn eq(&self, other: &Deque<BE, BB, BI>) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+
+        let (self_front, self_back) = self.as_slices();
+        let (other_front, other_back) = other.as_slices();
+        if self_front.len() == other_front.len() {
+            self_front == other_front && self_back == other_back
+        } else if self_front.len() < other_front.len() {
+            let a = self_front.len();
+            let b = other_front.len() - a;
+            debug_assert_eq!(self_back[..b].len(), other_front[a..].len());
+            debug_assert_eq!(self_back[b..].len(), other_back.len());
+            self_front == &other_front[..a]
+                && &self_back[..b] == &other_front[a..]
+                && &self_back[b..] == other_back
+        } else {
+            let a = other_front.len();
+            let b = self_front.len() - a;
+            debug_assert_eq!(self_front[a..].len(), other_back[..b].len());
+            debug_assert_eq!(self_back.len(), other_back[b..].len());
+            &self_front[..a] == other_front
+                && &self_front[a..] == &other_back[..b]
+                && self_back == &other_back[b..]
+        }
+    }
+}
+
+impl<E, B, I> Eq for Deque<E, B, I>
+where
+    E: Eq,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+}
+
+impl<E, B, I, R> PartialEq<R> for Deque<E, B, I>
+where
+    E: PartialEq,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+    R: AsRef<[E]>,
+{
+    fn eq(&self, other: &R) -> bool {
+        let other = other.as_ref();
+        if self.len() != other.len() {
+            return false;
+        }
+
+        let (front, back) = self.as_slices();
+        let mid = front.len();
+        front == &other[..mid] && back == &other[mid..]
+    }
+}
+
+impl<E, AB, AI, BB, BI> PartialOrd<Deque<E, BB, BI>> for Deque<E, AB, AI>
+where
+    E: PartialOrd,
+    AB: ContiguousStorage<E>,
+    BB: ContiguousStorage<E>,
+    AI: Capacity,
+    BI: Capacity,
+{
+    fn partial_cmp(&self, other: &Deque<E, BB, BI>) -> Option<core::cmp::Ordering> {
+        self.iter().partial_cmp(other.iter())
+    }
+}
+
+impl<E, B, I> Ord for Deque<E, B, I>
+where
+    E: Ord,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.iter().cmp(other.iter())
+    }
+}
+
+impl<E, B, I> core::iter::Extend<E> for Deque<E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn extend<T: IntoIterator<Item = E>>(&mut self, iter: T) {
+        iter.into_iter().for_each(|item| self.push_back(item));
+    }
+}
+
+impl<'a, E, B, I> core::iter::Extend<&'a E> for Deque<E, B, I>
+where
+    E: 'a + Clone,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn extend<T: IntoIterator<Item = &'a E>>(&mut self, iter: T) {
+        iter.into_iter()
+            .for_each(|item| self.push_back(item.clone()));
+    }
+}
+
+/// An iterator over the elements of a deque.
+///
+/// This `struct` is created by the [`iter`](Deque::iter) method on [`Deque`].
+/// See its documentation for more.
+pub struct Iter<'a, E, B, I>
+where
+    E: 'a,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    front: I,
+    len: I,
+    buf: &'a B,
+    _ref: PhantomData<&'a E>,
+}
+
+impl<'a, E, B, I> core::fmt::Debug for Iter<'a, E, B, I>
+where
+    E: 'a + core::fmt::Debug,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let (front, back) = {
+            let front = self.front.into_usize();
+            let back = front + self.len.into_usize();
+
+            if back <= self.buf.capacity() {
+                unsafe {
+                    (
+                        core::slice::from_raw_parts(self.buf.get_ptr(front), self.len.into_usize()),
+                        &[][..],
+                    )
+                }
+            } else {
+                unsafe {
+                    (
+                        core::slice::from_raw_parts(
+                            self.buf.get_ptr(front),
+                            self.buf.capacity() - front,
+                        ),
+                        core::slice::from_raw_parts(
+                            self.buf.get_ptr(0),
+                            back - self.buf.capacity(),
+                        ),
+                    )
+                }
+            }
+        };
+
+        f.debug_tuple("Iter").field(&front).field(&back).finish()
+    }
+}
+
+impl<'a, E, B, I> Iterator for Iter<'a, E, B, I>
+where
+    E: 'a,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    type Item = &'a E;
+
+    #[inline]
+    fn next(&mut self) -> Option<&'a E> {
+        let len = self.len.into_usize();
+        if len == 0 {
+            return None;
+        }
+
+        let front = self.front.into_usize();
+        self.front = I::from_usize((front + 1) % self.buf.capacity());
+        self.len = I::from_usize(len - 1);
+        let result = unsafe { self.buf.get_ptr(front).as_ref() };
+        debug_assert!(result.is_some());
+        result
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.len.into_usize();
+        (len, Some(len))
+    }
+}
+
+impl<'a, E, B, I> DoubleEndedIterator for Iter<'a, E, B, I>
+where
+    E: 'a,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    #[inline]
+    fn next_back(&mut self) -> Option<&'a E> {
+        let len = self.len.into_usize();
+        if len == 0 {
+            return None;
+        }
+
+        let front = self.front.into_usize();
+        let idx = (front + len - 1) % self.buf.capacity();
+        self.len = I::from_usize(len - 1);
+        let result = unsafe { self.buf.get_ptr(idx).as_ref() };
+        debug_assert!(result.is_some());
+        result
+    }
+}
+
+impl<E, B: ContiguousStorage<E>, I: Capacity> ExactSizeIterator for Iter<'_, E, B, I> {}
+impl<E, B: ContiguousStorage<E>, I: Capacity> core::iter::FusedIterator for Iter<'_, E, B, I> {}
 
 #[cfg(test)]
 mod tests {
