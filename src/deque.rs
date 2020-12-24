@@ -998,6 +998,131 @@ where
             _ref: PhantomData,
         }
     }
+
+    /// Returns a front-to-back iterator that returns mutable references.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 4];
+    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// deque.push_back(5);
+    /// deque.push_back(3);
+    /// deque.push_back(4);
+    /// for num in deque.iter_mut() {
+    ///     *num = *num - 2;
+    /// }
+    /// assert_eq!(deque.make_contiguous(), &[3, 1, 2][..]);
+    /// ```
+    pub fn iter_mut(&mut self) -> IterMut<'_, E, B, I> {
+        IterMut {
+            front: self.front,
+            len: self.len,
+            buf: &mut self.buf,
+            _ref: PhantomData,
+        }
+    }
+
+    /// Creates an iterator that covers the specified range in the `Deque`.
+    ///
+    /// # Panics
+    /// Panics if the starting point is greater than the end point or if the
+    /// end point is greater than the length of the deque.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 8];
+    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// deque.extend(1..=5);
+    /// assert_eq!(deque.make_contiguous(), &[1, 2, 3, 4, 5][..]);
+    ///
+    /// let mut it = deque.range(2..4);
+    /// assert_eq!(it.next(), Some(&3));
+    /// assert_eq!(it.next(), Some(&4));
+    /// assert!(it.next().is_none());
+    /// ```
+    pub fn range<R: core::ops::RangeBounds<I>>(&self, range: R) -> Iter<'_, E, B, I> {
+        use core::ops::Bound;
+        let start = match range.start_bound() {
+            Bound::Included(x) => x.into_usize(),
+            Bound::Excluded(x) => x.into_usize().saturating_add(1),
+            Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(x) => x.into_usize().saturating_add(1),
+            Bound::Excluded(x) => x.into_usize(),
+            Bound::Unbounded => self.len(),
+        };
+
+        assert!(
+            start <= end,
+            "Deque::range Illegal range {} to {}",
+            start,
+            end
+        );
+        assert!(
+            end <= self.len(),
+            "Deque::range Range ends at {} but length is only {}",
+            end,
+            self.len()
+        );
+
+        Iter {
+            front: I::from_usize((self.front.into_usize() + start) % self.capacity()),
+            len: I::from_usize(end - start),
+            buf: &self.buf,
+            _ref: PhantomData,
+        }
+    }
+
+    /// Creates a mutable iterator that covers the specified range in the `Deque`.
+    ///
+    /// # Panics
+    /// Panics if the starting point is greater than the end point or if the
+    /// end point is greater than the length of the deque.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 8];
+    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// deque.extend(1..=5);
+    /// assert_eq!(deque.make_contiguous(), &[1, 2, 3, 4, 5][..]);
+    ///
+    /// deque.range_mut(2..4).for_each(|x| *x *= 2);
+    /// assert_eq!(deque.make_contiguous(), &[1, 2, 6, 8, 5][..]);
+    /// ```
+    pub fn range_mut<R: core::ops::RangeBounds<I>>(&mut self, range: R) -> IterMut<'_, E, B, I> {
+        use core::ops::Bound;
+        let start = match range.start_bound() {
+            Bound::Included(x) => x.into_usize(),
+            Bound::Excluded(x) => x.into_usize().saturating_add(1),
+            Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(x) => x.into_usize().saturating_add(1),
+            Bound::Excluded(x) => x.into_usize(),
+            Bound::Unbounded => self.len(),
+        };
+
+        assert!(
+            start <= end,
+            "Deque::range_mut Illegal range {} to {}",
+            start,
+            end
+        );
+        assert!(
+            end <= self.len(),
+            "Deque::range_mut Range ends at {} but length is only {}",
+            end,
+            self.len()
+        );
+
+        IterMut {
+            front: I::from_usize((self.front.into_usize() + start) % self.capacity()),
+            len: I::from_usize(end - start),
+            buf: &mut self.buf,
+            _ref: PhantomData,
+        }
+    }
 }
 
 impl<E, B, I> core::ops::Index<I> for Deque<E, B, I>
@@ -1284,6 +1409,115 @@ where
 
 impl<E, B: ContiguousStorage<E>, I: Capacity> ExactSizeIterator for Iter<'_, E, B, I> {}
 impl<E, B: ContiguousStorage<E>, I: Capacity> core::iter::FusedIterator for Iter<'_, E, B, I> {}
+
+/// A mutable iterator over the elements of a deque.
+///
+/// This `struct` is created by the [`iter_mut`](Deque::iter_mut) method on [`Deque`].
+/// See its documentation for more.
+pub struct IterMut<'a, E, B, I>
+where
+    E: 'a,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    front: I,
+    len: I,
+    buf: &'a mut B,
+    _ref: PhantomData<&'a mut E>,
+}
+
+impl<'a, E, B, I> core::fmt::Debug for IterMut<'a, E, B, I>
+where
+    E: 'a + core::fmt::Debug,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let (front, back) = {
+            let front = self.front.into_usize();
+            let back = front + self.len.into_usize();
+
+            if back <= self.buf.capacity() {
+                unsafe {
+                    (
+                        core::slice::from_raw_parts(self.buf.get_ptr(front), self.len.into_usize()),
+                        &[][..],
+                    )
+                }
+            } else {
+                unsafe {
+                    (
+                        core::slice::from_raw_parts(
+                            self.buf.get_ptr(front),
+                            self.buf.capacity() - front,
+                        ),
+                        core::slice::from_raw_parts(
+                            self.buf.get_ptr(0),
+                            back - self.buf.capacity(),
+                        ),
+                    )
+                }
+            }
+        };
+
+        f.debug_tuple("Iter").field(&front).field(&back).finish()
+    }
+}
+
+impl<'a, E, B, I> Iterator for IterMut<'a, E, B, I>
+where
+    E: 'a,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    type Item = &'a mut E;
+
+    #[inline]
+    fn next(&mut self) -> Option<&'a mut E> {
+        let len = self.len.into_usize();
+        if len == 0 {
+            return None;
+        }
+
+        let front = self.front.into_usize();
+        self.front = I::from_usize((front + 1) % self.buf.capacity());
+        self.len = I::from_usize(len - 1);
+        let result = unsafe { self.buf.get_mut_ptr(front).as_mut() };
+        debug_assert!(result.is_some());
+        result
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.len.into_usize();
+        (len, Some(len))
+    }
+}
+
+impl<'a, E, B, I> DoubleEndedIterator for IterMut<'a, E, B, I>
+where
+    E: 'a,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    #[inline]
+    fn next_back(&mut self) -> Option<&'a mut E> {
+        let len = self.len.into_usize();
+        if len == 0 {
+            return None;
+        }
+
+        let front = self.front.into_usize();
+        let idx = (front + len - 1) % self.buf.capacity();
+        self.len = I::from_usize(len - 1);
+        let result = unsafe { self.buf.get_mut_ptr(idx).as_mut() };
+        debug_assert!(result.is_some());
+        result
+    }
+}
+
+impl<E, B: ContiguousStorage<E>, I: Capacity> ExactSizeIterator for IterMut<'_, E, B, I> {}
+impl<E, B: ContiguousStorage<E>, I: Capacity> core::iter::FusedIterator for IterMut<'_, E, B, I> {}
 
 #[cfg(test)]
 mod tests {
