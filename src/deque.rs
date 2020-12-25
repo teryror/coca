@@ -1519,6 +1519,91 @@ where
 impl<E, B: ContiguousStorage<E>, I: Capacity> ExactSizeIterator for IterMut<'_, E, B, I> {}
 impl<E, B: ContiguousStorage<E>, I: Capacity> core::iter::FusedIterator for IterMut<'_, E, B, I> {}
 
+/// An owning iterator over the elements of a deque.
+///
+/// This `struct` is created by the [`into_iter`](Deque::into_iter) method on
+/// [`Deque`] (provided by the `IntoIterator` trait). See its documentation for
+/// more.
+pub struct IntoIter<E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    inner: Deque<E, B, I>,
+}
+
+impl<E, B, I> core::fmt::Debug for IntoIter<E, B, I>
+where
+    E: core::fmt::Debug,
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_tuple("IntoIterator").field(&self.inner).finish()
+    }
+}
+
+impl<E, B, I> Iterator for IntoIter<E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    type Item = E;
+
+    #[inline]
+    fn next(&mut self) -> Option<E> {
+        self.inner.pop_front()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.inner.len();
+        (len, Some(len))
+    }
+}
+
+impl<E, B, I> DoubleEndedIterator for IntoIter<E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    #[inline]
+    fn next_back(&mut self) -> Option<E> {
+        self.inner.pop_back()
+    }
+}
+
+impl<E, B: ContiguousStorage<E>, I: Capacity> ExactSizeIterator for IntoIter<E, B, I> {}
+impl<E, B: ContiguousStorage<E>, I: Capacity> core::iter::FusedIterator for IntoIter<E, B, I> {}
+
+impl<E, B: ContiguousStorage<E>, I: Capacity> IntoIterator for Deque<E, B, I> {
+    type Item = E;
+    type IntoIter = IntoIter<E, B, I>;
+
+    /// Converts the `Deque` into a front-to-back iterator yielding elements by value.
+    fn into_iter(self) -> IntoIter<E, B, I> {
+        IntoIter { inner: self }
+    }
+}
+
+impl<'a, E, B: ContiguousStorage<E>, I: Capacity> IntoIterator for &'a Deque<E, B, I> {
+    type Item = &'a E;
+    type IntoIter = Iter<'a, E, B, I>;
+
+    fn into_iter(self) -> Iter<'a, E, B, I> {
+        self.iter()
+    }
+}
+
+impl<'a, E, B: ContiguousStorage<E>, I: Capacity> IntoIterator for &'a mut Deque<E, B, I> {
+    type Item = &'a mut E;
+    type IntoIter = IterMut<'a, E, B, I>;
+
+    fn into_iter(self) -> IterMut<'a, E, B, I> {
+        self.iter_mut()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
