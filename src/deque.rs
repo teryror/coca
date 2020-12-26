@@ -928,12 +928,22 @@ where
             let slice = unsafe { core::slice::from_raw_parts_mut(ptr.add(front), self.len()) };
             (slice, &mut [])
         } else {
-            let ptr = self.buf.storage_mut().as_mut_ptr() as *mut E;
-            let fst =
-                unsafe { core::slice::from_raw_parts_mut(ptr.add(front), self.capacity() - front) };
-            let snd = unsafe {
-                core::slice::from_raw_parts_mut(ptr, self.len() - (self.capacity() - front))
+            let len = self.len();
+            let cap = self.capacity();
+
+            let storage = self.buf.storage_mut();
+            let (rest, fst) = storage.split_at_mut(front);
+            let (snd, _) = rest.split_at_mut(len - (cap - front));
+
+            let fst = unsafe {
+                let ptr = fst.as_mut_ptr() as *mut E;
+                core::slice::from_raw_parts_mut(ptr, fst.len())
             };
+            let snd = unsafe {
+                let ptr = snd.as_mut_ptr() as *mut E;
+                core::slice::from_raw_parts_mut(ptr, snd.len())
+            };
+
             (fst, snd)
         }
     }
@@ -1121,6 +1131,71 @@ where
             len: I::from_usize(end - start),
             buf: &mut self.buf,
             _ref: PhantomData,
+        }
+    }
+
+    /// Creates a draining iterator that removes the specified range in the
+    /// deque and yields the removed items.
+    ///
+    /// When the iterator **is** dropped, all elements in the range are removed
+    /// from the deque, even if the iterator was not fully consumed. If the
+    /// iterator **is not** dropped (with [`core::mem::forget`] for example),
+    /// it is unspecified how many elements are removed.
+    ///
+    /// # Panics
+    /// Panics if the starting point is greater than the end point or if the end
+    /// point is greater than the length of the deque.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 8];
+    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// deque.extend(1..=5);
+    ///
+    /// let mut drained = deque.drain(2..4);
+    /// assert_eq!(drained.next(), Some(3));
+    /// assert_eq!(drained.next(), Some(4));
+    /// assert!(drained.next().is_none());
+    ///
+    /// drop(drained);
+    /// assert_eq!(deque, [1, 2, 5]);
+    ///
+    /// // A full range clears the deque
+    /// deque.drain(..);
+    /// assert!(deque.is_empty());
+    /// ```
+    pub fn drain<R: core::ops::RangeBounds<I>>(&mut self, range: R) -> Drain<'_, E, B, I> {
+        use core::ops::Bound;
+        let start = match range.start_bound() {
+            Bound::Included(x) => x.into_usize(),
+            Bound::Excluded(x) => x.into_usize().saturating_add(1),
+            Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(x) => x.into_usize().saturating_add(1),
+            Bound::Excluded(x) => x.into_usize(),
+            Bound::Unbounded => self.len(),
+        };
+
+        assert!(
+            start <= end,
+            "Deque::drain Illegal range {} to {}",
+            start,
+            end
+        );
+        assert!(
+            end <= self.len(),
+            "Deque::drain Range ends at {} but length is only {}",
+            end,
+            self.len()
+        );
+
+        Drain {
+            parent: self,
+            target_start: start,
+            front_index: start,
+            back_index: end,
+            target_end: end,
         }
     }
 }
@@ -1604,6 +1679,214 @@ impl<'a, E, B: ContiguousStorage<E>, I: Capacity> IntoIterator for &'a mut Deque
     }
 }
 
+/// A draining iterator over the elements of a deque.
+///
+/// This `struct` is created by the [`drain`](Deque::drain) method on [`Deque`].
+/// See its documentation for more.
+pub struct Drain<'p, E, B, I>
+where
+    B: ContiguousStorage<E>,
+    I: Capacity,
+{
+    parent: &'p mut Deque<E, B, I>,
+    target_start: usize,
+    front_index: usize,
+    back_index: usize,
+    target_end: usize,
+}
+
+impl<E, B: ContiguousStorage<E>, I: Capacity> core::fmt::Debug for Drain<'_, E, B, I>
+where
+    E: core::fmt::Debug,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_tuple("Drain")
+            .field(&self.target_start)
+            .field(&self.target_end)
+            .field(
+                &self
+                    .parent
+                    .range(I::from_usize(self.front_index)..I::from_usize(self.back_index)),
+            )
+            .finish()
+    }
+}
+
+impl<E, B: ContiguousStorage<E>, I: Capacity> Iterator for Drain<'_, E, B, I> {
+    type Item = E;
+
+    #[inline]
+    fn next(&mut self) -> Option<E> {
+        if self.front_index == self.back_index {
+            return None;
+        }
+
+        let idx = (self.parent.front.into_usize() + self.front_index) % self.parent.capacity();
+        self.front_index += 1;
+
+        unsafe { Some(self.parent.buf.get_ptr(idx).read()) }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.back_index - self.front_index;
+        (len, Some(len))
+    }
+}
+
+impl<E, B: ContiguousStorage<E>, I: Capacity> DoubleEndedIterator for Drain<'_, E, B, I> {
+    #[inline]
+    fn next_back(&mut self) -> Option<E> {
+        if self.back_index == self.front_index {
+            return None;
+        }
+
+        let idx = (self.parent.front.into_usize() + self.back_index - 1) % self.parent.capacity();
+        self.back_index -= 1;
+
+        unsafe { Some(self.parent.buf.get_ptr(idx).read()) }
+    }
+}
+
+impl<E, B: ContiguousStorage<E>, I: Capacity> ExactSizeIterator for Drain<'_, E, B, I> {}
+impl<E, B: ContiguousStorage<E>, I: Capacity> core::iter::FusedIterator for Drain<'_, E, B, I> {}
+
+impl<E, B: ContiguousStorage<E>, I: Capacity> Drop for Drain<'_, E, B, I> {
+    fn drop(&mut self) {
+        // 1. drop any items that remain untaken
+        let cap = self.parent.capacity();
+        let front = self.parent.front.into_usize() + self.front_index;
+        let back = self.parent.front.into_usize() + self.back_index;
+        debug_assert!(back >= front);
+
+        if front >= cap || back <= cap {
+            // remaining items are contiguous, drop as single slice
+            let ptr = self.parent.buf.get_mut_ptr(front % cap);
+            unsafe { core::ptr::slice_from_raw_parts_mut(ptr, back - front).drop_in_place() };
+        } else {
+            // remaining items are discontiguous, account for wrapping
+            let ptr = self.parent.buf.get_mut_ptr(front);
+            let len = cap - front;
+            unsafe { core::ptr::slice_from_raw_parts_mut(ptr, len).drop_in_place() };
+
+            let ptr = self.parent.buf.get_mut_ptr(0);
+            let len = (back - front) - len;
+            unsafe { core::ptr::slice_from_raw_parts_mut(ptr, len).drop_in_place() };
+        }
+
+        // 2. choose which portion of the unaffected items to shift over to close the gap
+        let front = self.parent.front.into_usize();
+        let back = front + self.parent.len();
+        let target_start = front + self.target_start;
+        let target_end = front + self.target_end;
+        let target_wrapped = target_start <= cap && cap <= target_end;
+
+        let distance_to_front = self.target_start;
+        let distance_to_back = self.parent.len() - self.target_end;
+        let move_front = distance_to_front < distance_to_back;
+        let source_wrapped = if move_front {
+            front < cap && cap < target_start
+        } else {
+            target_end < cap && cap < back
+        };
+
+        match (move_front, target_wrapped, source_wrapped) {
+            (false, false, false) => {
+                // wrap point is outside relevant range, move back in one copy
+                let src = self.parent.buf.get_ptr(target_end % cap);
+                let dst = self.parent.buf.get_mut_ptr(target_start % cap);
+                unsafe { core::ptr::copy(src, dst, distance_to_back) };
+            }
+            (true, false, false) => {
+                // wrap point is outside relevant range, move front in one copy
+                let new_front = target_end - distance_to_front;
+                self.parent.front = I::from_usize(new_front);
+
+                let src = self.parent.buf.get_ptr(front);
+                let dst = self.parent.buf.get_mut_ptr(new_front);
+                unsafe { core::ptr::copy(src, dst, distance_to_front) };
+            }
+            (false, true, false) => {
+                // wrap point is inside target range, move back in two copies
+                let fst_count = usize::min(cap - target_start, distance_to_back);
+                let src = self.parent.buf.get_ptr(target_end % cap);
+                let dst = self.parent.buf.get_mut_ptr(target_start % cap);
+                unsafe { core::ptr::copy(src, dst, fst_count) };
+
+                let src = self.parent.buf.get_ptr((target_end + fst_count) % cap);
+                let dst = self
+                    .parent
+                    .buf
+                    .get_mut_ptr((target_start + fst_count) % cap);
+                unsafe { core::ptr::copy(src, dst, distance_to_back - fst_count) };
+            }
+            (true, true, false) => {
+                // wrap point is inside target range, move front in two copies
+                let fst_count = usize::min(target_end - cap, distance_to_front);
+                let src = self.parent.buf.get_ptr(target_start - fst_count);
+                let dst = self.parent.buf.get_mut_ptr((target_end - fst_count) % cap);
+                unsafe { core::ptr::copy(src, dst, fst_count) };
+
+                let new_front = (target_end - distance_to_front) % cap;
+                self.parent.front = I::from_usize(new_front);
+
+                let src = self.parent.buf.get_ptr(front);
+                let dst = self.parent.buf.get_mut_ptr(new_front);
+                unsafe { core::ptr::copy(src, dst, distance_to_front - fst_count) };
+            }
+            (false, false, true) => {
+                // wrap point is inside source range, move back in three copies
+                let fst_count = cap - target_end;
+                let src = self.parent.buf.get_ptr(target_end);
+                let dst = self.parent.buf.get_mut_ptr(target_start);
+                unsafe { core::ptr::copy(src, dst, fst_count) };
+
+                let remaining = distance_to_back - fst_count;
+                let snd_count = usize::min(cap - (target_start + fst_count), remaining);
+                let src = self.parent.buf.get_ptr(0);
+                let dst = self.parent.buf.get_mut_ptr(target_start + fst_count);
+                unsafe { core::ptr::copy(src, dst, snd_count) };
+
+                let remaining = remaining - snd_count;
+                let src = self.parent.buf.get_ptr(snd_count);
+                let dst = self.parent.buf.get_mut_ptr(0);
+                unsafe { core::ptr::copy(src, dst, remaining) };
+            }
+            (true, false, true) => {
+                // wrap point is inside source range, move front in three copies
+                let fst_count = target_start - cap;
+                let src = self.parent.buf.get_ptr(0);
+                let dst = self.parent.buf.get_mut_ptr(target_end - cap - fst_count);
+                unsafe { core::ptr::copy(src, dst, fst_count) };
+
+                let remaining = distance_to_front - fst_count;
+                let snd_count = usize::min(target_end - cap - fst_count, remaining);
+                let src = self.parent.buf.get_ptr(cap - snd_count);
+                let dst = self
+                    .parent
+                    .buf
+                    .get_mut_ptr(target_end - cap - (fst_count + snd_count));
+                unsafe { core::ptr::copy(src, dst, snd_count) };
+
+                let new_front = (front + (target_end - target_start)) % cap;
+                self.parent.front = I::from_usize(new_front);
+
+                let remaining = remaining - snd_count;
+                let src = self.parent.buf.get_ptr(front);
+                let dst = self.parent.buf.get_mut_ptr(new_front);
+                unsafe { core::ptr::copy(src, dst, remaining) };
+            }
+            (_, true, true) => {
+                // wrap point cannot be in both the source and target ranges!
+                unreachable!();
+            }
+        }
+
+        let new_len = self.parent.len() - (target_end - target_start);
+        self.parent.len = I::from_usize(new_len);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1688,5 +1971,64 @@ mod tests {
         deque.push_back(6);
         assert_eq!(deque.remove(1), Some(3));
         assert_eq!(deque.as_slices(), (&[4, 1, 5][..], &[2, 6][..]));
+    }
+
+    #[test]
+    fn all_drain_cases() {
+        use core::cell::Cell;
+
+        #[derive(Clone)]
+        struct Droppable<'a> {
+            value: usize,
+            counter: &'a Cell<usize>,
+        }
+
+        impl Drop for Droppable<'_> {
+            fn drop(&mut self) {
+                let count = self.counter.get();
+                self.counter.set(count + 1);
+            }
+        }
+
+        for len in 1..=8 {
+            for offset in 0..=len {
+                for end in 1..=len {
+                    for start in 0..end {
+                        let drop_count = Cell::new(0);
+                        let mut backing_region = [
+                            core::mem::MaybeUninit::<Droppable>::uninit(),
+                            core::mem::MaybeUninit::<Droppable>::uninit(),
+                            core::mem::MaybeUninit::<Droppable>::uninit(),
+                            core::mem::MaybeUninit::<Droppable>::uninit(),
+                            core::mem::MaybeUninit::<Droppable>::uninit(),
+                            core::mem::MaybeUninit::<Droppable>::uninit(),
+                            core::mem::MaybeUninit::<Droppable>::uninit(),
+                            core::mem::MaybeUninit::<Droppable>::uninit(),
+                        ];
+                        let mut deque = SliceDeque::<Droppable>::from(&mut backing_region[..]);
+
+                        for x in 0..offset {
+                            deque.push_front(Droppable {
+                                value: offset - x,
+                                counter: &drop_count,
+                            });
+                        }
+                        for x in offset..len {
+                            deque.push_back(Droppable {
+                                value: x,
+                                counter: &drop_count,
+                            });
+                        }
+
+                        deque.drain(start..end);
+                        assert_eq!(deque.len(), len - (end - start));
+                        assert_eq!(drop_count.get(), end - start);
+
+                        drop(deque);
+                        assert_eq!(drop_count.get(), len);
+                    }
+                }
+            }
+        }
     }
 }
