@@ -7,7 +7,7 @@ dead-simple to predict - but it also means insertions can easily fail, so you'll
 need proof you can't break the limit, or a graceful recovery path, which is good
 practice in memory-constrained environments anyway.
 
-Currently, three main components are provided:
+Currently, four main components are provided:
 
 - `Arena`, a bump-/stack-allocator, plus `Box<'a, T>` the corresponding smart
   pointer,
