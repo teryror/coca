@@ -87,6 +87,59 @@ where
     B: ContiguousStorage<E>,
     I: Capacity,
 {
+    /// Decomposes a `Deque<E, B, I>` into its raw parts.
+    ///
+    /// Returns the raw storage type, the front offset and the length of the
+    /// deque in elements. These are the same arguments in the same order as
+    /// the arguments to [`from_raw_parts`](Deque::from_raw_parts).
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 3];
+    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// deque.push_front(1);
+    /// deque.push_back(2);
+    /// let (buf, front, len) = deque.into_raw_parts();
+    /// unsafe {
+    ///     assert_eq!(buf[2].assume_init(), 1);
+    ///     assert_eq!(buf[0].assume_init(), 2);
+    ///     // buf[1] is uninitialized
+    /// }
+    /// ```
+    pub fn into_raw_parts(self) -> (B, I, I) {
+        let ptr = &self.buf as *const B;
+        let result = (unsafe { ptr.read() }, self.front, self.len);
+        core::mem::forget(self);
+        result
+    }
+
+    /// Creates a `Deque<E, B, I>` directly from its raw parts.
+    ///
+    /// # Safety
+    /// Callers must ensure that the first `length` values after `front`
+    /// (modulo `buf.capacity()`) are initialized, and that `front` and
+    /// `length` are both less than or equal to `buf.capacity()`.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 3];
+    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// deque.push_front(1);
+    /// deque.push_back(2);
+    ///
+    /// let (buf, front, len) = deque.into_raw_parts();
+    /// let deque = unsafe { coca::SliceDeque::from_raw_parts(buf, front, len) };
+    /// assert_eq!(deque, &[1, 2]);
+    /// ```
+    pub unsafe fn from_raw_parts(buf: B, front: I, length: I) -> Self {
+        Deque {
+            front,
+            len: length,
+            buf,
+            elem: PhantomData,
+        }
+    }
+
     /// Returns the number of elements the deque can hold.
     #[inline]
     pub fn capacity(&self) -> usize {
