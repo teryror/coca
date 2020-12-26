@@ -1900,6 +1900,130 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> Drop for Drain<'_, E, B, I> {
     }
 }
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+/// A deque using a heap-allocated slice for storage.
+///
+/// Note that this still has a fixed capacity, and will never reallocate.
+///
+/// # Examples
+/// ```
+/// let mut deque = coca::AllocDeque::<char>::with_capacity(4);
+/// deque.push_front('b');
+/// deque.push_front('a');
+/// deque.push_back('c');
+/// deque.push_back('d');
+/// assert_eq!(deque, &['a', 'b', 'c', 'd']);
+/// assert_eq!(deque.try_push_back('e'), Err('e'));
+/// ```
+pub type AllocDeque<E, I = usize> = Deque<E, crate::storage::HeapStorage<E>, I>;
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+impl<E: Copy, I: Capacity> AllocDeque<E, I> {
+    /// Creates an empty `AllocDeque` with the specified capacity.
+    ///
+    /// # Panics
+    /// Panics if `capacity` cannot be represented by a `usize`.
+    pub fn with_capacity(capacity: I) -> Self {
+        Deque {
+            front: I::from_usize(0),
+            len: I::from_usize(0),
+            buf: alloc::vec![core::mem::MaybeUninit::uninit(); capacity.into_usize()]
+                .into_boxed_slice(),
+            elem: PhantomData,
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+impl<E: Copy, I: Capacity> Clone for AllocDeque<E, I> {
+    fn clone(&self) -> Self {
+        let mut result = Self::with_capacity(I::from_usize(self.capacity()));
+        result.extend(self.iter().cloned());
+        result
+    }
+}
+
+/// A deque using an inline array for storage.
+///
+/// # Examples
+/// ```
+/// let mut deque = coca::ArrayDeque::<char, 4>::new();
+/// deque.push_front('b');
+/// deque.push_front('a');
+/// deque.push_back('c');
+/// deque.push_back('d');
+/// assert_eq!(deque, &['a', 'b', 'c', 'd']);
+/// assert_eq!(deque.try_push_back('e'), Err('e'));
+/// ```
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+pub type ArrayDeque<E, const C: usize> = Deque<E, crate::storage::InlineStorage<E, C>, usize>;
+
+/// A deque using an inline array for storage, generic over the index type.
+///
+/// # Examples
+/// ```
+/// let mut deque = coca::TiArrayDeque::<char, u8, 4>::new();
+/// deque.push_front('a');
+/// assert_eq!(deque[0u8], 'a');
+/// ```
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+pub type TiArrayDeque<E, I, const C: usize> = Deque<E, crate::storage::InlineStorage<E, C>, I>;
+
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+impl<E, I: Capacity, const C: usize> Deque<E, [core::mem::MaybeUninit<E>; C], I> {
+    /// Constructs a new deque backed by an inline array.
+    ///
+    /// # Panics
+    /// Panics if `C` cannot be represented as a value of type `I`.
+    ///
+    /// # Examples
+    /// ```
+    /// let deque = coca::ArrayDeque::<u32, 7>::new();
+    /// assert_eq!(deque.len(), 0);
+    /// assert_eq!(deque.capacity(), 7);
+    /// ```
+    #[inline]
+    pub fn new() -> Self {
+        I::from_usize(C);
+
+        Deque {
+            front: I::from_usize(0),
+            len: I::from_usize(0),
+            buf: unsafe { core::mem::MaybeUninit::uninit().assume_init() },
+            elem: PhantomData,
+        }
+    }
+}
+
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+impl<E, I: Capacity, const C: usize> Default for Deque<E, [core::mem::MaybeUninit<E>; C], I> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+impl<E: Clone, I: Capacity, const C: usize> Clone for Deque<E, [core::mem::MaybeUninit<E>; C], I> {
+    fn clone(&self) -> Self {
+        let mut ret = Self::new();
+        ret.extend(self.iter().cloned());
+        ret
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        self.clear();
+        self.extend(source.iter().cloned());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

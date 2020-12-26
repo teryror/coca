@@ -41,7 +41,13 @@ pub use crate::binary_heap::{ArenaHeap, SliceHeap};
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub use crate::binary_heap::{ArrayHeap, TiArrayHeap};
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+pub use crate::deque::AllocDeque;
 pub use crate::deque::{ArenaDeque, SliceDeque};
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+pub use crate::deque::{ArrayDeque, TiArrayDeque};
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
