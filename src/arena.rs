@@ -57,9 +57,9 @@
 //! your target platform's pointer size and the alignment of the passed buffer).
 //! This does not apply to creating sub-arenas.
 
-use crate::binary_heap::ArenaHeap;
 use crate::storage::Capacity;
 use crate::vec::ArenaVec;
+use crate::{binary_heap::ArenaHeap, ArenaDeque};
 
 use core::alloc::Layout;
 use core::cmp::Ordering;
@@ -905,6 +905,54 @@ impl<'src> Arena<'src> {
     /// ```
     pub fn try_heap<T: Ord, I: Capacity>(&mut self, capacity: I) -> Option<ArenaHeap<'src, T, I>> {
         Some(ArenaHeap::from(
+            self.try_reserve_array(capacity.into_usize())?,
+        ))
+    }
+
+    /// Constructs a [`ArenaDeque`] with the given capacity.
+    ///
+    /// # Panics
+    /// Panics if the specified capacity cannot be represented by a `usize`, or
+    /// if the remaining space in the arena is insufficient. See
+    /// [`try_deque`](Arena::try_deque) for a checked version.
+    #[track_caller]
+    pub fn deque<T, I: Capacity>(&mut self, capacity: I) -> ArenaDeque<'src, T, I> {
+        self.try_deque(capacity)
+            .expect("unexpected allocation failure in `deque`")
+    }
+
+    /// Constructs a new [`ArenaDeque`] with the given capacity.
+    ///
+    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    ///
+    /// # Panics
+    /// Panics if the specified capacity cannot be represented by a `usize`.
+    ///
+    /// # Examples
+    /// ```
+    /// use coca::Arena;
+    /// use core::mem::MaybeUninit;
+    ///
+    /// # fn test() -> Option<()> {
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from(&mut backing_region[..]);
+    ///
+    /// let mut deque = arena.try_deque::<i64, usize>(100)?;
+    /// assert!(arena.try_deque::<i64, usize>(100).is_none());
+    ///
+    /// assert_eq!(deque.len(), 0);
+    /// assert_eq!(deque.capacity(), 100);
+    ///
+    /// for x in 1..=100 { deque.push_back(x) }
+    /// for x in 1..=100 {
+    ///     assert_eq!(deque.pop_front(), Some(x));
+    /// }
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
+    /// ```
+    pub fn try_deque<T, I: Capacity>(&mut self, capacity: I) -> Option<ArenaDeque<'src, T, I>> {
+        Some(ArenaDeque::from(
             self.try_reserve_array(capacity.into_usize())?,
         ))
     }

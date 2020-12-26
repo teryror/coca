@@ -43,6 +43,8 @@ where
 /// ```
 pub type SliceDeque<'a, E, I = usize> = Deque<E, crate::storage::SliceStorage<'a, E>, I>;
 /// A double-ended queue using an arena-allocated slice for storage.
+///
+/// See [`Arena::try_deque`](crate::Arena::try_deque) for example usage.
 pub type ArenaDeque<'a, E, I = usize> = Deque<E, crate::storage::ArenaStorage<'a, E>, I>;
 
 impl<E, B, I> From<B> for Deque<E, B, I>
