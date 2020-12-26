@@ -18,6 +18,13 @@ use crate::vec::Vec;
 /// efficient sorting, you can use [`make_contiguous`](Deque::make_contiguous).
 /// It rotates the `Deque` so that its elements do not wrap, and returns a
 /// mutable slice to the now contiguous element sequence.
+///
+/// `Deque` is designed to work with any capacity between 2 and `usize::max_value() / 2`
+/// (inclusive). As such, almost all indexing operations are implemented as
+/// `storage[(offset + index) % capacity]`; you may therefore observe disproportionate
+/// performance benefits when the capacity is known at compile time, especially
+/// with powers of 2, which allow this expression to be optimized to
+/// `storage[(offset + index) & (CAPACITY - 1)]`.
 pub struct Deque<E, B, I>
 where
     B: ContiguousStorage<E>,

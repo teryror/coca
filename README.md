@@ -14,7 +14,8 @@ Currently, three main components are provided:
 - `Vec`, a bounded, growable array, generic over not only the element type, but
   also the underlying storage type ([as in this recent proposal][generic-vec])
   and the index type (inspired by [`typed-index-collections`][ticollections]),
-- `BinaryHeap`, a priority queue implemented on top of `Vec`.
+- `BinaryHeap`, a priority queue implemented on top of `Vec`,
+- `Deque`, a double-ended queue implemented with a ring buffer.
 
   [generic-vec]: https://internals.rust-lang.org/t/is-custom-allocators-the-right-abstraction/13460
   [ticollections]: https://crates.io/crates/typed-index-collections
@@ -24,8 +25,6 @@ particular order):
 
 - A [`slotmap`][slotmap]-style pool-allocator, as well as a dense pool optimized
   for iteration speed, as opposed to random access,
-- a deque (double-ended queue, or ringbuffer) implementation, with similar
-  generic parameters as `Vec`,
 - ordered and unordered map and set implementations.
 
   [slotmap]: https://crates.io/crates/slotmap
