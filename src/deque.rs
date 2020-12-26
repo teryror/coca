@@ -6,6 +6,7 @@
 use core::marker::PhantomData;
 
 use crate::storage::{Capacity, ContiguousStorage};
+use crate::vec::Vec;
 
 /// A double-ended queue implemented with a ring buffer.
 ///
@@ -54,6 +55,18 @@ where
         Deque {
             front: I::from_usize(0),
             len: I::from_usize(0),
+            buf,
+            elem: PhantomData,
+        }
+    }
+}
+
+impl<E, B: ContiguousStorage<E>, I: Capacity> From<Vec<E, B, I>> for Deque<E, B, I> {
+    fn from(vec: Vec<E, B, I>) -> Self {
+        let (buf, len) = vec.into_raw_parts();
+        Deque {
+            front: I::from_usize(0),
+            len,
             buf,
             elem: PhantomData,
         }

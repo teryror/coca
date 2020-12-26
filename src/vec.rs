@@ -102,6 +102,57 @@ where
     B: ContiguousStorage<E>,
     I: Capacity,
 {
+    /// Decomposes a `Vec<E, B, I>` into its raw parts.
+    ///
+    /// Returns the raw storage type and the length of the vector in elements.
+    /// These are the same arguments in the same order as the arguments to
+    /// [`from_raw_parts`](Vec::from_raw_parts).
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// vec.extend(&[1, 2, 3]);
+    ///
+    /// let (slice, len) = vec.into_raw_parts();
+    /// unsafe {
+    ///     assert_eq!(slice[0].assume_init(), 1);
+    ///     assert_eq!(slice[1].assume_init(), 2);
+    ///     assert_eq!(slice[2].assume_init(), 3);
+    ///     // other elements are uninitialized
+    /// }
+    /// ```
+    pub fn into_raw_parts(self) -> (B, I) {
+        let ptr = (&self.buf) as *const B;
+        let result = (unsafe { ptr.read() }, self.len);
+        core::mem::forget(self);
+        result
+    }
+
+    /// Creates a `Vec<E, B, I>` directly from its raw parts.
+    ///
+    /// # Safety
+    /// Callers must ensure that values stored in `buf` at all positions less
+    /// than `length` are initialized, and that `length` is less than or equal
+    /// to `buf.capacity()`.
+    ///
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// vec.extend(&[1, 2, 3]);
+    ///
+    /// let (buf, length) = vec.into_raw_parts();
+    /// let vec = unsafe { coca::SliceVec::<u32>::from_raw_parts(buf, length) };
+    /// assert_eq!(vec.as_slice(), &[1, 2, 3]);
+    /// ```
+    pub unsafe fn from_raw_parts(buf: B, length: I) -> Self {
+        Vec {
+            buf,
+            len: length,
+            elem: PhantomData,
+        }
+    }
+
     /// Returns the number of elements the vector can hold.
     #[inline]
     pub fn capacity(&self) -> usize {
