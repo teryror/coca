@@ -162,17 +162,17 @@ macro_rules! index_type {
             core::cmp::Ord)]
         $v struct $name($repr);
 
-        impl $crate::contiguous_storage::Capacity for $name {
+        unsafe impl $crate::storage::Capacity for $name {
             #[inline]
             #[track_caller]
             fn from_usize(i: usize) -> Self {
-                Self(<$repr as $crate::contiguous_storage::Capacity>::from_usize(i))
+                Self(<$repr as $crate::storage::Capacity>::from_usize(i))
             }
 
             #[inline]
             #[track_caller]
             fn into_usize(&self) -> usize {
-                <$repr as $crate::contiguous_storage::Capacity>::into_usize(&self.0)
+                <$repr as $crate::storage::Capacity>::into_usize(&self.0)
             }
         }
     }
