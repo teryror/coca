@@ -162,25 +162,25 @@ where
     /// Returns the number of elements in the vector, also referred to as its 'length'.
     #[inline]
     pub fn len(&self) -> usize {
-        self.len.into_usize()
+        self.len.as_usize()
     }
 
     #[inline]
     fn set_len(&mut self, new_len: I) {
-        debug_assert!(new_len.into_usize() <= self.capacity());
+        debug_assert!(new_len.as_usize() <= self.capacity());
         self.len = new_len;
     }
 
     /// Returns `true` if the vector contains no elements.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.len.into_usize() == 0
+        self.len.as_usize() == 0
     }
 
     /// Returns `true` if the vector contains the maximum number of elements.
     #[inline]
     pub fn is_full(&self) -> bool {
-        self.len.into_usize() == self.buf.capacity()
+        self.len.as_usize() == self.buf.capacity()
     }
 
     /// Removes the last element from the vector and returns it, or [`None`] if it is empty.
@@ -232,7 +232,7 @@ where
     /// ```
     #[inline]
     pub fn get(&self, index: I) -> Option<&E> {
-        let index = index.into_usize();
+        let index = index.as_usize();
         if self.len() <= index {
             return None;
         }
@@ -244,7 +244,7 @@ where
     /// [`None`] if the index is out of bounds.
     #[inline]
     pub fn get_mut(&mut self, index: I) -> Option<&mut E> {
-        let index = index.into_usize();
+        let index = index.as_usize();
         if self.len() <= index {
             return None;
         }
@@ -312,8 +312,8 @@ where
     /// assert_eq!(vec, &[1, 2][..]);
     /// ```
     pub fn truncate(&mut self, len: I) {
-        let new_len = len.into_usize();
-        let old_len = self.len.into_usize();
+        let new_len = len.as_usize();
+        let old_len = self.len.as_usize();
 
         if new_len >= old_len {
             return;
@@ -350,8 +350,8 @@ where
     /// ```
     #[inline]
     pub fn swap(&mut self, fst: I, snd: I) {
-        let fst = fst.into_usize();
-        let snd = snd.into_usize();
+        let fst = fst.as_usize();
+        let snd = snd.as_usize();
         self.as_mut_slice().swap(fst, snd);
     }
 
@@ -383,8 +383,8 @@ where
             );
         }
 
-        let idx = index.into_usize();
-        let len = self.len.into_usize();
+        let idx = index.as_usize();
+        let len = self.len.as_usize();
         if idx >= len {
             assert_failed(idx, len);
         }
@@ -448,8 +448,8 @@ where
             return Err(element);
         }
 
-        let idx = index.into_usize();
-        let len = self.len.into_usize();
+        let idx = index.as_usize();
+        let len = self.len.as_usize();
         if idx > len {
             assert_failed(idx, len);
         }
@@ -489,8 +489,8 @@ where
             );
         }
 
-        let idx = index.into_usize();
-        let len = self.len.into_usize();
+        let idx = index.as_usize();
+        let len = self.len.as_usize();
         if idx >= len {
             assert_failed(idx, len);
         }
@@ -521,8 +521,8 @@ where
             panic!("removal index (is {}) should be < len (is {})", idx, len);
         }
 
-        let idx = index.into_usize();
-        let len = self.len.into_usize();
+        let idx = index.as_usize();
+        let len = self.len.as_usize();
         if idx >= len {
             assert_failed(idx, len);
         }
@@ -570,7 +570,7 @@ where
     where
         F: FnMut(&E) -> bool,
     {
-        let len = self.len.into_usize();
+        let len = self.len.as_usize();
         let mut del = 0;
         unsafe {
             for idx in 0..len {
@@ -611,16 +611,16 @@ where
     /// drop(iter);
     /// assert_eq!(vec, &[1, 4, 5][..]);
     /// ```
-    pub fn drain<'a, R: RangeBounds<I>>(&'a mut self, range: R) -> Drain<'a, E, B, I> {
+    pub fn drain<R: RangeBounds<I>>(&mut self, range: R) -> Drain<'_, E, B, I> {
         use core::ops::Bound;
         let start = match range.start_bound() {
-            Bound::Included(x) => x.into_usize(),
-            Bound::Excluded(x) => x.into_usize().saturating_add(1),
+            Bound::Included(x) => x.as_usize(),
+            Bound::Excluded(x) => x.as_usize().saturating_add(1),
             Bound::Unbounded => 0,
         };
         let end = match range.end_bound() {
-            Bound::Included(x) => x.into_usize().saturating_add(1),
-            Bound::Excluded(x) => x.into_usize(),
+            Bound::Included(x) => x.as_usize().saturating_add(1),
+            Bound::Excluded(x) => x.as_usize(),
             Bound::Unbounded => self.len(),
         };
         assert!(
@@ -654,7 +654,7 @@ where
     fn deref(&self) -> &[E] {
         unsafe {
             let ptr = self.buf.storage().as_ptr() as *const E;
-            core::slice::from_raw_parts(ptr, self.len.into_usize())
+            core::slice::from_raw_parts(ptr, self.len.as_usize())
         }
     }
 }
@@ -667,7 +667,7 @@ where
     fn deref_mut(&mut self) -> &mut [E] {
         unsafe {
             let ptr = self.buf.storage_mut().as_mut_ptr() as *mut E;
-            core::slice::from_raw_parts_mut(ptr, self.len.into_usize())
+            core::slice::from_raw_parts_mut(ptr, self.len.as_usize())
         }
     }
 }
@@ -727,12 +727,12 @@ macro_rules! _impl_idx_range {
     };
 }
 
-_impl_idx_range! { s, index: core::ops::Range<I>, index.start.into_usize(), index.end.into_usize() }
-_impl_idx_range! { s, index: core::ops::RangeFrom<I>, index.start.into_usize(), s.len() }
+_impl_idx_range! { s, index: core::ops::Range<I>, index.start.as_usize(), index.end.as_usize() }
+_impl_idx_range! { s, index: core::ops::RangeFrom<I>, index.start.as_usize(), s.len() }
 _impl_idx_range! { s, index: core::ops::RangeFull, 0, s.len() }
-_impl_idx_range! { s, index: core::ops::RangeInclusive<I>, index.start().into_usize(), index.end().into_usize().saturating_add(1) }
-_impl_idx_range! { s, index: core::ops::RangeTo<I>, 0, index.end.into_usize() }
-_impl_idx_range! { s, index: core::ops::RangeToInclusive<I>, 0, index.end.into_usize().saturating_add(1) }
+_impl_idx_range! { s, index: core::ops::RangeInclusive<I>, index.start().as_usize(), index.end().as_usize().saturating_add(1) }
+_impl_idx_range! { s, index: core::ops::RangeTo<I>, 0, index.end.as_usize() }
+_impl_idx_range! { s, index: core::ops::RangeToInclusive<I>, 0, index.end.as_usize().saturating_add(1) }
 
 impl<E, B, I> core::convert::AsRef<[E]> for Vec<E, B, I>
 where
@@ -942,14 +942,14 @@ where
     type Item = E;
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let size = self.end.into_usize() - self.start.into_usize();
+        let size = self.end.as_usize() - self.start.as_usize();
         (size, Some(size))
     }
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let start = self.start.into_usize();
-        let end = self.end.into_usize();
+        let start = self.start.as_usize();
+        let end = self.end.as_usize();
         if start >= end {
             return None;
         }
@@ -968,8 +968,8 @@ where
 {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
-        let start = self.start.into_usize();
-        let end = self.end.into_usize();
+        let start = self.start.as_usize();
+        let end = self.end.as_usize();
         if start >= end {
             return None;
         }
@@ -1167,7 +1167,7 @@ where
     pub fn with_capacity(capacity: I) -> Self {
         Vec {
             len: I::from_usize(0),
-            buf: alloc::vec![MaybeUninit::uninit(); capacity.into_usize()].into_boxed_slice(),
+            buf: alloc::vec![MaybeUninit::uninit(); capacity.as_usize()].into_boxed_slice(),
             elem: PhantomData,
         }
     }
@@ -1183,7 +1183,7 @@ where
     fn clone(&self) -> Self {
         let mut result = Self::with_capacity(I::from_usize(self.capacity()));
         for item in self.iter() {
-            result.push(item.clone());
+            result.push(*item);
         }
         result
     }

@@ -44,7 +44,7 @@ fn generate_icosphere<'a>(arena: &mut Arena<'a>, subdivision_frequency: u32) -> 
         vertices: &mut ArenaVec<'_, Vertex, VertexID>,
         cache: &mut ArenaVec<'_, (VertexID, VertexID, VertexID), u32>,
     ) -> VertexID {
-        let (idx_a, idx_b) = if a.into_usize() < b.into_usize() {
+        let (idx_a, idx_b) = if a.as_usize() < b.as_usize() {
             (a, b)
         } else {
             (b, a)
@@ -179,9 +179,9 @@ fn main() {
 
     let mut neighbour_counts = arena.array(0u32, icosphere.vertices.len());
     for tri in icosphere.faces {
-        neighbour_counts[tri.0.into_usize()] += 1;
-        neighbour_counts[tri.1.into_usize()] += 1;
-        neighbour_counts[tri.2.into_usize()] += 1;
+        neighbour_counts[tri.0.as_usize()] += 1;
+        neighbour_counts[tri.1.as_usize()] += 1;
+        neighbour_counts[tri.2.as_usize()] += 1;
     }
 
     // 2. check the distribution of numbers-of-neighbours

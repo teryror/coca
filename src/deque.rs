@@ -149,19 +149,19 @@ where
     /// Returns the number of elements currently in the deque.
     #[inline]
     pub fn len(&self) -> usize {
-        self.len.into_usize()
+        self.len.as_usize()
     }
 
     /// Returns `true` exactly when the deque contains zero elements.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.len.into_usize() == 0
+        self.len.as_usize() == 0
     }
 
     /// Returns `true` exactly when the deque contains the maximum number of elements.
     #[inline]
     pub fn is_full(&self) -> bool {
-        self.len.into_usize() == self.buf.capacity()
+        self.len.as_usize() == self.buf.capacity()
     }
 
     /// Returns `true` if the `Deque` contains an element equal to the given value.
@@ -185,18 +185,18 @@ where
 
     #[inline(always)]
     fn physical_index_unchecked(&self, index: I) -> usize {
-        let index = index.into_usize();
-        (self.front.into_usize() + index) % self.capacity()
+        let index = index.as_usize();
+        (self.front.as_usize() + index) % self.capacity()
     }
 
     #[inline(always)]
     fn physical_index(&self, index: I) -> Option<usize> {
-        let index = index.into_usize();
+        let index = index.as_usize();
         if index >= self.len() {
             return None;
         }
 
-        Some((self.front.into_usize() + index) % self.capacity())
+        Some((self.front.as_usize() + index) % self.capacity())
     }
 
     /// Returns a reference to the element at the given index, or [`None`] if
@@ -260,7 +260,7 @@ where
             return None;
         }
 
-        let front = self.front.into_usize();
+        let front = self.front.as_usize();
         let result = unsafe { self.buf.get_ptr(front).read() };
         self.front = I::from_usize(front + 1 % self.capacity());
         self.len = I::from_usize(self.len() - 1);
@@ -285,7 +285,7 @@ where
             return None;
         }
 
-        let idx = (self.front.into_usize() + self.len() - 1) % self.capacity();
+        let idx = (self.front.as_usize() + self.len() - 1) % self.capacity();
         let result = unsafe { self.buf.get_ptr(idx).read() };
         self.len = I::from_usize(self.len() - 1);
 
@@ -309,7 +309,7 @@ where
             return Err(value);
         }
 
-        let idx = (self.front.into_usize() + self.capacity() - 1) % self.capacity();
+        let idx = (self.front.as_usize() + self.capacity() - 1) % self.capacity();
         let ptr = self.buf.get_mut_ptr(idx);
         unsafe {
             ptr.write(value);
@@ -387,7 +387,7 @@ where
     /// assert_eq!(deque.as_slices(), (&[5][..], &[][..]));
     /// ```
     pub fn truncate(&mut self, len: I) {
-        let new_len = len.into_usize();
+        let new_len = len.as_usize();
         let old_len = self.len();
 
         if new_len >= old_len {
@@ -459,7 +459,7 @@ where
     /// ```
     pub fn swap_remove_front(&mut self, index: I) -> Option<E> {
         let index = self.physical_index(index)?;
-        let front = self.front.into_usize();
+        let front = self.front.as_usize();
 
         unsafe {
             let last = self.buf.get_ptr(front).read();
@@ -489,7 +489,7 @@ where
     /// ```
     pub fn swap_remove_back(&mut self, index: I) -> Option<E> {
         let index = self.physical_index(index)?;
-        let back = (self.front.into_usize() + self.len() - 1) % self.capacity();
+        let back = (self.front.as_usize() + self.len() - 1) % self.capacity();
 
         unsafe {
             let last = self.buf.get_ptr(back).read();
@@ -527,13 +527,13 @@ where
             return Err(value);
         }
 
-        let index = index.into_usize();
+        let index = index.as_usize();
         if index > self.len() {
             panic!("index out of bounds in `try_insert`");
         }
 
         let cap = self.capacity();
-        let front = self.front.into_usize();
+        let front = self.front.as_usize();
         let back = front + self.len();
 
         // count back == cap as discontiguous to handle spill-over correctly
@@ -670,13 +670,13 @@ where
     /// assert_eq!(deque, &[1, 3]);
     /// ```
     pub fn remove(&mut self, index: I) -> Option<E> {
-        let index = index.into_usize();
+        let index = index.as_usize();
         if index >= self.len() {
             return None;
         }
 
         let cap = self.capacity();
-        let front = self.front.into_usize();
+        let front = self.front.as_usize();
         let back = front + self.len();
         let contiguous = back <= cap;
 
@@ -825,7 +825,7 @@ where
         debug_assert!(mid * 2 <= self.len());
 
         let cap = self.capacity();
-        let front = self.front.into_usize();
+        let front = self.front.as_usize();
         let back = front + self.len();
         let contiguous = back <= cap;
 
@@ -852,7 +852,7 @@ where
         debug_assert!(k * 2 <= self.len());
 
         let cap = self.capacity();
-        let front = self.front.into_usize();
+        let front = self.front.as_usize();
         let back = front + self.len();
         let contiguous = back <= cap;
 
@@ -900,7 +900,7 @@ where
     /// assert_eq!(deque, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     /// ```
     pub fn rotate_left(&mut self, mid: I) {
-        let mid = mid.into_usize();
+        let mid = mid.as_usize();
         assert!(mid <= self.len());
         let k = self.len() - mid;
         if mid <= k {
@@ -935,7 +935,7 @@ where
     /// assert_eq!(deque, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     /// ```
     pub fn rotate_right(&mut self, k: I) {
-        let k = k.into_usize();
+        let k = k.as_usize();
         assert!(k <= self.len());
         let mid = self.len() - k;
         if k <= mid {
@@ -961,7 +961,7 @@ where
     /// assert_eq!(deque.as_slices(), (&[3][..], &[2, 1][..]));
     /// ```
     pub fn as_slices(&self) -> (&[E], &[E]) {
-        let front = self.front.into_usize();
+        let front = self.front.as_usize();
         let back = front + self.len();
         if back <= self.capacity() {
             let ptr = self.buf.storage().as_ptr() as *const E;
@@ -996,7 +996,7 @@ where
     /// assert_eq!(deque.as_slices(), (&[1][..], &[2, 3][..]));
     /// ```
     pub fn as_mut_slices(&mut self) -> (&mut [E], &mut [E]) {
-        let front = self.front.into_usize();
+        let front = self.front.as_usize();
         let back = front + self.len();
         if back <= self.capacity() {
             let ptr = self.buf.storage_mut().as_mut_ptr() as *mut E;
@@ -1045,7 +1045,7 @@ where
     /// assert_eq!(deque, &[3, 2, 1]);
     /// ```
     pub fn make_contiguous(&mut self) -> &mut [E] {
-        let front = self.front.into_usize();
+        let front = self.front.as_usize();
         let back = front + self.len();
         if back <= self.capacity() {
             let ptr = self.buf.storage_mut().as_mut_ptr() as *mut E;
@@ -1128,13 +1128,13 @@ where
     pub fn range<R: core::ops::RangeBounds<I>>(&self, range: R) -> Iter<'_, E, B, I> {
         use core::ops::Bound;
         let start = match range.start_bound() {
-            Bound::Included(x) => x.into_usize(),
-            Bound::Excluded(x) => x.into_usize().saturating_add(1),
+            Bound::Included(x) => x.as_usize(),
+            Bound::Excluded(x) => x.as_usize().saturating_add(1),
             Bound::Unbounded => 0,
         };
         let end = match range.end_bound() {
-            Bound::Included(x) => x.into_usize().saturating_add(1),
-            Bound::Excluded(x) => x.into_usize(),
+            Bound::Included(x) => x.as_usize().saturating_add(1),
+            Bound::Excluded(x) => x.as_usize(),
             Bound::Unbounded => self.len(),
         };
 
@@ -1152,7 +1152,7 @@ where
         );
 
         Iter {
-            front: I::from_usize((self.front.into_usize() + start) % self.capacity()),
+            front: I::from_usize((self.front.as_usize() + start) % self.capacity()),
             len: I::from_usize(end - start),
             buf: &self.buf,
             _ref: PhantomData,
@@ -1178,13 +1178,13 @@ where
     pub fn range_mut<R: core::ops::RangeBounds<I>>(&mut self, range: R) -> IterMut<'_, E, B, I> {
         use core::ops::Bound;
         let start = match range.start_bound() {
-            Bound::Included(x) => x.into_usize(),
-            Bound::Excluded(x) => x.into_usize().saturating_add(1),
+            Bound::Included(x) => x.as_usize(),
+            Bound::Excluded(x) => x.as_usize().saturating_add(1),
             Bound::Unbounded => 0,
         };
         let end = match range.end_bound() {
-            Bound::Included(x) => x.into_usize().saturating_add(1),
-            Bound::Excluded(x) => x.into_usize(),
+            Bound::Included(x) => x.as_usize().saturating_add(1),
+            Bound::Excluded(x) => x.as_usize(),
             Bound::Unbounded => self.len(),
         };
 
@@ -1202,7 +1202,7 @@ where
         );
 
         IterMut {
-            front: I::from_usize((self.front.into_usize() + start) % self.capacity()),
+            front: I::from_usize((self.front.as_usize() + start) % self.capacity()),
             len: I::from_usize(end - start),
             buf: &mut self.buf,
             _ref: PhantomData,
@@ -1242,13 +1242,13 @@ where
     pub fn drain<R: core::ops::RangeBounds<I>>(&mut self, range: R) -> Drain<'_, E, B, I> {
         use core::ops::Bound;
         let start = match range.start_bound() {
-            Bound::Included(x) => x.into_usize(),
-            Bound::Excluded(x) => x.into_usize().saturating_add(1),
+            Bound::Included(x) => x.as_usize(),
+            Bound::Excluded(x) => x.as_usize().saturating_add(1),
             Bound::Unbounded => 0,
         };
         let end = match range.end_bound() {
-            Bound::Included(x) => x.into_usize().saturating_add(1),
-            Bound::Excluded(x) => x.into_usize(),
+            Bound::Included(x) => x.as_usize().saturating_add(1),
+            Bound::Excluded(x) => x.as_usize(),
             Bound::Unbounded => self.len(),
         };
 
@@ -1356,24 +1356,27 @@ where
 
         let (self_front, self_back) = self.as_slices();
         let (other_front, other_back) = other.as_slices();
-        if self_front.len() == other_front.len() {
-            self_front == other_front && self_back == other_back
-        } else if self_front.len() < other_front.len() {
-            let a = self_front.len();
-            let b = other_front.len() - a;
-            debug_assert_eq!(self_back[..b].len(), other_front[a..].len());
-            debug_assert_eq!(self_back[b..].len(), other_back.len());
-            self_front == &other_front[..a]
-                && &self_back[..b] == &other_front[a..]
-                && &self_back[b..] == other_back
-        } else {
-            let a = other_front.len();
-            let b = self_front.len() - a;
-            debug_assert_eq!(self_front[a..].len(), other_back[..b].len());
-            debug_assert_eq!(self_back.len(), other_back[b..].len());
-            &self_front[..a] == other_front
-                && &self_front[a..] == &other_back[..b]
-                && self_back == &other_back[b..]
+
+        match self_front.len() {
+            len if len == other_front.len() => self_front == other_front && self_back == other_back,
+            len if len < other_front.len() => {
+                let a = self_front.len();
+                let b = other_front.len() - a;
+                debug_assert_eq!(self_back[..b].len(), other_front[a..].len());
+                debug_assert_eq!(self_back[b..].len(), other_back.len());
+                self_front == &other_front[..a]
+                    && self_back[..b] == other_front[a..]
+                    && &self_back[b..] == other_back
+            }
+            _ => {
+                let a = other_front.len();
+                let b = self_front.len() - a;
+                debug_assert_eq!(self_front[a..].len(), other_back[..b].len());
+                debug_assert_eq!(self_back.len(), other_back[b..].len());
+                &self_front[..a] == other_front
+                    && self_front[a..] == other_back[..b]
+                    && self_back == &other_back[b..]
+            }
         }
     }
 }
@@ -1475,13 +1478,13 @@ where
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let (front, back) = {
-            let front = self.front.into_usize();
-            let back = front + self.len.into_usize();
+            let front = self.front.as_usize();
+            let back = front + self.len.as_usize();
 
             if back <= self.buf.capacity() {
                 unsafe {
                     (
-                        core::slice::from_raw_parts(self.buf.get_ptr(front), self.len.into_usize()),
+                        core::slice::from_raw_parts(self.buf.get_ptr(front), self.len.as_usize()),
                         &[][..],
                     )
                 }
@@ -1515,12 +1518,12 @@ where
 
     #[inline]
     fn next(&mut self) -> Option<&'a E> {
-        let len = self.len.into_usize();
+        let len = self.len.as_usize();
         if len == 0 {
             return None;
         }
 
-        let front = self.front.into_usize();
+        let front = self.front.as_usize();
         self.front = I::from_usize((front + 1) % self.buf.capacity());
         self.len = I::from_usize(len - 1);
         let result = unsafe { self.buf.get_ptr(front).as_ref() };
@@ -1530,7 +1533,7 @@ where
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.len.into_usize();
+        let len = self.len.as_usize();
         (len, Some(len))
     }
 }
@@ -1543,12 +1546,12 @@ where
 {
     #[inline]
     fn next_back(&mut self) -> Option<&'a E> {
-        let len = self.len.into_usize();
+        let len = self.len.as_usize();
         if len == 0 {
             return None;
         }
 
-        let front = self.front.into_usize();
+        let front = self.front.as_usize();
         let idx = (front + len - 1) % self.buf.capacity();
         self.len = I::from_usize(len - 1);
         let result = unsafe { self.buf.get_ptr(idx).as_ref() };
@@ -1584,13 +1587,13 @@ where
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let (front, back) = {
-            let front = self.front.into_usize();
-            let back = front + self.len.into_usize();
+            let front = self.front.as_usize();
+            let back = front + self.len.as_usize();
 
             if back <= self.buf.capacity() {
                 unsafe {
                     (
-                        core::slice::from_raw_parts(self.buf.get_ptr(front), self.len.into_usize()),
+                        core::slice::from_raw_parts(self.buf.get_ptr(front), self.len.as_usize()),
                         &[][..],
                     )
                 }
@@ -1624,12 +1627,12 @@ where
 
     #[inline]
     fn next(&mut self) -> Option<&'a mut E> {
-        let len = self.len.into_usize();
+        let len = self.len.as_usize();
         if len == 0 {
             return None;
         }
 
-        let front = self.front.into_usize();
+        let front = self.front.as_usize();
         self.front = I::from_usize((front + 1) % self.buf.capacity());
         self.len = I::from_usize(len - 1);
         let result = unsafe { self.buf.get_mut_ptr(front).as_mut() };
@@ -1639,7 +1642,7 @@ where
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.len.into_usize();
+        let len = self.len.as_usize();
         (len, Some(len))
     }
 }
@@ -1652,12 +1655,12 @@ where
 {
     #[inline]
     fn next_back(&mut self) -> Option<&'a mut E> {
-        let len = self.len.into_usize();
+        let len = self.len.as_usize();
         if len == 0 {
             return None;
         }
 
-        let front = self.front.into_usize();
+        let front = self.front.as_usize();
         let idx = (front + len - 1) % self.buf.capacity();
         self.len = I::from_usize(len - 1);
         let result = unsafe { self.buf.get_mut_ptr(idx).as_mut() };
@@ -1796,7 +1799,7 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> Iterator for Drain<'_, E, B, I> {
             return None;
         }
 
-        let idx = (self.parent.front.into_usize() + self.front_index) % self.parent.capacity();
+        let idx = (self.parent.front.as_usize() + self.front_index) % self.parent.capacity();
         self.front_index += 1;
 
         unsafe { Some(self.parent.buf.get_ptr(idx).read()) }
@@ -1816,7 +1819,7 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> DoubleEndedIterator for Drain<'_, 
             return None;
         }
 
-        let idx = (self.parent.front.into_usize() + self.back_index - 1) % self.parent.capacity();
+        let idx = (self.parent.front.as_usize() + self.back_index - 1) % self.parent.capacity();
         self.back_index -= 1;
 
         unsafe { Some(self.parent.buf.get_ptr(idx).read()) }
@@ -1830,8 +1833,8 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> Drop for Drain<'_, E, B, I> {
     fn drop(&mut self) {
         // 1. drop any items that remain untaken
         let cap = self.parent.capacity();
-        let front = self.parent.front.into_usize() + self.front_index;
-        let back = self.parent.front.into_usize() + self.back_index;
+        let front = self.parent.front.as_usize() + self.front_index;
+        let back = self.parent.front.as_usize() + self.back_index;
         debug_assert!(back >= front);
 
         if front >= cap || back <= cap {
@@ -1850,7 +1853,7 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> Drop for Drain<'_, E, B, I> {
         }
 
         // 2. choose which portion of the unaffected items to shift over to close the gap
-        let front = self.parent.front.into_usize();
+        let front = self.parent.front.as_usize();
         let back = front + self.parent.len();
         let target_start = front + self.target_start;
         let target_end = front + self.target_end;
@@ -1991,7 +1994,7 @@ impl<E: Copy, I: Capacity> AllocDeque<E, I> {
         Deque {
             front: I::from_usize(0),
             len: I::from_usize(0),
-            buf: alloc::vec![core::mem::MaybeUninit::uninit(); capacity.into_usize()]
+            buf: alloc::vec![core::mem::MaybeUninit::uninit(); capacity.as_usize()]
                 .into_boxed_slice(),
             elem: PhantomData,
         }

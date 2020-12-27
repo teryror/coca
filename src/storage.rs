@@ -7,7 +7,7 @@ use core::mem::MaybeUninit;
 ///
 /// # Safety
 /// Implementors must ensure the conversion functions are each other's inverse,
-/// i.e. `Capacity::from_usize(i).into_usize()` must either evaluate to `i`, or
+/// i.e. `Capacity::from_usize(i).as_usize()` must either evaluate to `i`, or
 /// panic for all `usize` values.
 ///
 /// Using [`index_type!`] should be preferred over implementing this manually.
@@ -15,7 +15,7 @@ pub unsafe trait Capacity: Copy {
     /// Convert a `usize` into `Self`.
     fn from_usize(i: usize) -> Self;
     /// Convert `self` into `usize`.
-    fn into_usize(&self) -> usize;
+    fn as_usize(&self) -> usize;
 }
 
 #[inline(never)]
@@ -29,7 +29,7 @@ fn from_value_out_of_range(i: usize) -> ! {
 #[cold]
 #[track_caller]
 fn into_value_out_of_range() -> ! {
-    panic!("called `into_usize` with value out of range")
+    panic!("called `as_usize` with value out of range")
 }
 
 unsafe impl Capacity for u8 {
@@ -44,7 +44,7 @@ unsafe impl Capacity for u8 {
     }
 
     #[inline]
-    fn into_usize(&self) -> usize {
+    fn as_usize(&self) -> usize {
         (*self).into()
     }
 }
@@ -61,7 +61,7 @@ unsafe impl Capacity for u16 {
     }
 
     #[inline]
-    fn into_usize(&self) -> usize {
+    fn as_usize(&self) -> usize {
         (*self).into()
     }
 }
@@ -79,7 +79,7 @@ unsafe impl Capacity for u32 {
 
     #[inline]
     #[track_caller]
-    fn into_usize(&self) -> usize {
+    fn as_usize(&self) -> usize {
         if let Ok(t) = (*self).try_into() {
             t
         } else {
@@ -101,7 +101,7 @@ unsafe impl Capacity for u64 {
 
     #[inline]
     #[track_caller]
-    fn into_usize(&self) -> usize {
+    fn as_usize(&self) -> usize {
         if let Ok(t) = (*self).try_into() {
             t
         } else {
@@ -117,7 +117,7 @@ unsafe impl Capacity for usize {
     }
 
     #[inline]
-    fn into_usize(&self) -> usize {
+    fn as_usize(&self) -> usize {
         *self
     }
 }
@@ -171,8 +171,8 @@ macro_rules! index_type {
 
             #[inline]
             #[track_caller]
-            fn into_usize(&self) -> usize {
-                <$repr as $crate::storage::Capacity>::into_usize(&self.0)
+            fn as_usize(&self) -> usize {
+                <$repr as $crate::storage::Capacity>::as_usize(&self.0)
             }
         }
     }

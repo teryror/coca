@@ -857,7 +857,7 @@ impl<'src> Arena<'src> {
     /// ```
     pub fn try_vec<T, I: Capacity>(&mut self, capacity: I) -> Option<ArenaVec<'src, T, I>> {
         Some(ArenaVec::<T, I>::from(
-            self.try_reserve_array(capacity.into_usize())?,
+            self.try_reserve_array(capacity.as_usize())?,
         ))
     }
 
@@ -905,7 +905,7 @@ impl<'src> Arena<'src> {
     /// ```
     pub fn try_heap<T: Ord, I: Capacity>(&mut self, capacity: I) -> Option<ArenaHeap<'src, T, I>> {
         Some(ArenaHeap::from(
-            self.try_reserve_array(capacity.into_usize())?,
+            self.try_reserve_array(capacity.as_usize())?,
         ))
     }
 
@@ -953,7 +953,7 @@ impl<'src> Arena<'src> {
     /// ```
     pub fn try_deque<T, I: Capacity>(&mut self, capacity: I) -> Option<ArenaDeque<'src, T, I>> {
         Some(ArenaDeque::from(
-            self.try_reserve_array(capacity.into_usize())?,
+            self.try_reserve_array(capacity.as_usize())?,
         ))
     }
 
