@@ -1082,13 +1082,13 @@ where
     }
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.front_index != self.back_index {
-            let out = unsafe { self.parent.as_slice().as_ptr().add(self.front_index).read() };
-            self.front_index += 1;
-            Some(out)
-        } else {
-            None
+        if self.front_index == self.back_index {
+            return None;
         }
+
+        let out = unsafe { self.parent.as_slice().as_ptr().add(self.front_index).read() };
+        self.front_index += 1;
+        Some(out)
     }
 }
 
@@ -1098,12 +1098,12 @@ where
     I: Capacity,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
-        if self.front_index != self.back_index {
-            self.back_index -= 1;
-            unsafe { Some(self.parent.as_slice().as_ptr().add(self.back_index).read()) }
-        } else {
-            None
+        if self.front_index == self.back_index {
+            return None;
         }
+
+        self.back_index -= 1;
+        unsafe { Some(self.parent.as_slice().as_ptr().add(self.back_index).read()) }
     }
 }
 

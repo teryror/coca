@@ -625,7 +625,7 @@ where
                 unsafe {
                     ptr.write(tmp);
                 }
-                self.buf.storage_mut()[..back + 1].rotate_right(1);
+                self.buf.storage_mut()[..=back].rotate_right(1);
             }
         }
 
@@ -1835,7 +1835,6 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> Drop for Drain<'_, E, B, I> {
         let cap = self.parent.capacity();
         let front = self.parent.front.as_usize() + self.front_index;
         let back = self.parent.front.as_usize() + self.back_index;
-        debug_assert!(back >= front);
 
         if front >= cap || back <= cap {
             // remaining items are contiguous, drop as single slice
@@ -1891,11 +1890,9 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> Drop for Drain<'_, E, B, I> {
                 let dst = self.parent.buf.get_mut_ptr(target_start % cap);
                 unsafe { core::ptr::copy(src, dst, fst_count) };
 
+                let dst_idx = (target_start + fst_count) % cap;
                 let src = self.parent.buf.get_ptr((target_end + fst_count) % cap);
-                let dst = self
-                    .parent
-                    .buf
-                    .get_mut_ptr((target_start + fst_count) % cap);
+                let dst = self.parent.buf.get_mut_ptr(dst_idx);
                 unsafe { core::ptr::copy(src, dst, distance_to_back - fst_count) };
             }
             (true, true, false) => {
@@ -1939,11 +1936,10 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> Drop for Drain<'_, E, B, I> {
 
                 let remaining = distance_to_front - fst_count;
                 let snd_count = usize::min(target_end - cap - fst_count, remaining);
+                let dst_idx = target_end - cap - (fst_count + snd_count);
+
                 let src = self.parent.buf.get_ptr(cap - snd_count);
-                let dst = self
-                    .parent
-                    .buf
-                    .get_mut_ptr(target_end - cap - (fst_count + snd_count));
+                let dst = self.parent.buf.get_mut_ptr(dst_idx);
                 unsafe { core::ptr::copy(src, dst, snd_count) };
 
                 let new_front = (front + (target_end - target_start)) % cap;
@@ -1960,8 +1956,7 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> Drop for Drain<'_, E, B, I> {
             }
         }
 
-        let new_len = self.parent.len() - (target_end - target_start);
-        self.parent.len = I::from_usize(new_len);
+        self.parent.len = I::from_usize(self.parent.len() - (target_end - target_start));
     }
 }
 

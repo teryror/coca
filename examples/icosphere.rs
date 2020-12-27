@@ -1,3 +1,5 @@
+#![allow(clippy::many_single_char_names)]
+
 use std::mem::MaybeUninit;
 
 use coca::storage::Capacity;
@@ -191,7 +193,7 @@ fn main() {
 
     let mut num_five_neighbours = 0u32;
     let mut num_six_neighbours = 0u32;
-    for (vertex_id, &count) in neighbour_counts.into_iter().enumerate() {
+    for (vertex_id, &count) in neighbour_counts.iter().enumerate() {
         if count == 5 {
             assert!(vertex_id < 12);
             num_five_neighbours += 1;

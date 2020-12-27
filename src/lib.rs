@@ -3,6 +3,14 @@
 #![cfg_attr(feature = "nightly", feature(min_const_generics))]
 #![cfg_attr(docs_rs, feature(doc_cfg))]
 #![warn(missing_docs)]
+#![warn(clippy::pedantic)]
+#![allow(
+    clippy::inline_always,
+    clippy::missing_errors_doc,
+    clippy::module_name_repetitions,
+    clippy::must_use_candidate,
+    clippy::shadow_unrelated
+)]
 
 //! Allocation-free data structures with constant capacity.
 //!

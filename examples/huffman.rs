@@ -2,7 +2,7 @@ use coca::Arena;
 
 use std::mem::{size_of, MaybeUninit};
 
-const SOURCE: &'static str = include_str!("huffman.rs");
+const SOURCE: &str = include_str!("huffman.rs");
 
 fn calc_huff_encoded_size(input: &[u8]) -> usize {
     const MEM_FOR_FREQS_AND_CODELEN: usize = (1 + 256 + 256) * size_of::<usize>(); // + 1 usize for alignment

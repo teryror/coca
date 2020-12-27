@@ -369,6 +369,7 @@ impl<'src> From<&'src mut [MaybeUninit<u8>]> for Arena<'src> {
         let Range { start, end } = buf.as_mut_ptr_range();
 
         #[cfg(feature = "profile")]
+        #[allow(clippy::cast_ptr_alignment)]
         let end = {
             use core::mem::size_of;
 
@@ -384,6 +385,7 @@ impl<'src> From<&'src mut [MaybeUninit<u8>]> for Arena<'src> {
             assert!(new_end < end_of_meta);
             assert!(end_of_meta <= end);
 
+            debug_assert_eq!(new_end.align_offset(layout.align()), 0);
             let meta = new_end as *mut ProfileMetaData;
             unsafe {
                 meta.write(ProfileMetaData {
@@ -1022,7 +1024,7 @@ impl<'src> Arena<'src> {
         let item_capacity = (bytes_remaining - align_offset) / core::mem::size_of::<T>();
 
         let base = unsafe { self.cursor.add(align_offset) as *mut T };
-        let mut count = 0usize;
+        let mut count = 0_usize;
         let mut cursor = base;
 
         for val in iter {
@@ -1068,7 +1070,7 @@ impl<'src> Arena<'src> {
         }
     }
 
-    /// Constructs a new [`ArenaWriter`] backed by the free space remaining in `self`.
+    /// Constructs a new [`Writer`] backed by the free space remaining in `self`.
     ///
     /// The arena cannot be used for allocation until the writer is dropped.
     ///
@@ -1095,8 +1097,8 @@ impl<'src> Arena<'src> {
     /// # Ok(())
     /// # }
     #[inline]
-    pub fn make_writer<'a>(&'a mut self) -> ArenaWriter<'a, 'src> {
-        ArenaWriter {
+    pub fn make_writer<'a>(&'a mut self) -> Writer<'a, 'src> {
+        Writer {
             source: self,
             len: 0,
         }
@@ -1135,7 +1137,10 @@ impl Arena<'_> {
     /// assert_eq!(profile.failed_allocations, 1);
     /// ```
     #[inline]
+    #[allow(clippy::cast_ptr_alignment)]
     pub fn utilization(&self) -> UtilizationProfile {
+        let expected_alignment = Layout::new::<ProfileMetaData>().align();
+        debug_assert_eq!(self.end.align_offset(expected_alignment), 0);
         let &ProfileMetaData {
             initial_cursor_pos,
             peak_cursor_pos,
@@ -1150,7 +1155,10 @@ impl Arena<'_> {
     }
 
     #[inline]
+    #[allow(clippy::cast_ptr_alignment)]
     fn profile_meta_data_mut(&mut self) -> &mut ProfileMetaData {
+        let expected_alignment = Layout::new::<ProfileMetaData>().align();
+        debug_assert_eq!(self.end.align_offset(expected_alignment), 0);
         unsafe { (self.end as *mut ProfileMetaData).as_mut().unwrap() }
     }
 }
@@ -1159,12 +1167,12 @@ impl Arena<'_> {
 /// Primarily intended for use in expansions of [`fmt!`].
 ///
 /// See [`Arena::make_writer`] for example usage.
-pub struct ArenaWriter<'src, 'buf> {
+pub struct Writer<'src, 'buf> {
     source: &'src mut Arena<'buf>,
     len: usize,
 }
 
-impl Write for ArenaWriter<'_, '_> {
+impl Write for Writer<'_, '_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let bytes_remaining = self.source.bytes_remaining();
         if s.len() > bytes_remaining {
@@ -1199,8 +1207,8 @@ impl Write for ArenaWriter<'_, '_> {
     }
 }
 
-impl<'buf> From<ArenaWriter<'_, 'buf>> for Box<'buf, str> {
-    fn from(writer: ArenaWriter<'_, 'buf>) -> Self {
+impl<'buf> From<Writer<'_, 'buf>> for Box<'buf, str> {
+    fn from(writer: Writer<'_, 'buf>) -> Self {
         unsafe {
             let ptr = writer.source.cursor.sub(writer.len) as *mut u8;
             let slice = from_raw_parts_mut(ptr, writer.len);
