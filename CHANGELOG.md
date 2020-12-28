@@ -1,4 +1,4 @@
-# 0.2.0 (WIP)
+# 0.2.0 (2020-12-28)
 
 - Add `BinaryHeap` and `Deque` implementations
 - Add `Vec::{into_raw_parts, from_raw_parts}`

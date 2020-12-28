@@ -1,5 +1,8 @@
 # coca - Data Structures with Constant Capacity
 
+[![Crates.io](https://img.shields.io/crates/v/coca.svg)](https://crates.io/crates/coca)
+[![Documentation](https://docs.rs/coca/badge.svg)](https://docs.rs/coca)
+
 Allocation-free data structures that make do with the memory they're given.
 
 This makes their temporal performance more consistent, and the memory footprint
@@ -37,7 +40,7 @@ To add coca as a dependency, add this to your project's `Cargo.toml`:
 
 ```toml
 [dependencies]
-coca = "0.1"
+coca = "0.2"
 ```
 
 ## Optional Features
