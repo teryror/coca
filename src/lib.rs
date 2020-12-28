@@ -5,6 +5,7 @@
 #![warn(missing_docs)]
 #![warn(clippy::pedantic)]
 #![allow(
+    stable_features,
     clippy::inline_always,
     clippy::missing_errors_doc,
     clippy::module_name_repetitions,
