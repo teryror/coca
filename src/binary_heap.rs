@@ -779,15 +779,15 @@ mod tests {
 
     #[test]
     fn push_and_pop_randomized_inputs() {
-        use rand_core::{RngCore, SeedableRng};
-        use rand_pcg::Pcg32;
+        use rand::{rngs::SmallRng, RngCore, SeedableRng};
 
         let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 32];
         let mut heap = SliceHeap::<_>::from(&mut backing_region[..]);
 
-        let mut rng = Pcg32::from_seed([
+        let mut rng = SmallRng::from_seed([
             0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc,
-            0xde, 0xf0,
+            0xde, 0xf0, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78,
+            0x9a, 0xbc, 0xde, 0xf0,
         ]);
 
         let mut newest = 0;

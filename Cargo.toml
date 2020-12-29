@@ -24,5 +24,4 @@ nightly = []
 profile = []
 
 [dev-dependencies]
-rand_pcg = "0.2"
-rand_core = "0.5"
+rand = { version = "0.8", features = ["small_rng"] }
