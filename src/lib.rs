@@ -40,28 +40,21 @@ pub mod deque;
 pub mod storage;
 pub mod vec;
 
-pub use crate::arena::{Arena, Box};
+pub use crate::{
+    arena::{Arena, Box},
+    binary_heap::{ArenaHeap, SliceHeap},
+    deque::{ArenaDeque, SliceDeque},
+    vec::{ArenaVec, SliceVec},
+};
+
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+pub use crate::{
+    binary_heap::{ArrayHeap, TiArrayHeap},
+    deque::{ArrayDeque, TiArrayDeque},
+    vec::{ArrayVec, TiArrayVec},
+};
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-pub use crate::binary_heap::AllocHeap;
-pub use crate::binary_heap::{ArenaHeap, SliceHeap};
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub use crate::binary_heap::{ArrayHeap, TiArrayHeap};
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-pub use crate::deque::AllocDeque;
-pub use crate::deque::{ArenaDeque, SliceDeque};
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub use crate::deque::{ArrayDeque, TiArrayDeque};
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-pub use crate::vec::AllocVec;
-pub use crate::vec::{ArenaVec, SliceVec};
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub use crate::vec::{ArrayVec, TiArrayVec};
+pub use crate::{binary_heap::AllocHeap, deque::AllocDeque, vec::AllocVec};
