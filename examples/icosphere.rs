@@ -76,7 +76,7 @@ fn generate_icosphere<'a>(arena: &mut Arena<'a>, subdivision_frequency: u32) -> 
             cache.push((idx_a, idx_b, idx_mid));
             idx_mid
         }
-    };
+    }
 
     {
         // Initialization: start with a regular icosahedron
