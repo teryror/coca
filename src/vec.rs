@@ -50,14 +50,10 @@ use core::ptr;
 
 /// A contiguous growable array type with constant capacity.
 ///
-/// Generic over the storage buffer type `Buf` and the index type `Idx`.
+/// Generic over the storage buffer type `S` and the index type `I`.
 ///
 /// See the [module-level documentation](crate::vec) for more.
-pub struct Vec<T, S, I = usize>
-where
-    S: Storage<ArrayLike<T>>,
-    I: Capacity,
-{
+pub struct Vec<T, S: Storage<ArrayLike<T>>, I: Capacity = usize> {
     len: I,
     buf: S,
     elem: PhantomData<T>,
@@ -75,11 +71,11 @@ where
 /// assert_eq!(vec1.capacity(), 16);
 /// assert_eq!(vec2.capacity(), 16);
 /// ```
-pub type SliceVec<'a, E, I = usize> = Vec<E, crate::storage::SliceStorage<'a, E>, I>;
+pub type SliceVec<'a, T, I = usize> = Vec<T, crate::storage::SliceStorage<'a, T>, I>;
 /// A vector using an arena-allocated slice for storage.
 ///
 /// See [`Arena::try_vec`](crate::Arena::try_vec) for example usage.
-pub type ArenaVec<'a, E, I = usize> = Vec<E, crate::storage::ArenaStorage<'a, E>, I>;
+pub type ArenaVec<'a, T, I = usize> = Vec<T, crate::storage::ArenaStorage<'a, T>, I>;
 
 impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for Vec<T, S, I> {
     /// Converts a contiguous block of memory into an empty vector.
@@ -98,7 +94,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for Vec<T, S, I> {
 }
 
 impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
-    /// Decomposes a `Vec<E, B, I>` into its raw parts.
+    /// Decomposes a `Vec<T, S, I>` into its raw parts.
     ///
     /// Returns the raw storage type and the length of the vector in elements.
     /// These are the same arguments in the same order as the arguments to
@@ -125,7 +121,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
         result
     }
 
-    /// Creates a `Vec<E, B, I>` directly from its raw parts.
+    /// Creates a `Vec<T, S, I>` directly from its raw parts.
     ///
     /// # Safety
     /// Callers must ensure that values stored in `buf` at all positions less

@@ -521,7 +521,7 @@ pub type AllocHeap<T, I = usize> = BinaryHeap<T, crate::storage::HeapStorage<T>,
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 impl<T: Copy + Ord, I: Capacity> AllocHeap<T, I> {
-    /// Constructs a new, empty `AllocHeap<E, I>` with the specified capacity.
+    /// Constructs a new, empty `AllocHeap<T, I>` with the specified capacity.
     ///
     /// # Panics
     /// Panics if the specified capacity cannot be represented by a `usize`.

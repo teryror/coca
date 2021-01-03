@@ -104,15 +104,15 @@ mod unordered {
     insertions!(std_hashmap_256_inserts, StdHashMap<_, _>, 256);
     insertions!(std_hashmap_1024_inserts, StdHashMap<_, _>, 1024);
 
-    lookups!(sdt_hashmap_16_lookups, StdHashMap<_, _>, 16);
-    lookups!(sdt_hashmap_64_lookups, StdHashMap<_, _>, 64);
-    lookups!(sdt_hashmap_256_lookups, StdHashMap<_, _>, 256);
-    lookups!(sdt_hashmap_1024_lookups, StdHashMap<_, _>, 1024);
+    lookups!(std_hashmap_16_lookups, StdHashMap<_, _>, 16);
+    lookups!(std_hashmap_64_lookups, StdHashMap<_, _>, 64);
+    lookups!(std_hashmap_256_lookups, StdHashMap<_, _>, 256);
+    lookups!(std_hashmap_1024_lookups, StdHashMap<_, _>, 1024);
 
-    removals!(sdt_hashmap_16_removals, StdHashMap<_, _>, 16);
-    removals!(sdt_hashmap_64_removals, StdHashMap<_, _>, 64);
-    removals!(sdt_hashmap_256_removals, StdHashMap<_, _>, 256);
-    removals!(sdt_hashmap_1024_removals, StdHashMap<_, _>, 1024);
+    removals!(std_hashmap_16_removals, StdHashMap<_, _>, 16);
+    removals!(std_hashmap_64_removals, StdHashMap<_, _>, 64);
+    removals!(std_hashmap_256_removals, StdHashMap<_, _>, 256);
+    removals!(std_hashmap_1024_removals, StdHashMap<_, _>, 1024);
 
     struct VecLinearMap<K, V> {
         keys: AllocVec<K>,
