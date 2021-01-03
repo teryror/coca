@@ -34,10 +34,14 @@
 //! from the Rust standard library Vec, and from `tinyvec::SliceVec` (Copyright
 //! (c) 2019 by Daniel "Lokathor" Gee).
 
-use crate::storage::{Capacity, ContiguousStorage};
+#[cfg(feature = "nightly")]
+use crate::storage::InlineStorage;
 
+use crate::storage::{mut_ptr_at_index, ptr_at_index, ArrayLike, Capacity, Storage};
+
+use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
 use core::hash::{Hash, Hasher};
-use core::iter::{IntoIterator as IntoIter, Iterator};
+use core::iter::{DoubleEndedIterator, FusedIterator, IntoIterator as IntoIter, Iterator};
 use core::marker::PhantomData;
 #[allow(unused_imports)] // used only when some features are enabled
 use core::mem::MaybeUninit;
@@ -49,14 +53,14 @@ use core::ptr;
 /// Generic over the storage buffer type `Buf` and the index type `Idx`.
 ///
 /// See the [module-level documentation](crate::vec) for more.
-pub struct Vec<Element, Buf, Idx = usize>
+pub struct Vec<T, S, I = usize>
 where
-    Buf: ContiguousStorage<Element>,
-    Idx: Capacity,
+    S: Storage<ArrayLike<T>>,
+    I: Capacity,
 {
-    len: Idx,
-    buf: Buf,
-    elem: PhantomData<Element>,
+    len: I,
+    buf: S,
+    elem: PhantomData<T>,
 }
 
 /// A vector using any mutable slice for storage.
@@ -77,17 +81,13 @@ pub type SliceVec<'a, E, I = usize> = Vec<E, crate::storage::SliceStorage<'a, E>
 /// See [`Arena::try_vec`](crate::Arena::try_vec) for example usage.
 pub type ArenaVec<'a, E, I = usize> = Vec<E, crate::storage::ArenaStorage<'a, E>, I>;
 
-impl<E, B, I> From<B> for Vec<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for Vec<T, S, I> {
     /// Converts a contiguous block of memory into an empty vector.
     ///
     /// # Panics
     /// This may panic if the index type I cannot represent `buf.capacity()`.
-    fn from(buf: B) -> Self {
-        I::from_usize(buf.storage().len());
+    fn from(buf: S) -> Self {
+        I::from_usize(buf.capacity());
 
         Vec {
             len: I::from_usize(0),
@@ -97,11 +97,7 @@ where
     }
 }
 
-impl<E, B, I> Vec<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// Decomposes a `Vec<E, B, I>` into its raw parts.
     ///
     /// Returns the raw storage type and the length of the vector in elements.
@@ -122,8 +118,8 @@ where
     ///     // other elements are uninitialized
     /// }
     /// ```
-    pub fn into_raw_parts(self) -> (B, I) {
-        let ptr = (&self.buf) as *const B;
+    pub fn into_raw_parts(self) -> (S, I) {
+        let ptr = (&self.buf) as *const S;
         let result = (unsafe { ptr.read() }, self.len);
         core::mem::forget(self);
         result
@@ -145,7 +141,7 @@ where
     /// let vec = unsafe { coca::SliceVec::<u32>::from_raw_parts(buf, length) };
     /// assert_eq!(vec.as_slice(), &[1, 2, 3]);
     /// ```
-    pub unsafe fn from_raw_parts(buf: B, length: I) -> Self {
+    pub unsafe fn from_raw_parts(buf: S, length: I) -> Self {
         Vec {
             buf,
             len: length,
@@ -194,20 +190,20 @@ where
     /// assert_eq!(vec, &[1, 2][..]);
     /// ```
     #[inline]
-    pub fn pop(&mut self) -> Option<E> {
+    pub fn pop(&mut self) -> Option<T> {
         if self.is_empty() {
             return None;
         }
 
         self.len = I::from_usize(self.len() - 1);
-        unsafe { Some(self.buf.get_ptr(self.len()).read()) }
+        unsafe { Some(ptr_at_index(&self.buf, self.len()).read()) }
     }
 
     /// Extracts a slice containing the entire vector.
     ///
     /// Equivalent to `&s[..]`.
     #[inline]
-    pub fn as_slice(&self) -> &[E] {
+    pub fn as_slice(&self) -> &[T] {
         self
     }
 
@@ -215,7 +211,7 @@ where
     ///
     /// Equivalent to `&mut s[..]`.
     #[inline]
-    pub fn as_mut_slice(&mut self) -> &mut [E] {
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
         self
     }
 
@@ -231,25 +227,25 @@ where
     /// assert_eq!(vec.get(3), None);
     /// ```
     #[inline]
-    pub fn get(&self, index: I) -> Option<&E> {
+    pub fn get(&self, index: I) -> Option<&T> {
         let index = index.as_usize();
         if self.len() <= index {
             return None;
         }
 
-        unsafe { Some(self.buf.get_ptr(index).as_ref().unwrap()) }
+        unsafe { Some(ptr_at_index(&self.buf, index).as_ref().unwrap()) }
     }
 
     /// Returns a mutable reference to the element at the specified index, or
     /// [`None`] if the index is out of bounds.
     #[inline]
-    pub fn get_mut(&mut self, index: I) -> Option<&mut E> {
+    pub fn get_mut(&mut self, index: I) -> Option<&mut T> {
         let index = index.as_usize();
         if self.len() <= index {
             return None;
         }
 
-        unsafe { Some(self.buf.get_mut_ptr(index).as_mut().unwrap()) }
+        unsafe { Some(mut_ptr_at_index(&mut self.buf, index).as_mut().unwrap()) }
     }
 
     /// Appends an element to the back of the vector, returning `Err(value)` if
@@ -265,13 +261,13 @@ where
     /// assert_eq!(vec.try_push(4), Err(4));
     /// ```
     #[inline]
-    pub fn try_push(&mut self, value: E) -> Result<(), E> {
+    pub fn try_push(&mut self, value: T) -> Result<(), T> {
         if self.is_full() {
             return Err(value);
         }
 
         let len = self.len();
-        unsafe { self.buf.get_mut_ptr(len).write(value) };
+        unsafe { mut_ptr_at_index(&mut self.buf, len).write(value) };
 
         self.len = I::from_usize(len + 1);
         Ok(())
@@ -283,7 +279,7 @@ where
     /// Panics if the vector is already at capacity. See [`try_push`](Vec::try_push)
     /// for a checked version that never panics.
     #[inline]
-    pub fn push(&mut self, value: E) {
+    pub fn push(&mut self, value: T) {
         #[cold]
         #[inline(never)]
         fn assert_failed() -> ! {
@@ -320,7 +316,7 @@ where
         }
 
         for i in new_len..old_len {
-            unsafe { self.buf.get_mut_ptr(i).drop_in_place() };
+            unsafe { mut_ptr_at_index(&mut self.buf, i).drop_in_place() };
         }
 
         self.len = len;
@@ -373,7 +369,7 @@ where
     /// assert_eq!(vec, &[1, 4, 3][..]);
     /// ```
     #[inline]
-    pub fn swap_remove(&mut self, index: I) -> E {
+    pub fn swap_remove(&mut self, index: I) -> T {
         #[cold]
         #[inline(never)]
         fn assert_failed(idx: usize, len: usize) -> ! {
@@ -390,8 +386,8 @@ where
         }
 
         unsafe {
-            let last = self.buf.get_ptr(len - 1).read();
-            let hole = self.buf.get_mut_ptr(idx);
+            let last = ptr_at_index(&self.buf, len - 1).read();
+            let hole = mut_ptr_at_index(&mut self.buf, idx);
             self.len = I::from_usize(self.len() - 1);
             ptr::replace(hole, last)
         }
@@ -403,7 +399,7 @@ where
     /// # Panics
     /// Panics if the vector is already full, or if `index` is out of bounds.
     /// See [`try_insert`](Vec::try_insert) for a checked version.
-    pub fn insert(&mut self, index: I, element: E) {
+    pub fn insert(&mut self, index: I, element: T) {
         #[cold]
         #[inline(never)]
         fn assert_failed() -> ! {
@@ -434,7 +430,7 @@ where
     /// assert!(vec.try_insert(4, 5).is_err());
     /// assert_eq!(vec, &[1, 2, 3, 4][..]);
     /// ```
-    pub fn try_insert(&mut self, index: I, element: E) -> Result<(), E> {
+    pub fn try_insert(&mut self, index: I, element: T) -> Result<(), T> {
         #[cold]
         #[inline(never)]
         fn assert_failed(index: usize, len: usize) -> ! {
@@ -454,7 +450,7 @@ where
             assert_failed(idx, len);
         }
 
-        let p = self.buf.get_mut_ptr(idx);
+        let p = mut_ptr_at_index(&mut self.buf, idx);
         unsafe {
             ptr::copy(p, p.add(1), len - idx);
             ptr::write(p, element);
@@ -479,7 +475,7 @@ where
     /// assert_eq!(vec.replace(1, 4), 2);
     /// assert_eq!(vec, &[1, 4, 3][..]);
     /// ```
-    pub fn replace(&mut self, index: I, element: E) -> E {
+    pub fn replace(&mut self, index: I, element: T) -> T {
         #[cold]
         #[inline(never)]
         fn assert_failed(index: usize, len: usize) -> ! {
@@ -495,7 +491,7 @@ where
             assert_failed(idx, len);
         }
 
-        let p = self.buf.get_mut_ptr(idx);
+        let p = mut_ptr_at_index(&mut self.buf, idx);
         unsafe { ptr::replace(p, element) }
     }
 
@@ -514,7 +510,7 @@ where
     ///
     /// assert_eq!(vec, &[2, 3][..]);
     /// ```
-    pub fn remove(&mut self, index: I) -> E {
+    pub fn remove(&mut self, index: I) -> T {
         #[cold]
         #[inline(never)]
         fn assert_failed(idx: usize, len: usize) -> ! {
@@ -530,7 +526,7 @@ where
         unsafe {
             let ret;
             {
-                let p = self.buf.get_mut_ptr(idx);
+                let p = mut_ptr_at_index(&mut self.buf, idx);
                 ret = ptr::read(p);
                 ptr::copy(p.offset(1), p, len - idx - 1);
             }
@@ -568,13 +564,13 @@ where
     /// ```
     pub fn retain<F>(&mut self, mut f: F)
     where
-        F: FnMut(&E) -> bool,
+        F: FnMut(&T) -> bool,
     {
         let len = self.len.as_usize();
         let mut del = 0;
         unsafe {
             for idx in 0..len {
-                let p = self.buf.get_mut_ptr(idx);
+                let p = mut_ptr_at_index(&mut self.buf, idx);
                 if !f(p.as_mut().unwrap()) {
                     del += 1;
                 } else if del > 0 {
@@ -611,7 +607,7 @@ where
     /// drop(iter);
     /// assert_eq!(vec, &[1, 4, 5][..]);
     /// ```
-    pub fn drain<R: RangeBounds<I>>(&mut self, range: R) -> Drain<'_, E, B, I> {
+    pub fn drain<R: RangeBounds<I>>(&mut self, range: R) -> Drain<'_, T, S, I> {
         use core::ops::Bound;
         let start = match range.start_bound() {
             Bound::Included(x) => x.as_usize(),
@@ -645,49 +641,33 @@ where
     }
 }
 
-impl<E, B, I> core::ops::Deref for Vec<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    type Target = [E];
-    fn deref(&self) -> &[E] {
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::Deref for Vec<T, S, I> {
+    type Target = [T];
+    fn deref(&self) -> &[T] {
         unsafe {
-            let ptr = self.buf.storage().as_ptr() as *const E;
+            let ptr = self.buf.get_ptr() as *const T;
             core::slice::from_raw_parts(ptr, self.len.as_usize())
         }
     }
 }
 
-impl<E, B, I> core::ops::DerefMut for Vec<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    fn deref_mut(&mut self) -> &mut [E] {
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::DerefMut for Vec<T, S, I> {
+    fn deref_mut(&mut self) -> &mut [T] {
         unsafe {
-            let ptr = self.buf.storage_mut().as_mut_ptr() as *mut E;
+            let ptr = self.buf.get_mut_ptr() as *mut T;
             core::slice::from_raw_parts_mut(ptr, self.len.as_usize())
         }
     }
 }
 
-impl<E, B, I> core::ops::Index<I> for Vec<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    type Output = E;
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::Index<I> for Vec<T, S, I> {
+    type Output = T;
     fn index(&self, index: I) -> &Self::Output {
         self.get(index).unwrap()
     }
 }
 
-impl<E, B, I> core::ops::IndexMut<I> for Vec<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::IndexMut<I> for Vec<T, S, I> {
     fn index_mut(&mut self, index: I) -> &mut Self::Output {
         self.get_mut(index).unwrap()
     }
@@ -695,12 +675,8 @@ where
 
 macro_rules! _impl_idx_range {
     ($self:ident, $idx:ident: $r:ty, $lo:expr, $hi:expr) => {
-        impl<E, B, I> core::ops::Index<$r> for Vec<E, B, I>
-        where
-            B: ContiguousStorage<E>,
-            I: Capacity + PartialOrd,
-        {
-            type Output = [E];
+        impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::Index<$r> for Vec<T, S, I> {
+            type Output = [T];
             #[allow(unused_variables)]
             fn index(&self, $idx: $r) -> &Self::Output {
                 let $self = self;
@@ -710,10 +686,8 @@ macro_rules! _impl_idx_range {
             }
         }
 
-        impl<E, B, I> core::ops::IndexMut<$r> for Vec<E, B, I>
-        where
-            B: ContiguousStorage<E>,
-            I: Capacity + PartialOrd,
+        impl<T, S: Storage<ArrayLike<T>>, I: Capacity + PartialOrd> core::ops::IndexMut<$r>
+            for Vec<T, S, I>
         {
             #[allow(unused_variables)]
             fn index_mut(&mut self, $idx: $r) -> &mut Self::Output {
@@ -734,55 +708,39 @@ _impl_idx_range! { s, index: core::ops::RangeInclusive<I>, index.start().as_usiz
 _impl_idx_range! { s, index: core::ops::RangeTo<I>, 0, index.end.as_usize() }
 _impl_idx_range! { s, index: core::ops::RangeToInclusive<I>, 0, index.end.as_usize().saturating_add(1) }
 
-impl<E, B, I> core::convert::AsRef<[E]> for Vec<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    fn as_ref(&self) -> &[E] {
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::convert::AsRef<[T]> for Vec<T, S, I> {
+    fn as_ref(&self) -> &[T] {
         self
     }
 }
 
-impl<E, B, I> core::convert::AsMut<[E]> for Vec<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    fn as_mut(&mut self) -> &mut [E] {
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::convert::AsMut<[T]> for Vec<T, S, I> {
+    fn as_mut(&mut self) -> &mut [T] {
         self
     }
 }
 
-impl<E, B, I> core::ops::Drop for Vec<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::Drop for Vec<T, S, I> {
     fn drop(&mut self) {
         unsafe {
-            let ptr = self.buf.storage_mut().as_mut_ptr() as *mut E;
+            let ptr = self.buf.get_mut_ptr() as *mut T;
             ptr::drop_in_place(ptr::slice_from_raw_parts_mut(ptr, self.len()))
         }
     }
 }
 
-impl<E, B, I> core::fmt::Debug for Vec<E, B, I>
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::fmt::Debug for Vec<T, S, I>
 where
-    E: core::fmt::Debug,
-    B: ContiguousStorage<E>,
-    I: Capacity,
+    T: core::fmt::Debug,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.as_slice().fmt(f)
     }
 }
 
-impl<E, B, I> Hash for Vec<E, B, I>
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Hash for Vec<T, S, I>
 where
-    E: Hash,
-    B: ContiguousStorage<E>,
-    I: Capacity,
+    T: Hash,
 {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -790,45 +748,32 @@ where
     }
 }
 
-impl<AE, AB, AI, BE, BB, BI> core::cmp::PartialEq<Vec<BE, BB, BI>> for Vec<AE, AB, AI>
+impl<AT, AS, AI, BT, BS, BI> PartialEq<Vec<BT, BS, BI>> for Vec<AT, AS, AI>
 where
-    AE: core::cmp::PartialEq<BE>,
-    AB: ContiguousStorage<AE>,
-    BB: ContiguousStorage<BE>,
+    AT: PartialEq<BT>,
+    AS: Storage<ArrayLike<AT>>,
+    BS: Storage<ArrayLike<BT>>,
     AI: Capacity,
     BI: Capacity,
 {
     #[inline]
-    fn eq(&self, other: &Vec<BE, BB, BI>) -> bool {
+    fn eq(&self, other: &Vec<BT, BS, BI>) -> bool {
         self.as_slice() == other.as_slice()
     }
 }
 
-impl<E, B, I> core::cmp::Eq for Vec<E, B, I>
-where
-    E: core::cmp::Eq,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-}
+impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> Eq for Vec<T, S, I> {}
 
-impl<V, E, B, I> core::cmp::PartialEq<&[V]> for Vec<E, B, I>
-where
-    E: core::cmp::PartialEq<V>,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<V, T: PartialEq<V>, S: Storage<ArrayLike<T>>, I: Capacity> PartialEq<&[V]> for Vec<T, S, I> {
     #[inline]
     fn eq(&self, other: &&[V]) -> bool {
         self.as_slice() == &other[..]
     }
 }
 
-impl<V, E, B, I> core::cmp::PartialEq<&mut [V]> for Vec<E, B, I>
+impl<V, T, S: Storage<ArrayLike<T>>, I: Capacity> PartialEq<&mut [V]> for Vec<T, S, I>
 where
-    E: core::cmp::PartialEq<V>,
-    B: ContiguousStorage<E>,
-    I: Capacity,
+    T: PartialEq<V>,
 {
     #[inline]
     fn eq(&self, other: &&mut [V]) -> bool {
@@ -836,72 +781,49 @@ where
     }
 }
 
-impl<V, E, B, I> core::cmp::PartialEq<Vec<E, B, I>> for &[V]
-where
-    V: core::cmp::PartialEq<E>,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<V: PartialEq<T>, T, S: Storage<ArrayLike<T>>, I: Capacity> PartialEq<Vec<T, S, I>> for &[V] {
     #[inline]
-    fn eq(&self, other: &Vec<E, B, I>) -> bool {
+    fn eq(&self, other: &Vec<T, S, I>) -> bool {
         &self[..] == other.as_slice()
     }
 }
 
-impl<V, E, B, I> core::cmp::PartialEq<Vec<E, B, I>> for &mut [V]
+impl<V, T, S: Storage<ArrayLike<T>>, I: Capacity> PartialEq<Vec<T, S, I>> for &mut [V]
 where
-    V: core::cmp::PartialEq<E>,
-    B: ContiguousStorage<E>,
-    I: Capacity,
+    V: PartialEq<T>,
 {
     #[inline]
-    fn eq(&self, other: &Vec<E, B, I>) -> bool {
+    fn eq(&self, other: &Vec<T, S, I>) -> bool {
         &self[..] == other.as_slice()
     }
 }
 
-impl<E, B, I> core::cmp::PartialOrd for Vec<E, B, I>
-where
-    E: core::cmp::PartialOrd,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T: PartialOrd, S: Storage<ArrayLike<T>>, I: Capacity> PartialOrd for Vec<T, S, I> {
     #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.as_slice().partial_cmp(other.as_slice())
     }
 }
 
-impl<E, B, I> core::cmp::Ord for Vec<E, B, I>
-where
-    E: core::cmp::Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Ord for Vec<T, S, I> {
+    fn cmp(&self, other: &Self) -> Ordering {
         self.as_slice().cmp(&other.as_slice())
     }
 }
 
-impl<E, B, Idx> core::iter::Extend<E> for Vec<E, B, Idx>
-where
-    B: ContiguousStorage<E>,
-    Idx: Capacity,
-{
-    fn extend<I: core::iter::IntoIterator<Item = E>>(&mut self, iter: I) {
+impl<T, S: Storage<ArrayLike<T>>, Idx: Capacity> core::iter::Extend<T> for Vec<T, S, Idx> {
+    fn extend<I: core::iter::IntoIterator<Item = T>>(&mut self, iter: I) {
         for element in iter {
             self.push(element);
         }
     }
 }
 
-impl<'a, E, B, Idx> core::iter::Extend<&'a E> for Vec<E, B, Idx>
+impl<'a, T, S: Storage<ArrayLike<T>>, Idx: Capacity> core::iter::Extend<&'a T> for Vec<T, S, Idx>
 where
-    E: 'a + Clone,
-    B: ContiguousStorage<E>,
-    Idx: Capacity,
+    T: 'a + Clone,
 {
-    fn extend<I: core::iter::IntoIterator<Item = &'a E>>(&mut self, iter: I) {
+    fn extend<I: core::iter::IntoIterator<Item = &'a T>>(&mut self, iter: I) {
         for element in iter {
             self.push(element.clone());
         }
@@ -923,23 +845,15 @@ where
 /// # assert_eq!(iter.next(), Some(2));
 /// # assert_eq!(iter.next(), None);
 /// ```
-pub struct IntoIterator<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+pub struct IntoIterator<T, S: Storage<ArrayLike<T>>, I: Capacity> {
     start: I,
     end: I,
-    buf: B,
-    elems: PhantomData<E>,
+    buf: S,
+    elems: PhantomData<T>,
 }
 
-impl<E, B, I> Iterator for IntoIterator<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    type Item = E;
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for IntoIterator<T, S, I> {
+    type Item = T;
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         let size = self.end.as_usize() - self.start.as_usize();
@@ -954,18 +868,15 @@ where
             return None;
         }
 
-        let ret = unsafe { self.buf.get_ptr(start).read() };
+        let ptr = (self.buf.get_ptr() as *const T).wrapping_add(start);
+        let ret = unsafe { ptr.read() };
         self.start = I::from_usize(start + 1);
 
         Some(ret)
     }
 }
 
-impl<E, B, I> core::iter::DoubleEndedIterator for IntoIterator<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator for IntoIterator<T, S, I> {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         let start = self.start.as_usize();
@@ -975,48 +886,30 @@ where
         }
 
         let end = end - 1;
-        let ret = unsafe { self.buf.get_ptr(end).read() };
+        let ptr = (self.buf.get_ptr() as *const T).wrapping_add(end);
+        let ret = unsafe { ptr.read() };
         self.end = I::from_usize(end);
 
         Some(ret)
     }
 }
 
-impl<E, B, I> core::iter::ExactSizeIterator for IntoIterator<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-}
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> ExactSizeIterator for IntoIterator<T, S, I> {}
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for IntoIterator<T, S, I> {}
 
-impl<E, B, I> core::iter::FusedIterator for IntoIterator<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-}
-
-impl<E, B, I> Drop for IntoIterator<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for IntoIterator<T, S, I> {
     fn drop(&mut self) {
         self.for_each(drop);
     }
 }
 
-impl<E, B, I> IntoIter for Vec<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    type Item = E;
-    type IntoIter = IntoIterator<E, B, I>;
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIter for Vec<T, S, I> {
+    type Item = T;
+    type IntoIter = IntoIterator<T, S, I>;
 
     fn into_iter(self) -> Self::IntoIter {
         let end = self.len;
-        let buf = unsafe { (&self.buf as *const B).read() };
+        let buf = unsafe { (&self.buf as *const S).read() };
         core::mem::forget(self);
 
         IntoIterator {
@@ -1028,26 +921,18 @@ where
     }
 }
 
-impl<'a, E, B, I> IntoIter for &'a Vec<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    type Item = &'a E;
-    type IntoIter = core::slice::Iter<'a, E>;
+impl<'a, T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIter for &'a Vec<T, S, I> {
+    type Item = &'a T;
+    type IntoIter = core::slice::Iter<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.as_slice().iter()
     }
 }
 
-impl<'a, E, B, I> IntoIter for &'a mut Vec<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    type Item = &'a mut E;
-    type IntoIter = core::slice::IterMut<'a, E>;
+impl<'a, T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIter for &'a mut Vec<T, S, I> {
+    type Item = &'a mut T;
+    type IntoIter = core::slice::IterMut<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.as_mut_slice().iter_mut()
@@ -1057,24 +942,16 @@ where
 /// A draining iterator for `Vec<T>`.
 ///
 /// This `struct` is created by [`Vec::drain`]. See its documentation for more.
-pub struct Drain<'p, E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    parent: &'p mut Vec<E, B, I>,
+pub struct Drain<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> {
+    parent: &'p mut Vec<T, S, I>,
     target_start: usize,
     front_index: usize,
     back_index: usize,
     target_end: usize,
 }
 
-impl<'p, E, B, I> core::iter::Iterator for Drain<'p, E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    type Item = E;
+impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for Drain<'p, T, S, I> {
+    type Item = T;
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         let size = self.back_index - self.front_index;
@@ -1092,11 +969,7 @@ where
     }
 }
 
-impl<'p, E, B, I> core::iter::DoubleEndedIterator for Drain<'p, E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator for Drain<'p, T, S, I> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.front_index == self.back_index {
             return None;
@@ -1107,25 +980,10 @@ where
     }
 }
 
-impl<'p, E, B, I> core::iter::ExactSizeIterator for Drain<'p, E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-}
+impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> ExactSizeIterator for Drain<'p, T, S, I> {}
+impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for Drain<'p, T, S, I> {}
 
-impl<'p, E, B, I> core::iter::FusedIterator for Drain<'p, E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-}
-
-impl<'p, E, B, I> Drop for Drain<'p, E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Drain<'p, T, S, I> {
     fn drop(&mut self) {
         self.for_each(drop);
         let count = self.target_end - self.target_start;
@@ -1151,16 +1009,12 @@ where
 /// vec.push('c');
 /// assert!(vec.try_push('d').is_err());
 /// ```
-pub type AllocVec<E, I = usize> = Vec<E, crate::storage::HeapStorage<E>, I>;
+pub type AllocVec<T, I = usize> = Vec<T, crate::storage::HeapStorage<T>, I>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<E, I> AllocVec<E, I>
-where
-    E: Copy,
-    I: Capacity,
-{
-    /// Constructs a new, empty `AllocVec<E, I>` with the specified capacity.
+impl<T: Copy, I: Capacity> AllocVec<T, I> {
+    /// Constructs a new, empty `AllocVec<T, I>` with the specified capacity.
     ///
     /// # Panics
     /// Panics if the specified capacity cannot be represented by a `usize`.
@@ -1175,11 +1029,7 @@ where
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<E, I> Clone for AllocVec<E, I>
-where
-    E: Copy,
-    I: Capacity,
-{
+impl<T: Copy, I: Capacity> Clone for AllocVec<T, I> {
     fn clone(&self) -> Self {
         let mut result = Self::with_capacity(I::from_usize(self.capacity()));
         for item in self.iter() {
@@ -1201,7 +1051,7 @@ where
 /// ```
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub type ArrayVec<E, const C: usize> = Vec<E, crate::storage::InlineStorage<E, C>, usize>;
+pub type ArrayVec<T, const C: usize> = Vec<T, InlineStorage<T, C>, usize>;
 
 /// A vector using an inline array for storage, generic over the index type.
 ///
@@ -1213,14 +1063,11 @@ pub type ArrayVec<E, const C: usize> = Vec<E, crate::storage::InlineStorage<E, C
 /// ```
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub type TiArrayVec<E, Index, const C: usize> = Vec<E, crate::storage::InlineStorage<E, C>, Index>;
+pub type TiArrayVec<T, Index, const C: usize> = Vec<T, InlineStorage<T, C>, Index>;
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<E, I, const C: usize> Vec<E, [MaybeUninit<E>; C], I>
-where
-    I: Capacity,
-{
+impl<T, I: Capacity, const C: usize> Vec<T, InlineStorage<T, C>, I> {
     /// Constructs a new, empty `Vec` backed by an inline array.
     ///
     /// # Panics
@@ -1246,10 +1093,7 @@ where
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<E, I, const C: usize> Default for Vec<E, [MaybeUninit<E>; C], I>
-where
-    I: Capacity,
-{
+impl<T, I: Capacity, const C: usize> Default for Vec<T, InlineStorage<T, C>, I> {
     fn default() -> Self {
         Self::new()
     }
@@ -1257,11 +1101,7 @@ where
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<E, I, const C: usize> core::clone::Clone for Vec<E, [MaybeUninit<E>; C], I>
-where
-    E: Clone,
-    I: Capacity,
-{
+impl<T: Clone, I: Capacity, const C: usize> core::clone::Clone for Vec<T, InlineStorage<T, C>, I> {
     fn clone(&self) -> Self {
         let mut ret = Self::new();
         ret.clone_from(self);
@@ -1278,12 +1118,8 @@ where
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<E, I, const C: usize> From<&[E]> for Vec<E, [MaybeUninit<E>; C], I>
-where
-    E: Clone,
-    I: Capacity,
-{
-    fn from(source: &[E]) -> Self {
+impl<T: Clone, I: Capacity, const C: usize> From<&[T]> for Vec<T, InlineStorage<T, C>, I> {
+    fn from(source: &[T]) -> Self {
         I::from_usize(C); // panics if I cannot index the whole array
         if source.len() > C {
             panic!(
@@ -1303,12 +1139,8 @@ where
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<E, I, const C: usize> From<&mut [E]> for Vec<E, [MaybeUninit<E>; C], I>
-where
-    E: Clone,
-    I: Capacity,
-{
-    fn from(source: &mut [E]) -> Self {
+impl<T: Clone, I: Capacity, const C: usize> From<&mut [T]> for Vec<T, InlineStorage<T, C>, I> {
+    fn from(source: &mut [T]) -> Self {
         I::from_usize(C); // panics if I cannot index the whole array
         if source.len() > C {
             panic!(
@@ -1328,24 +1160,24 @@ where
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<V, E, B, I, const N: usize> core::cmp::PartialEq<Vec<E, B, I>> for [V; N]
+impl<V: PartialEq<T>, T, S, I, const N: usize> PartialEq<Vec<T, S, I>> for [V; N]
 where
-    V: core::cmp::PartialEq<E>,
-    B: ContiguousStorage<E>,
+    V: PartialEq<T>,
+    S: Storage<ArrayLike<T>>,
     I: Capacity,
 {
     #[inline]
-    fn eq(&self, other: &Vec<E, B, I>) -> bool {
+    fn eq(&self, other: &Vec<T, S, I>) -> bool {
         &self[..] == other.as_slice()
     }
 }
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<V, E, B, I, const N: usize> core::cmp::PartialEq<[V; N]> for Vec<E, B, I>
+impl<V, T, S, I, const N: usize> PartialEq<[V; N]> for Vec<T, S, I>
 where
-    E: core::cmp::PartialEq<V>,
-    B: ContiguousStorage<E>,
+    T: PartialEq<V>,
+    S: Storage<ArrayLike<T>>,
     I: Capacity,
 {
     #[inline]
@@ -1356,15 +1188,14 @@ where
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<E, I, const N: usize> core::iter::FromIterator<E> for Vec<E, [MaybeUninit<E>; N], I>
-where
-    I: Capacity,
+impl<T, I: Capacity, const C: usize> core::iter::FromIterator<T>
+    for Vec<T, InlineStorage<T, C>, I>
 {
     /// Creates a vector backed by an inline array from an iterator.
     ///
     /// # Panics
     /// Panics if the iterator yields more than `N` elements.
-    fn from_iter<It: core::iter::IntoIterator<Item = E>>(iter: It) -> Self {
+    fn from_iter<It: core::iter::IntoIterator<Item = T>>(iter: It) -> Self {
         let mut result = Self::new();
         result.extend(iter);
         result

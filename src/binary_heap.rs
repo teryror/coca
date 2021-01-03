@@ -3,18 +3,20 @@
 //! Insertion and popping the largest element have O(log(n)) time complexity.
 //! Checking the largest element is O(1).
 //!
-//! [`BinaryHeap<E, B, I>`](BinaryHeap) wraps a [`Vec<E, B, I>`](Vec) and
+//! [`BinaryHeap<T, S, I>`](BinaryHeap) wraps a [`Vec<T, S, I>`](Vec) and
 //! can therefore be converted into the underlying vector type at zero cost.
 //! Converting a vector to a binary heap can be done in-place, and has O(n)
 //! complexity. A binary heap can also be converted to a sorted vector in-place,
 //! allowing it to be used for an O(n*log(n)) in-place heapsort.
 
-use crate::storage::{Capacity, ContiguousStorage};
+use crate::storage::{ArrayLike, Capacity, Storage};
 use crate::vec::{Drain, Vec};
 
-use core::fmt;
+use core::fmt::{self, Debug, Formatter};
+use core::iter::{FromIterator, FusedIterator};
 #[allow(unused_imports)]
 use core::mem::MaybeUninit;
+use core::ops::{Deref, DerefMut};
 
 /// A fixed-capacity priority queue implemented with a binary heap.
 ///
@@ -26,13 +28,8 @@ use core::mem::MaybeUninit;
 /// item's ordering relative to any other item, as determined by the `Ord`
 /// trait, changes while it is in the heap. This is normally only possible
 /// through `Cell`, `RefCell`, global state, I/O, or unsafe code.
-pub struct BinaryHeap<E, B, I = usize>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    a: Vec<E, B, I>,
+pub struct BinaryHeap<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity = usize> {
+    a: Vec<T, S, I>,
 }
 
 /// A binary heap using a mutable slice for storage.
@@ -47,52 +44,32 @@ where
 /// assert_eq!(heap1.capacity(), 16);
 /// assert_eq!(heap2.capacity(), 16);
 /// ```
-pub type SliceHeap<'a, E, I = usize> = BinaryHeap<E, crate::storage::SliceStorage<'a, E>, I>;
+pub type SliceHeap<'a, T, I = usize> = BinaryHeap<T, crate::storage::SliceStorage<'a, T>, I>;
 /// A binary heap using an arena-allocated slice for storage.
-pub type ArenaHeap<'a, E, I = usize> = BinaryHeap<E, crate::storage::ArenaStorage<'a, E>, I>;
+pub type ArenaHeap<'a, T, I = usize> = BinaryHeap<T, crate::storage::ArenaStorage<'a, T>, I>;
 
 /// Structure wrapping a mutable reference to the greatest item on a `BinaryHeap`.
 ///
 /// This `struct` is created by the [`BinaryHeap::peek_mut()`] method. See its
 /// documentation for more.
-pub struct PeekMut<'a, E, B, I = usize>
-where
-    E: 'a + Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    heap: &'a mut BinaryHeap<E, B, I>,
+pub struct PeekMut<'a, T: 'a + Ord, S: Storage<ArrayLike<T>>, I: Capacity = usize> {
+    heap: &'a mut BinaryHeap<T, S, I>,
 }
 
-impl<E, B, I> fmt::Debug for PeekMut<'_, E, B, I>
-where
-    E: Ord + fmt::Debug,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<T: Ord + Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for PeekMut<'_, T, S, I> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_tuple("PeekMut").field(&self.heap.peek()).finish()
     }
 }
 
-impl<E, B, I> Drop for PeekMut<'_, E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Drop for PeekMut<'_, T, S, I> {
     fn drop(&mut self) {
         heapify(self.heap.a.as_mut_slice(), 0);
     }
 }
 
-impl<E, B, I> core::ops::Deref for PeekMut<'_, E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    type Target = E;
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Deref for PeekMut<'_, T, S, I> {
+    type Target = T;
 
     fn deref(&self) -> &Self::Target {
         debug_assert!(!self.heap.is_empty());
@@ -100,26 +77,16 @@ where
     }
 }
 
-impl<E, B, I> core::ops::DerefMut for PeekMut<'_, E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> DerefMut for PeekMut<'_, T, S, I> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         debug_assert!(!self.heap.is_empty());
         unsafe { self.heap.a.get_unchecked_mut(0) }
     }
 }
 
-impl<E, B, I> PeekMut<'_, E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> PeekMut<'_, T, S, I> {
     /// Removes the peeked value from the heap and returns it.
-    pub fn pop(this: PeekMut<'_, E, B, I>) -> E {
+    pub fn pop(this: PeekMut<'_, T, S, I>) -> T {
         debug_assert!(!this.heap.is_empty());
         let value = this.heap.pop().unwrap();
         core::mem::forget(this);
@@ -127,17 +94,12 @@ where
     }
 }
 
-impl<E, B, I> From<B> for BinaryHeap<E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for BinaryHeap<T, S, I> {
     /// Converts a contiguous block of memory into an empty binary heap.
     ///
     /// # Panics
     /// This may panic if the index type I cannot represent `buf.capacity()`.
-    fn from(buf: B) -> Self {
+    fn from(buf: S) -> Self {
         BinaryHeap { a: Vec::from(buf) }
     }
 }
@@ -176,27 +138,17 @@ fn heapify<T: Ord>(a: &mut [T], i: usize) {
     }
 }
 
-impl<E, B, I> fmt::Debug for BinaryHeap<E, B, I>
-where
-    E: Ord + fmt::Debug,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T: Ord + Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for BinaryHeap<T, S, I> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list().entries(self.iter()).finish()
     }
 }
 
-impl<E, B, I> From<Vec<E, B, I>> for BinaryHeap<E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> From<Vec<T, S, I>> for BinaryHeap<T, S, I> {
     /// Converts a [`Vec`] into a binary heap.
     ///
     /// This conversion happens in-place, and has O(n) time complexity.
-    fn from(mut vec: Vec<E, B, I>) -> Self {
+    fn from(mut vec: Vec<T, S, I>) -> Self {
         let a = vec.as_mut_slice();
         for i in (0..(a.len() / 2)).rev() {
             heapify(a, i);
@@ -205,15 +157,10 @@ where
     }
 }
 
-impl<E, B, I> BinaryHeap<E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> BinaryHeap<T, S, I> {
     /// Returns a reference to the greatest item in the binary heap, or [`None`] if it is empty.
     #[inline]
-    pub fn peek(&self) -> Option<&E> {
+    pub fn peek(&self) -> Option<&T> {
         self.a.first()
     }
 
@@ -241,7 +188,7 @@ where
     /// assert_eq!(heap.pop(), Some(0));
     /// ```
     #[inline]
-    pub fn peek_mut(&mut self) -> Option<PeekMut<E, B, I>> {
+    pub fn peek_mut(&mut self) -> Option<PeekMut<T, S, I>> {
         if self.is_empty() {
             None
         } else {
@@ -264,7 +211,7 @@ where
     /// assert_eq!(heap.pop(), Some(1));
     /// assert_eq!(heap.pop(), None);
     /// ```
-    pub fn pop(&mut self) -> Option<E> {
+    pub fn pop(&mut self) -> Option<T> {
         if self.is_empty() {
             return None;
         }
@@ -280,7 +227,7 @@ where
     /// Panics if the heap is already at capacity. See [`try_push`](BinaryHeap::try_push)
     /// for a checked version that never panics.
     #[inline]
-    pub fn push(&mut self, item: E) {
+    pub fn push(&mut self, item: T) {
         #[cold]
         #[inline(never)]
         fn assert_failed() -> ! {
@@ -305,7 +252,7 @@ where
     /// assert_eq!(heap.len(), 3);
     /// assert_eq!(heap.peek(), Some(&5));
     /// ```
-    pub fn try_push(&mut self, item: E) -> Result<(), E> {
+    pub fn try_push(&mut self, item: T) -> Result<(), T> {
         self.a.try_push(item)?;
         let a = self.a.as_mut_slice();
         let mut i = a.len() - 1;
@@ -341,7 +288,7 @@ where
     }
 
     /// Returns an iterator visiting all values in the underlying vector in arbitrary order.
-    pub fn iter(&self) -> impl core::iter::Iterator<Item = &E> {
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.a.iter()
     }
 
@@ -364,7 +311,7 @@ where
     /// assert!(heap.is_empty());
     /// ```
     #[inline]
-    pub fn drain(&mut self) -> Drain<'_, E, B, I> {
+    pub fn drain(&mut self) -> Drain<'_, T, S, I> {
         self.a.drain(..)
     }
 
@@ -388,7 +335,7 @@ where
     /// assert!(heap.is_empty());
     /// ```
     #[inline]
-    pub fn drain_sorted(&mut self) -> DrainSorted<'_, E, B, I> {
+    pub fn drain_sorted(&mut self) -> DrainSorted<'_, T, S, I> {
         DrainSorted { heap: self }
     }
 
@@ -400,7 +347,7 @@ where
 
     /// Consumes the `BinaryHeap` and returns the underlying vector in arbitrary order.
     #[inline]
-    pub fn into_vec(self) -> Vec<E, B, I> {
+    pub fn into_vec(self) -> Vec<T, S, I> {
         self.a
     }
 
@@ -414,7 +361,7 @@ where
     /// let vec = heap.into_sorted_vec();
     /// assert_eq!(vec, &[1, 2, 3, 4, 5][..]);
     /// ```
-    pub fn into_sorted_vec(self) -> Vec<E, B, I> {
+    pub fn into_sorted_vec(self) -> Vec<T, S, I> {
         let mut result = self.into_vec();
         let a = result.as_mut_slice();
         for i in (1..a.len()).rev() {
@@ -444,32 +391,24 @@ where
     /// assert_eq!(iter.next(), Some(3));
     /// assert_eq!(iter.next(), Some(1));
     /// ```
-    pub fn into_iter_sorted(self) -> IntoIterSorted<E, B, I> {
+    pub fn into_iter_sorted(self) -> IntoIterSorted<T, S, I> {
         IntoIterSorted { heap: self }
     }
 }
 
-impl<E, B, I> IntoIterator for BinaryHeap<E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    type Item = E;
-    type IntoIter = <Vec<E, B, I> as IntoIterator>::IntoIter;
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for BinaryHeap<T, S, I> {
+    type Item = T;
+    type IntoIter = <Vec<T, S, I> as IntoIterator>::IntoIter;
     fn into_iter(self) -> Self::IntoIter {
         self.a.into_iter()
     }
 }
 
-impl<E1, E2, B, I> core::iter::Extend<E1> for BinaryHeap<E2, B, I>
+impl<T1, T2: Ord, S: Storage<ArrayLike<T2>>, I: Capacity> Extend<T1> for BinaryHeap<T2, S, I>
 where
-    Vec<E2, B, I>: core::iter::Extend<E1>,
-    E2: Ord,
-    B: ContiguousStorage<E2>,
-    I: Capacity,
+    Vec<T2, S, I>: Extend<T1>,
 {
-    fn extend<T: IntoIterator<Item = E1>>(&mut self, iter: T) {
+    fn extend<T: IntoIterator<Item = T1>>(&mut self, iter: T) {
         self.a.extend(iter);
         for i in (0..(self.a.len() / 2)).rev() {
             heapify(self.a.as_mut_slice(), i);
@@ -477,19 +416,16 @@ where
     }
 }
 
-impl<E, B, I> core::iter::FromIterator<E> for BinaryHeap<E, B, I>
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> FromIterator<T> for BinaryHeap<T, S, I>
 where
-    Vec<E, B, I>: core::iter::FromIterator<E>,
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
+    Vec<T, S, I>: FromIterator<T>,
 {
     /// Creates a binary heap from an iterator.
     ///
     /// # Panics
     /// Panics if the iterator yields more elements than the binary heap can hold.
-    fn from_iter<It: IntoIterator<Item = E>>(iter: It) -> Self {
-        let a = Vec::<E, B, I>::from_iter(iter);
+    fn from_iter<It: IntoIterator<Item = T>>(iter: It) -> Self {
+        let a = Vec::<T, S, I>::from_iter(iter);
         Self::from(a)
     }
 }
@@ -498,22 +434,12 @@ where
 ///
 /// This `struct` is created by [`BinaryHeap::drain_sorted()`].
 /// See its documentation for more.
-pub struct DrainSorted<'a, E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    heap: &'a mut BinaryHeap<E, B, I>,
+pub struct DrainSorted<'a, T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> {
+    heap: &'a mut BinaryHeap<T, S, I>,
 }
 
-impl<E, B, I> Iterator for DrainSorted<'_, E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    type Item = E;
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for DrainSorted<'_, T, S, I> {
+    type Item = T;
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         let size = self.len();
@@ -525,27 +451,10 @@ where
     }
 }
 
-impl<E, B, I> core::iter::ExactSizeIterator for DrainSorted<'_, E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-}
-impl<E, B, I> core::iter::FusedIterator for DrainSorted<'_, E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-}
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> ExactSizeIterator for DrainSorted<'_, T, S, I> {}
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for DrainSorted<'_, T, S, I> {}
 
-impl<E, B, I> Drop for DrainSorted<'_, E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Drop for DrainSorted<'_, T, S, I> {
     fn drop(&mut self) {
         self.for_each(drop);
     }
@@ -556,22 +465,12 @@ where
 /// This `struct` is created by [`BinaryHeap::into_iter_sorted()`].
 /// See its documentation for more.
 #[derive(Debug)]
-pub struct IntoIterSorted<E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    heap: BinaryHeap<E, B, I>,
+pub struct IntoIterSorted<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> {
+    heap: BinaryHeap<T, S, I>,
 }
 
-impl<E, B, I> Iterator for IntoIterSorted<E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    type Item = E;
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for IntoIterSorted<T, S, I> {
+    type Item = T;
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -580,44 +479,24 @@ where
     }
 
     #[inline]
-    fn next(&mut self) -> Option<E> {
+    fn next(&mut self) -> Option<T> {
         self.heap.pop()
     }
 }
 
-impl<E, B, I> core::iter::ExactSizeIterator for IntoIterSorted<E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-}
-impl<E, B, I> core::iter::FusedIterator for IntoIterSorted<E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-}
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> ExactSizeIterator for IntoIterSorted<T, S, I> {}
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for IntoIterSorted<T, S, I> {}
 
-impl<E, B, I> Clone for IntoIterSorted<E, B, I>
+impl<T: Clone + Ord, S: Storage<ArrayLike<T>>, I: Capacity> Clone for IntoIterSorted<T, S, I>
 where
-    BinaryHeap<E, B, I>: Clone,
-    E: Clone + Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
+    BinaryHeap<T, S, I>: Clone,
 {
     fn clone(&self) -> Self {
         self.heap.clone().into_iter_sorted()
     }
 }
 
-impl<E, B, I> Drop for IntoIterSorted<E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Drop for IntoIterSorted<T, S, I> {
     fn drop(&mut self) {
         self.for_each(drop);
     }
@@ -637,15 +516,11 @@ where
 /// heap.push('c');
 /// assert!(heap.try_push('d').is_err());
 /// ```
-pub type AllocHeap<E, I = usize> = BinaryHeap<E, crate::storage::HeapStorage<E>, I>;
+pub type AllocHeap<T, I = usize> = BinaryHeap<T, crate::storage::HeapStorage<T>, I>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<E, I> AllocHeap<E, I>
-where
-    E: Copy + Ord,
-    I: Capacity,
-{
+impl<T: Copy + Ord, I: Capacity> AllocHeap<T, I> {
     /// Constructs a new, empty `AllocHeap<E, I>` with the specified capacity.
     ///
     /// # Panics
@@ -659,11 +534,7 @@ where
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<E, I> Clone for AllocHeap<E, I>
-where
-    E: Copy + Ord,
-    I: Capacity,
-{
+impl<T: Copy + Ord, I: Capacity> Clone for AllocHeap<T, I> {
     fn clone(&self) -> Self {
         BinaryHeap { a: self.a.clone() }
     }
@@ -681,7 +552,7 @@ where
 /// ```
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub type ArrayHeap<E, const C: usize> = BinaryHeap<E, crate::storage::InlineStorage<E, C>, usize>;
+pub type ArrayHeap<T, const C: usize> = BinaryHeap<T, crate::storage::InlineStorage<T, C>, usize>;
 
 /// A binary heap using an inline array for storage, generic over the index type.
 ///
@@ -694,16 +565,12 @@ pub type ArrayHeap<E, const C: usize> = BinaryHeap<E, crate::storage::InlineStor
 /// ```
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub type TiArrayHeap<E, Index, const C: usize> =
-    BinaryHeap<E, crate::storage::InlineStorage<E, C>, Index>;
+pub type TiArrayHeap<T, Index, const C: usize> =
+    BinaryHeap<T, crate::storage::InlineStorage<T, C>, Index>;
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<E, I, const C: usize> BinaryHeap<E, [MaybeUninit<E>; C], I>
-where
-    E: Ord,
-    I: Capacity,
-{
+impl<T: Ord, I: Capacity, const C: usize> BinaryHeap<T, [MaybeUninit<T>; C], I> {
     /// Constructs a new, empty `BinaryHeap` backed by an inline array.
     ///
     /// # Panics
@@ -723,11 +590,7 @@ where
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<E, I, const C: usize> Default for BinaryHeap<E, [MaybeUninit<E>; C], I>
-where
-    E: Ord,
-    I: Capacity,
-{
+impl<T: Ord, I: Capacity, const C: usize> Default for BinaryHeap<T, [MaybeUninit<T>; C], I> {
     fn default() -> Self {
         Self::new()
     }
@@ -735,11 +598,7 @@ where
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<E, I, const C: usize> Clone for BinaryHeap<E, [MaybeUninit<E>; C], I>
-where
-    E: Clone + Ord,
-    I: Capacity,
-{
+impl<T: Clone + Ord, I: Capacity, const C: usize> Clone for BinaryHeap<T, [MaybeUninit<T>; C], I> {
     fn clone(&self) -> Self {
         BinaryHeap { a: self.a.clone() }
     }

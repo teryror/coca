@@ -1,6 +1,8 @@
 //! Traits providing genericity over storage strategies and index types.
 
+use core::alloc::{Layout, LayoutError};
 use core::convert::TryInto;
+use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 
 /// Two-way conversion between `Self` and `usize`.
@@ -178,79 +180,120 @@ macro_rules! index_type {
     }
 }
 
-/// An interface for a contiguous memory block for use by data structures.
-pub unsafe trait ContiguousStorage<T>: Sized
-where
-    T: Sized,
-{
-    /// Extracts a slice over the entire memory block.
-    ///
-    /// # Safety
-    /// Implementors must ensure the length of the returned slice never changes.
-    fn storage(&self) -> &[MaybeUninit<T>];
-    /// Extracts a mutable slice over the entire memory block.
-    ///
-    /// # Safety
-    /// Implementors must ensure the length of the returned slice never changes.
-    fn storage_mut(&mut self) -> &mut [MaybeUninit<T>];
+/// Types that specify a data structure's storage layout requirements.
+pub trait LayoutSpec {
+    /// Constructs a [`Layout`] for a memory block capable of holding the
+    /// specified number of items.
+    fn layout_with_capacity(items: usize) -> Result<Layout, LayoutError>;
+}
 
-    /// Returns the size of the memory block in units of T.
-    #[inline]
-    fn capacity(&self) -> usize {
-        self.storage().len()
+/// Inconstructible type to mark data structures that require an array-like storage layout.
+pub struct ArrayLike<T>(PhantomData<T>);
+impl<T> LayoutSpec for ArrayLike<T> {
+    fn layout_with_capacity(items: usize) -> Result<Layout, LayoutError> {
+        Layout::array::<T>(items)
     }
+}
 
-    /// Returns a pointer to the element at position `index`.
+/// An interface to a contiguous memory block for use by data structures.
+pub unsafe trait Storage<R: LayoutSpec>: Sized {
+    /// Extracts a pointer to the beginning of the memory block.
     ///
     /// # Safety
-    /// The resulting pointer does not need to be in bounds but it is potentially
-    /// hazardous to dereference (which requires `unsafe`).
-    ///
-    /// Even when in bounds, the value it points to may not be initialized.
-    #[inline]
-    fn get_ptr(&self, index: usize) -> *const T {
-        debug_assert!(index <= self.storage().len());
-        self.storage().as_ptr().wrapping_add(index) as _
-    }
-
-    /// Returns a mutable pointer to the element at position `index`.
+    /// Implementors must ensure the same pointer is returned everytime this
+    /// method is called throughout the block's lifetime.
+    fn get_ptr(&self) -> *const u8;
+    /// Extracts a mutable pointer to the beginning of the memory block.
     ///
     /// # Safety
-    /// The resulting pointer does not need to be in bounds but it is potentially
-    /// hazardous to dereference (which requires `unsafe`).
+    /// Implementors must ensure the same pointer is returned everytime this
+    /// method is called throughout the block's lifetime.
+    fn get_mut_ptr(&mut self) -> *mut u8;
+    /// Returns the maximum number of items the memory block can hold.
     ///
-    /// Even when in bounds, the value it points to may not be initialized.
-    #[inline]
-    fn get_mut_ptr(&mut self, index: usize) -> *mut T {
-        debug_assert!(index <= self.storage_mut().len());
-        self.storage_mut().as_mut_ptr().wrapping_add(index) as _
-    }
+    /// # Safety
+    /// What exactly constitutes an item depends on the argument type `R`.
+    /// When called on a memory block with a layout matching
+    /// `R::layout_with_capacity(n)`, this must return at most `n`.
+    ///
+    /// Implementors must ensure the same value is returned everytime this
+    /// method is called throughout the block's lifetime.
+    fn capacity(&self) -> usize;
+}
+
+#[inline(always)]
+pub(crate) fn ptr_at_index<T, S: Storage<ArrayLike<T>>>(storage: &S, index: usize) -> *const T {
+    debug_assert!(index <= storage.capacity());
+    let ptr = storage.get_ptr() as *const T;
+    ptr.wrapping_add(index)
+}
+
+#[inline(always)]
+pub(crate) fn mut_ptr_at_index<T, S: Storage<ArrayLike<T>>>(
+    storage: &mut S,
+    index: usize,
+) -> *mut T {
+    debug_assert!(index <= storage.capacity());
+    let ptr = storage.get_mut_ptr() as *mut T;
+    ptr.wrapping_add(index)
 }
 
 /// Shorthand for `&'a mut [MaybeUninit<T>]` for use with generic data structures.
 pub type SliceStorage<'a, T> = &'a mut [MaybeUninit<T>];
-unsafe impl<T: Sized> ContiguousStorage<T> for SliceStorage<'_, T> {
+unsafe impl<T: Sized> Storage<ArrayLike<T>> for &mut [MaybeUninit<T>] {
     #[inline]
-    fn storage(&self) -> &[MaybeUninit<T>] {
-        &self[..]
+    fn get_ptr(&self) -> *const u8 {
+        self.as_ptr() as *const u8
     }
     #[inline]
-    fn storage_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        self
+    fn get_mut_ptr(&mut self) -> *mut u8 {
+        self.as_mut_ptr() as *mut u8
+    }
+    #[inline]
+    fn capacity(&self) -> usize {
+        self.len()
     }
 }
 
 /// Shorthand for [`coca::Box<'a, [MaybeUninit<T>]`](crate::arena::Box) for use
 /// with generic data structures.
 pub type ArenaStorage<'a, T> = crate::arena::Box<'a, [MaybeUninit<T>]>;
-unsafe impl<T> ContiguousStorage<T> for ArenaStorage<'_, T> {
+unsafe impl<T> Storage<ArrayLike<T>> for ArenaStorage<'_, T> {
+    fn get_ptr(&self) -> *const u8 {
+        self.as_ptr() as *const u8
+    }
+    fn get_mut_ptr(&mut self) -> *mut u8 {
+        self.as_mut_ptr() as *mut u8
+    }
+    fn capacity(&self) -> usize {
+        self.len()
+    }
+}
+
+unsafe impl<R: LayoutSpec, S: Storage<R>> Storage<R> for crate::arena::Box<'_, S> {
     #[inline]
-    fn storage(&self) -> &[MaybeUninit<T>] {
-        self
+    fn get_ptr(&self) -> *const u8 {
+        (**self).get_ptr()
     }
     #[inline]
-    fn storage_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        self
+    fn get_mut_ptr(&mut self) -> *mut u8 {
+        (**self).get_mut_ptr()
+    }
+    #[inline]
+    fn capacity(&self) -> usize {
+        (**self).capacity()
+    }
+}
+
+unsafe impl<R: LayoutSpec, S: Storage<R>> Storage<R> for &mut S {
+    fn get_ptr(&self) -> *const u8 {
+        (**self).get_ptr()
+    }
+    fn get_mut_ptr(&mut self) -> *mut u8 {
+        (**self).get_mut_ptr()
+    }
+    fn capacity(&self) -> usize {
+        (**self).capacity()
     }
 }
 
@@ -262,14 +305,29 @@ pub type HeapStorage<T> = alloc::boxed::Box<[MaybeUninit<T>]>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-unsafe impl<T> ContiguousStorage<T> for HeapStorage<T> {
-    #[inline]
-    fn storage(&self) -> &[MaybeUninit<T>] {
-        self
+unsafe impl<T> Storage<ArrayLike<T>> for HeapStorage<T> {
+    fn get_ptr(&self) -> *const u8 {
+        self.as_ptr() as *const u8
     }
-    #[inline]
-    fn storage_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        self
+    fn get_mut_ptr(&mut self) -> *mut u8 {
+        self.as_mut_ptr() as *mut u8
+    }
+    fn capacity(&self) -> usize {
+        self.len()
+    }
+}
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+unsafe impl<R: LayoutSpec, S: Storage<R>> Storage<R> for alloc::boxed::Box<S> {
+    fn get_ptr(&self) -> *const u8 {
+        (**self).get_ptr()
+    }
+    fn get_mut_ptr(&mut self) -> *mut u8 {
+        (**self).get_mut_ptr()
+    }
+    fn capacity(&self) -> usize {
+        (**self).capacity()
     }
 }
 
@@ -280,62 +338,13 @@ pub type InlineStorage<T, const C: usize> = [MaybeUninit<T>; C];
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-unsafe impl<T, const C: usize> ContiguousStorage<T> for InlineStorage<T, C> {
-    #[inline]
-    fn storage(&self) -> &[MaybeUninit<T>] {
-        &self[..]
+unsafe impl<T, const C: usize> Storage<ArrayLike<T>> for InlineStorage<T, C> {
+    fn get_ptr(&self) -> *const u8 {
+        self.as_ptr() as *const u8
     }
-    #[inline]
-    fn storage_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        &mut self[..]
+    fn get_mut_ptr(&mut self) -> *mut u8 {
+        self.as_mut_ptr() as *mut u8
     }
-}
-
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-unsafe impl<'a, T, const C: usize> ContiguousStorage<T> for &'a mut [MaybeUninit<T>; C] {
-    #[inline]
-    fn storage(&self) -> &[MaybeUninit<T>] {
-        &self[..]
-    }
-    #[inline]
-    fn storage_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        &mut self[..]
-    }
-    #[inline]
-    fn capacity(&self) -> usize {
-        C
-    }
-}
-
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-unsafe impl<'a, T, const C: usize> ContiguousStorage<T> for crate::Box<'a, [MaybeUninit<T>; C]> {
-    #[inline]
-    fn storage(&self) -> &[MaybeUninit<T>] {
-        &self[..]
-    }
-    #[inline]
-    fn storage_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        &mut self[..]
-    }
-    #[inline]
-    fn capacity(&self) -> usize {
-        C
-    }
-}
-#[cfg(all(feature = "nightly", feature = "alloc"))]
-#[cfg_attr(docs_rs, doc(cfg(all(feature = "alloc", feature = "nightly"))))]
-unsafe impl<'a, T, const C: usize> ContiguousStorage<T> for alloc::boxed::Box<[MaybeUninit<T>; C]> {
-    #[inline]
-    fn storage(&self) -> &[MaybeUninit<T>] {
-        &self[..]
-    }
-    #[inline]
-    fn storage_mut(&mut self) -> &mut [MaybeUninit<T>] {
-        &mut self[..]
-    }
-    #[inline]
     fn capacity(&self) -> usize {
         C
     }

@@ -3,9 +3,13 @@
 //! This queue has O(1) inserts and removals from both ends of the sequence.
 //! It also has O(1) indexing like a vector.
 
+use core::fmt::{self, Debug, Formatter};
+use core::hash::{Hash, Hasher};
+use core::iter::FusedIterator;
 use core::marker::PhantomData;
+use core::ops::{Index, IndexMut};
 
-use crate::storage::{Capacity, ContiguousStorage};
+use crate::storage::{mut_ptr_at_index, ptr_at_index, ArrayLike, Capacity, Storage};
 use crate::vec::Vec;
 
 /// A double-ended queue implemented with a ring buffer.
@@ -25,15 +29,11 @@ use crate::vec::Vec;
 /// performance benefits when the capacity is known at compile time, especially
 /// with powers of 2, which allow this expression to be optimized to
 /// `storage[(offset + index) & (CAPACITY - 1)]`.
-pub struct Deque<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+pub struct Deque<T, S: Storage<ArrayLike<T>>, I: Capacity> {
     front: I,
     len: I,
-    buf: B,
-    elem: PhantomData<E>,
+    buf: S,
+    elem: PhantomData<T>,
 }
 
 /// A double-ended queue using any mutable slice for storage.
@@ -48,19 +48,15 @@ where
 /// assert_eq!(deque1.capacity(), 16);
 /// assert_eq!(deque2.capacity(), 16);
 /// ```
-pub type SliceDeque<'a, E, I = usize> = Deque<E, crate::storage::SliceStorage<'a, E>, I>;
+pub type SliceDeque<'a, T, I = usize> = Deque<T, crate::storage::SliceStorage<'a, T>, I>;
 /// A double-ended queue using an arena-allocated slice for storage.
 ///
 /// See [`Arena::try_deque`](crate::Arena::try_deque) for example usage.
-pub type ArenaDeque<'a, E, I = usize> = Deque<E, crate::storage::ArenaStorage<'a, E>, I>;
+pub type ArenaDeque<'a, T, I = usize> = Deque<T, crate::storage::ArenaStorage<'a, T>, I>;
 
-impl<E, B, I> From<B> for Deque<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for Deque<T, S, I> {
     /// Converts a contiguous block of memory into an empty deque.
-    fn from(buf: B) -> Self {
+    fn from(buf: S) -> Self {
         Deque {
             front: I::from_usize(0),
             len: I::from_usize(0),
@@ -70,8 +66,8 @@ where
     }
 }
 
-impl<E, B: ContiguousStorage<E>, I: Capacity> From<Vec<E, B, I>> for Deque<E, B, I> {
-    fn from(vec: Vec<E, B, I>) -> Self {
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<Vec<T, S, I>> for Deque<T, S, I> {
+    fn from(vec: Vec<T, S, I>) -> Self {
         let (buf, len) = vec.into_raw_parts();
         Deque {
             front: I::from_usize(0),
@@ -82,12 +78,8 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> From<Vec<E, B, I>> for Deque<E, B,
     }
 }
 
-impl<E, B, I> Deque<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    /// Decomposes a `Deque<E, B, I>` into its raw parts.
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
+    /// Decomposes a `Deque<T, S, I>` into its raw parts.
     ///
     /// Returns the raw storage type, the front offset and the length of the
     /// deque in elements. These are the same arguments in the same order as
@@ -106,14 +98,14 @@ where
     ///     // buf[1] is uninitialized
     /// }
     /// ```
-    pub fn into_raw_parts(self) -> (B, I, I) {
-        let ptr = &self.buf as *const B;
+    pub fn into_raw_parts(self) -> (S, I, I) {
+        let ptr = &self.buf as *const S;
         let result = (unsafe { ptr.read() }, self.front, self.len);
         core::mem::forget(self);
         result
     }
 
-    /// Creates a `Deque<E, B, I>` directly from its raw parts.
+    /// Creates a `Deque<T, S, I>` directly from its raw parts.
     ///
     /// # Safety
     /// Callers must ensure that the first `length` values after `front`
@@ -131,7 +123,7 @@ where
     /// let deque = unsafe { coca::SliceDeque::from_raw_parts(buf, front, len) };
     /// assert_eq!(deque, &[1, 2]);
     /// ```
-    pub unsafe fn from_raw_parts(buf: B, front: I, length: I) -> Self {
+    pub unsafe fn from_raw_parts(buf: S, front: I, length: I) -> Self {
         Deque {
             front,
             len: length,
@@ -175,9 +167,9 @@ where
     /// assert_eq!(deque.contains(&1), true);
     /// assert_eq!(deque.contains(&10), false);
     /// ```
-    pub fn contains(&self, x: &E) -> bool
+    pub fn contains(&self, x: &T) -> bool
     where
-        E: PartialEq,
+        T: PartialEq,
     {
         let (a, b) = self.as_slices();
         a.contains(x) || b.contains(x)
@@ -199,14 +191,20 @@ where
         Some((self.front.as_usize() + index) % self.capacity())
     }
 
+    fn storage_mut(&mut self) -> &mut [T] {
+        unsafe {
+            core::slice::from_raw_parts_mut(self.buf.get_mut_ptr() as *mut T, self.capacity())
+        }
+    }
+
     /// Returns a reference to the element at the given index, or [`None`] if
     /// the index is out of bounds.
     ///
     /// The element at index 0 is the front of the queue.
     #[inline]
-    pub fn get(&self, index: I) -> Option<&E> {
+    pub fn get(&self, index: I) -> Option<&T> {
         let index = self.physical_index(index)?;
-        unsafe { Some(self.buf.get_ptr(index).as_ref().unwrap()) }
+        unsafe { Some(ptr_at_index(&self.buf, index).as_ref().unwrap()) }
     }
 
     /// Returns a mutable reference to the element at the given index, or [`None`]
@@ -214,32 +212,32 @@ where
     ///
     /// The element at index 0 is the front of the queue.
     #[inline]
-    pub fn get_mut(&mut self, index: I) -> Option<&mut E> {
+    pub fn get_mut(&mut self, index: I) -> Option<&mut T> {
         let index = self.physical_index(index)?;
-        unsafe { Some(self.buf.get_mut_ptr(index).as_mut().unwrap()) }
+        unsafe { Some(mut_ptr_at_index(&mut self.buf, index).as_mut().unwrap()) }
     }
 
     /// Returns a reference to the front element, or [`None`] if the `Deque` is empty.
     #[inline]
-    pub fn front(&self) -> Option<&E> {
+    pub fn front(&self) -> Option<&T> {
         self.get(I::from_usize(0))
     }
 
     /// Returns a mutable reference to the front element, or [`None`] if the `Deque` is empty.
     #[inline]
-    pub fn front_mut(&mut self) -> Option<&mut E> {
+    pub fn front_mut(&mut self) -> Option<&mut T> {
         self.get_mut(I::from_usize(0))
     }
 
     /// Returns a reference to the back element, or [`None`] if the `Deque` is empty.
     #[inline]
-    pub fn back(&self) -> Option<&E> {
+    pub fn back(&self) -> Option<&T> {
         self.get(I::from_usize(self.len() - 1))
     }
 
     /// Returns a mutable reference to teh back element, or [`None`] if the `Deque is empty.
     #[inline]
-    pub fn back_mut(&mut self) -> Option<&mut E> {
+    pub fn back_mut(&mut self) -> Option<&mut T> {
         self.get_mut(I::from_usize(self.len() - 1))
     }
 
@@ -255,13 +253,13 @@ where
     /// assert_eq!(deque.pop_front(), Some(2));
     /// assert_eq!(deque.pop_front(), None);
     /// ```
-    pub fn pop_front(&mut self) -> Option<E> {
+    pub fn pop_front(&mut self) -> Option<T> {
         if self.is_empty() {
             return None;
         }
 
         let front = self.front.as_usize();
-        let result = unsafe { self.buf.get_ptr(front).read() };
+        let result = unsafe { ptr_at_index(&self.buf, front).read() };
         self.front = I::from_usize(front + 1 % self.capacity());
         self.len = I::from_usize(self.len() - 1);
 
@@ -280,13 +278,13 @@ where
     /// assert_eq!(deque.pop_back(), Some(1));
     /// assert_eq!(deque.pop_back(), None);
     /// ```
-    pub fn pop_back(&mut self) -> Option<E> {
+    pub fn pop_back(&mut self) -> Option<T> {
         if self.is_empty() {
             return None;
         }
 
         let idx = (self.front.as_usize() + self.len() - 1) % self.capacity();
-        let result = unsafe { self.buf.get_ptr(idx).read() };
+        let result = unsafe { ptr_at_index(&self.buf, idx).read() };
         self.len = I::from_usize(self.len() - 1);
 
         Some(result)
@@ -304,13 +302,13 @@ where
     /// assert!(deque.try_push_front(3).is_ok());
     /// assert_eq!(deque.try_push_front(4), Err(4));
     /// ```
-    pub fn try_push_front(&mut self, value: E) -> Result<(), E> {
+    pub fn try_push_front(&mut self, value: T) -> Result<(), T> {
         if self.is_full() {
             return Err(value);
         }
 
         let idx = (self.front.as_usize() + self.capacity() - 1) % self.capacity();
-        let ptr = self.buf.get_mut_ptr(idx);
+        let ptr = mut_ptr_at_index(&mut self.buf, idx);
         unsafe {
             ptr.write(value);
         }
@@ -326,7 +324,7 @@ where
     /// # Panics
     /// Panics if the deque is already at capacity. See [`try_push_front`](Deque::try_push_front)
     /// for a checked variant that never pancis.
-    pub fn push_front(&mut self, value: E) {
+    pub fn push_front(&mut self, value: T) {
         if self.try_push_front(value).is_err() {
             panic!("deque is already at capacity")
         }
@@ -344,13 +342,13 @@ where
     /// assert!(deque.try_push_back(3).is_ok());
     /// assert_eq!(deque.try_push_back(4), Err(4));
     /// ```
-    pub fn try_push_back(&mut self, value: E) -> Result<(), E> {
+    pub fn try_push_back(&mut self, value: T) -> Result<(), T> {
         if self.is_full() {
             return Err(value);
         }
 
         let end = self.physical_index_unchecked(self.len);
-        let ptr = self.buf.get_mut_ptr(end);
+        let ptr = mut_ptr_at_index(&mut self.buf, end);
         unsafe {
             ptr.write(value);
         }
@@ -365,7 +363,7 @@ where
     /// # Panics
     /// Panics if the deque is already at capacity. See [`try_push_back`](Deque::try_push_back)
     /// for a checked variant that never pancis.
-    pub fn push_back(&mut self, value: E) {
+    pub fn push_back(&mut self, value: T) {
         if self.try_push_back(value).is_err() {
             panic!("deque is already at capacity")
         }
@@ -396,7 +394,7 @@ where
 
         for i in new_len..old_len {
             let idx = i % self.capacity();
-            let ptr = self.buf.storage_mut().as_mut_ptr() as *mut E;
+            let ptr = self.buf.get_mut_ptr() as *mut T;
             unsafe {
                 ptr.add(idx).drop_in_place();
             }
@@ -437,7 +435,7 @@ where
         let j = self
             .physical_index(j)
             .expect("index `j` is out of bounds in `swap`");
-        self.buf.storage_mut().swap(i, j);
+        self.storage_mut().swap(i, j);
     }
 
     /// Removes an element from anywhere in the `Deque` and returns it, replacing
@@ -457,13 +455,13 @@ where
     /// assert_eq!(deque.swap_remove_front(2), Some(3));
     /// assert_eq!(deque, &[2, 1]);
     /// ```
-    pub fn swap_remove_front(&mut self, index: I) -> Option<E> {
+    pub fn swap_remove_front(&mut self, index: I) -> Option<T> {
         let index = self.physical_index(index)?;
         let front = self.front.as_usize();
 
         unsafe {
-            let last = self.buf.get_ptr(front).read();
-            let hole = self.buf.get_mut_ptr(index);
+            let last = ptr_at_index(&self.buf, front).read();
+            let hole = mut_ptr_at_index(&mut self.buf, index);
             self.len = I::from_usize(self.len() - 1);
             self.front = I::from_usize((front + 1) % self.capacity());
             Some(hole.replace(last))
@@ -487,13 +485,13 @@ where
     /// assert_eq!(deque.swap_remove_back(0), Some(1));
     /// assert_eq!(deque, &[3, 2]);
     /// ```
-    pub fn swap_remove_back(&mut self, index: I) -> Option<E> {
+    pub fn swap_remove_back(&mut self, index: I) -> Option<T> {
         let index = self.physical_index(index)?;
         let back = (self.front.as_usize() + self.len() - 1) % self.capacity();
 
         unsafe {
-            let last = self.buf.get_ptr(back).read();
-            let hole = self.buf.get_mut_ptr(index);
+            let last = ptr_at_index(&self.buf, back).read();
+            let hole = mut_ptr_at_index(&mut self.buf, index);
             self.len = I::from_usize(self.len() - 1);
             Some(hole.replace(last))
         }
@@ -522,7 +520,7 @@ where
     /// assert!(deque.try_insert(1, 'd').is_ok());
     /// assert_eq!(deque, &['a', 'd', 'b', 'c']);
     /// ```
-    pub fn try_insert(&mut self, index: I, value: E) -> Result<(), E> {
+    pub fn try_insert(&mut self, index: I, value: T) -> Result<(), T> {
         if self.is_full() {
             return Err(value);
         }
@@ -556,76 +554,76 @@ where
                 // storage is contiguous, insertion point is in lower half
                 // -> shift all elements before the insertion point to the left by one
                 if distance_to_front > 0 {
-                    let dst = self.buf.get_mut_ptr(new_front);
-                    let src = self.buf.get_ptr(front);
+                    let dst = mut_ptr_at_index(&mut self.buf, new_front);
+                    let src = ptr_at_index(&self.buf, front);
                     unsafe { core::ptr::copy(src, dst, 1) };
 
-                    let dst = self.buf.get_mut_ptr(front);
-                    let src = self.buf.get_ptr(front + 1);
+                    let dst = mut_ptr_at_index(&mut self.buf, front);
+                    let src = ptr_at_index(&self.buf, front + 1);
                     unsafe { core::ptr::copy(src, dst, distance_to_front - 1) };
                 }
 
-                let ptr = self.buf.get_mut_ptr((new_front + index) % cap);
+                let ptr = mut_ptr_at_index(&mut self.buf, (new_front + index) % cap);
                 unsafe { ptr.write(value) };
             }
             (true, false, _) => {
                 // storage is contiguous, insertion point is in upper half
                 // -> shift all elements after the insertion point to the right by one
                 let physical_index = front + index;
-                let src = self.buf.get_ptr(physical_index);
-                let dst = self.buf.get_mut_ptr(physical_index + 1);
+                let src = ptr_at_index(&self.buf, physical_index);
+                let dst = mut_ptr_at_index(&mut self.buf, physical_index + 1);
                 unsafe { core::ptr::copy(src, dst, distance_to_back) };
-                let ptr = self.buf.get_mut_ptr(physical_index);
+                let ptr = mut_ptr_at_index(&mut self.buf, physical_index);
                 unsafe { ptr.write(value) };
             }
             (false, true, false) => {
                 // storage is not contiguous, insertion point is in lower half and does not wrap
                 // -> shift all elements before the insertion point to the left by one
-                let ptr = self.buf.get_mut_ptr(new_front);
+                let ptr = mut_ptr_at_index(&mut self.buf, new_front);
                 unsafe {
                     ptr.write(value);
                 }
-                self.buf.storage_mut()[new_front..].rotate_left(1);
+                self.storage_mut()[new_front..].rotate_left(1);
             }
             (false, false, true) => {
                 // storage is not contiguous, insertion point is in upper half and does wrap
                 // -> shift all elements after the insertion point to the right by one
                 let physical_index = (front + index) % self.capacity();
-                let ptr = self.buf.get_mut_ptr(physical_index + distance_to_back);
+                let ptr = mut_ptr_at_index(&mut self.buf, physical_index + distance_to_back);
                 unsafe {
                     ptr.write(value);
                 }
-                self.buf.storage_mut()[physical_index..=physical_index + distance_to_back]
+                self.storage_mut()[physical_index..=physical_index + distance_to_back]
                     .rotate_right(1);
             }
             (false, true, true) => {
                 // storage is not contiguous, insertion point is in the lower half, but the index wraps
                 // -> shift all elements before the insertion point to the left by one, accounting for wrap
                 let physical_index = (new_front + index) % self.capacity();
-                let ptr = self.buf.get_mut_ptr(0);
+                let ptr = mut_ptr_at_index(&mut self.buf, 0);
                 let tmp = unsafe { ptr.replace(value) };
-                self.buf.storage_mut()[..=physical_index].rotate_left(1);
+                self.storage_mut()[..=physical_index].rotate_left(1);
 
-                let ptr = self.buf.get_mut_ptr(new_front);
+                let ptr = mut_ptr_at_index(&mut self.buf, new_front);
                 unsafe {
                     ptr.write(tmp);
                 }
-                self.buf.storage_mut()[new_front..].rotate_left(1);
+                self.storage_mut()[new_front..].rotate_left(1);
             }
             (false, false, false) => {
                 // storage is not contiguous, insertion point is in the upper half, but the index doesn't wrap
                 // -> shift all elements after the insertion point to the right by one, accounting for wrap
                 let physical_index = (front + index) % cap;
-                let ptr = self.buf.get_mut_ptr(cap - 1);
+                let ptr = mut_ptr_at_index(&mut self.buf, cap - 1);
                 let tmp = unsafe { ptr.replace(value) };
-                self.buf.storage_mut()[physical_index..].rotate_right(1);
+                self.storage_mut()[physical_index..].rotate_right(1);
 
                 let back = back % cap;
-                let ptr = self.buf.get_mut_ptr(back);
+                let ptr = mut_ptr_at_index(&mut self.buf, back);
                 unsafe {
                     ptr.write(tmp);
                 }
-                self.buf.storage_mut()[..=back].rotate_right(1);
+                self.storage_mut()[..=back].rotate_right(1);
             }
         }
 
@@ -645,7 +643,7 @@ where
     /// Panics if `index` is greater than the deque's length, or if the deque
     /// is already at capacity. See [`try_insert`](Deque::try_insert) for a
     /// checked version.
-    pub fn insert(&mut self, index: I, value: E) {
+    pub fn insert(&mut self, index: I, value: T) {
         if self.try_insert(index, value).is_err() {
             panic!("deque is already at capacity");
         }
@@ -669,7 +667,7 @@ where
     /// assert_eq!(deque.remove(1), Some(2));
     /// assert_eq!(deque, &[1, 3]);
     /// ```
-    pub fn remove(&mut self, index: I) -> Option<E> {
+    pub fn remove(&mut self, index: I) -> Option<T> {
         let index = index.as_usize();
         if index >= self.len() {
             return None;
@@ -687,7 +685,7 @@ where
         let index_wrapped = front + index >= cap;
         let physical_index = (front + index) % cap;
 
-        let ptr = self.buf.get_ptr(physical_index);
+        let ptr = ptr_at_index(&self.buf, physical_index);
         let result = unsafe { ptr.read() };
 
         match (contiguous, move_front, index_wrapped) {
@@ -696,8 +694,8 @@ where
                 // OR Storage is discontiguous, index is in lower half, and does not wrap
                 // -> shift all elements before the index to the right
                 unsafe {
-                    let src = self.buf.storage().as_ptr().add(front);
-                    let dst = self.buf.storage_mut().as_mut_ptr().add(front + 1);
+                    let src = ptr_at_index(&self.buf, front);
+                    let dst = mut_ptr_at_index(&mut self.buf, front + 1);
                     core::ptr::copy(src, dst, distance_to_front);
                 }
 
@@ -708,8 +706,8 @@ where
                 // OR Storage is discontiguous, index is in upper half, and does wrap
                 // -> shift all elements after the index to the left
                 unsafe {
-                    let src = self.buf.storage().as_ptr().add(physical_index + 1);
-                    let dst = self.buf.storage_mut().as_mut_ptr().add(physical_index);
+                    let src = ptr_at_index(&self.buf, physical_index + 1);
+                    let dst = mut_ptr_at_index(&mut self.buf, physical_index);
                     core::ptr::copy(src, dst, distance_to_back);
                 }
             }
@@ -717,16 +715,16 @@ where
                 // Storage is discontiguous, index is in lower half, but also wraps
                 // -> shift all elements before the index to the right, accounting for wrap
                 unsafe {
-                    let src = self.buf.storage().as_ptr();
-                    let dst = self.buf.storage_mut().as_mut_ptr().add(1);
+                    let src = self.buf.get_ptr() as *const T;
+                    let dst = mut_ptr_at_index(&mut self.buf, 1);
                     core::ptr::copy(src, dst, physical_index);
 
-                    let src = self.buf.storage().as_ptr().add(cap - 1);
-                    let dst = self.buf.storage_mut().as_mut_ptr();
+                    let src = ptr_at_index(&self.buf, cap - 1);
+                    let dst = self.buf.get_mut_ptr() as *mut T;
                     core::ptr::copy(src, dst, 1);
 
-                    let src = self.buf.storage().as_ptr().add(front);
-                    let dst = self.buf.storage_mut().as_mut_ptr().add(front + 1);
+                    let src = ptr_at_index(&self.buf, front);
+                    let dst = mut_ptr_at_index(&mut self.buf, front + 1);
                     core::ptr::copy(src, dst, cap - front - 1);
                 }
 
@@ -736,16 +734,16 @@ where
                 // Storage is discontiguous, index is in upper half, but doesn't wrap
                 // -> shift all elements after the index to the left, accounting for wrap
                 unsafe {
-                    let src = self.buf.storage().as_ptr().add(physical_index + 1);
-                    let dst = self.buf.storage_mut().as_mut_ptr().add(physical_index);
+                    let src = ptr_at_index(&self.buf, physical_index + 1);
+                    let dst = mut_ptr_at_index(&mut self.buf, physical_index);
                     core::ptr::copy(src, dst, cap - physical_index - 1);
 
-                    let src = self.buf.storage().as_ptr();
-                    let dst = self.buf.storage_mut().as_mut_ptr().add(cap - 1);
+                    let src = self.buf.get_ptr() as *const T;
+                    let dst = mut_ptr_at_index(&mut self.buf, cap - 1);
                     core::ptr::copy(src, dst, 1);
 
-                    let src = self.buf.storage().as_ptr().add(1);
-                    let dst = self.buf.storage_mut().as_mut_ptr();
+                    let src = ptr_at_index(&self.buf, 1);
+                    let dst = self.buf.get_mut_ptr() as *mut T;
                     core::ptr::copy(src, dst, back % cap - 1);
                 }
             }
@@ -771,11 +769,11 @@ where
     /// assert_eq!(deque.replace(2, 3), 4);
     /// assert_eq!(deque, &[1, 2, 3]);
     /// ```
-    pub fn replace(&mut self, index: I, value: E) -> E {
+    pub fn replace(&mut self, index: I, value: T) -> T {
         let index = self
             .physical_index(index)
             .expect("index out of bounds in `replace`");
-        unsafe { self.buf.get_mut_ptr(index).replace(value) }
+        unsafe { mut_ptr_at_index(&mut self.buf, index).replace(value) }
     }
 
     /// Retains only the elements specified by the predicate.
@@ -797,7 +795,7 @@ where
     /// ```
     pub fn retain<F>(&mut self, mut f: F)
     where
-        F: FnMut(&E) -> bool,
+        F: FnMut(&T) -> bool,
     {
         let capacity = self.capacity();
         let old_len = self.len();
@@ -805,15 +803,15 @@ where
 
         for i in 0..old_len {
             let idx = i % capacity;
-            let src = self.buf.get_ptr(idx);
+            let src = ptr_at_index(&self.buf, idx);
             let retain = f(unsafe { src.as_ref().unwrap() });
 
             if retain {
-                let dst = self.buf.get_mut_ptr(new_len % capacity);
+                let dst = mut_ptr_at_index(&mut self.buf, new_len % capacity);
                 unsafe { core::ptr::copy(src, dst, 1) };
                 new_len += 1;
             } else {
-                let to_drop = self.buf.get_mut_ptr(idx);
+                let to_drop = mut_ptr_at_index(&mut self.buf, idx);
                 unsafe { core::ptr::drop_in_place(to_drop) };
             }
         }
@@ -837,12 +835,12 @@ where
             usize::min(cap - front, mid)
         };
 
-        let src = self.buf.get_ptr(front);
-        let dst = self.buf.get_mut_ptr(back % cap);
+        let src = ptr_at_index(&self.buf, front);
+        let dst = mut_ptr_at_index(&mut self.buf, back % cap);
         unsafe { core::ptr::copy(src, dst, first_count) };
 
-        let src = self.buf.get_ptr((front + first_count) % cap);
-        let dst = self.buf.get_mut_ptr((back + first_count) % cap);
+        let src = ptr_at_index(&self.buf, (front + first_count) % cap);
+        let dst = mut_ptr_at_index(&mut self.buf, (back + first_count) % cap);
         unsafe { core::ptr::copy(src, dst, mid - first_count) };
 
         self.front = I::from_usize((front + mid) % cap);
@@ -864,12 +862,12 @@ where
             usize::min(back % cap, k)
         };
 
-        let src = self.buf.get_ptr((back - first_count) % cap);
-        let dst = self.buf.get_mut_ptr((front + cap - first_count) % cap);
+        let src = ptr_at_index(&self.buf, (back - first_count) % cap);
+        let dst = mut_ptr_at_index(&mut self.buf, (front + cap - first_count) % cap);
         unsafe { core::ptr::copy(src, dst, first_count) };
 
-        let src = self.buf.get_ptr((back + cap - k) % cap);
-        let dst = self.buf.get_mut_ptr((front + cap - k) % cap);
+        let src = ptr_at_index(&self.buf, (back + cap - k) % cap);
+        let dst = mut_ptr_at_index(&mut self.buf, (front + cap - k) % cap);
         unsafe { core::ptr::copy(src, dst, k - first_count) };
 
         self.front = I::from_usize((front + cap - k) % cap);
@@ -960,15 +958,15 @@ where
     /// deque.push_front(3);
     /// assert_eq!(deque.as_slices(), (&[3][..], &[2, 1][..]));
     /// ```
-    pub fn as_slices(&self) -> (&[E], &[E]) {
+    pub fn as_slices(&self) -> (&[T], &[T]) {
         let front = self.front.as_usize();
         let back = front + self.len();
         if back <= self.capacity() {
-            let ptr = self.buf.storage().as_ptr() as *const E;
+            let ptr = self.buf.get_ptr() as *const T;
             let slice = unsafe { core::slice::from_raw_parts(ptr.add(front), self.len()) };
             (slice, &[])
         } else {
-            let ptr = self.buf.storage().as_ptr() as *const E;
+            let ptr = self.buf.get_ptr() as *const T;
             let fst =
                 unsafe { core::slice::from_raw_parts(ptr.add(front), self.capacity() - front) };
             let snd =
@@ -995,27 +993,27 @@ where
     /// deque.as_mut_slices().1[1] = 3;
     /// assert_eq!(deque.as_slices(), (&[1][..], &[2, 3][..]));
     /// ```
-    pub fn as_mut_slices(&mut self) -> (&mut [E], &mut [E]) {
+    pub fn as_mut_slices(&mut self) -> (&mut [T], &mut [T]) {
         let front = self.front.as_usize();
         let back = front + self.len();
         if back <= self.capacity() {
-            let ptr = self.buf.storage_mut().as_mut_ptr() as *mut E;
+            let ptr = self.buf.get_mut_ptr() as *mut T;
             let slice = unsafe { core::slice::from_raw_parts_mut(ptr.add(front), self.len()) };
             (slice, &mut [])
         } else {
             let len = self.len();
             let cap = self.capacity();
 
-            let storage = self.buf.storage_mut();
+            let storage = self.storage_mut();
             let (rest, fst) = storage.split_at_mut(front);
             let (snd, _) = rest.split_at_mut(len - (cap - front));
 
             let fst = unsafe {
-                let ptr = fst.as_mut_ptr() as *mut E;
+                let ptr = fst.as_mut_ptr() as *mut T;
                 core::slice::from_raw_parts_mut(ptr, fst.len())
             };
             let snd = unsafe {
-                let ptr = snd.as_mut_ptr() as *mut E;
+                let ptr = snd.as_mut_ptr() as *mut T;
                 core::slice::from_raw_parts_mut(ptr, snd.len())
             };
 
@@ -1044,17 +1042,17 @@ where
     /// deque.push_front(3);
     /// assert_eq!(deque, &[3, 2, 1]);
     /// ```
-    pub fn make_contiguous(&mut self) -> &mut [E] {
+    pub fn make_contiguous(&mut self) -> &mut [T] {
         let front = self.front.as_usize();
         let back = front + self.len();
         if back <= self.capacity() {
-            let ptr = self.buf.storage_mut().as_mut_ptr() as *mut E;
+            let ptr = self.buf.get_mut_ptr() as *mut T;
             unsafe { core::slice::from_raw_parts_mut(ptr.add(front), self.len()) }
         } else {
-            self.buf.storage_mut().rotate_left(front);
+            self.storage_mut().rotate_left(front);
             self.front = I::from_usize(0);
 
-            let ptr = self.buf.storage_mut().as_mut_ptr() as *mut E;
+            let ptr = self.buf.get_mut_ptr() as *mut T;
             unsafe { core::slice::from_raw_parts_mut(ptr, self.len()) }
         }
     }
@@ -1075,7 +1073,7 @@ where
     /// assert_eq!(it.next(), Some(&4));
     /// assert!(it.next().is_none());
     /// ```
-    pub fn iter(&self) -> Iter<'_, E, B, I> {
+    pub fn iter(&self) -> Iter<'_, T, S, I> {
         Iter {
             front: self.front,
             len: self.len,
@@ -1098,7 +1096,7 @@ where
     /// }
     /// assert_eq!(deque, &[3, 1, 2]);
     /// ```
-    pub fn iter_mut(&mut self) -> IterMut<'_, E, B, I> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, T, S, I> {
         IterMut {
             front: self.front,
             len: self.len,
@@ -1125,7 +1123,7 @@ where
     /// assert_eq!(it.next(), Some(&4));
     /// assert!(it.next().is_none());
     /// ```
-    pub fn range<R: core::ops::RangeBounds<I>>(&self, range: R) -> Iter<'_, E, B, I> {
+    pub fn range<R: core::ops::RangeBounds<I>>(&self, range: R) -> Iter<'_, T, S, I> {
         use core::ops::Bound;
         let start = match range.start_bound() {
             Bound::Included(x) => x.as_usize(),
@@ -1175,7 +1173,7 @@ where
     /// deque.range_mut(2..4).for_each(|x| *x *= 2);
     /// assert_eq!(deque, &[1, 2, 6, 8, 5]);
     /// ```
-    pub fn range_mut<R: core::ops::RangeBounds<I>>(&mut self, range: R) -> IterMut<'_, E, B, I> {
+    pub fn range_mut<R: core::ops::RangeBounds<I>>(&mut self, range: R) -> IterMut<'_, T, S, I> {
         use core::ops::Bound;
         let start = match range.start_bound() {
             Bound::Included(x) => x.as_usize(),
@@ -1239,7 +1237,7 @@ where
     /// deque.drain(..);
     /// assert!(deque.is_empty());
     /// ```
-    pub fn drain<R: core::ops::RangeBounds<I>>(&mut self, range: R) -> Drain<'_, E, B, I> {
+    pub fn drain<R: core::ops::RangeBounds<I>>(&mut self, range: R) -> Drain<'_, T, S, I> {
         use core::ops::Bound;
         let start = match range.start_bound() {
             Bound::Included(x) => x.as_usize(),
@@ -1275,35 +1273,23 @@ where
     }
 }
 
-impl<E, B, I> core::ops::Index<I> for Deque<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    type Output = E;
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Index<I> for Deque<T, S, I> {
+    type Output = T;
 
     #[inline]
-    fn index(&self, index: I) -> &E {
+    fn index(&self, index: I) -> &T {
         self.get(index).expect("out of bounds access")
     }
 }
 
-impl<E, B, I> core::ops::IndexMut<I> for Deque<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> IndexMut<I> for Deque<T, S, I> {
     #[inline]
-    fn index_mut(&mut self, index: I) -> &mut E {
+    fn index_mut(&mut self, index: I) -> &mut T {
         self.get_mut(index).expect("out of bounds access")
     }
 }
 
-impl<E, B, I> Drop for Deque<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Deque<T, S, I> {
     fn drop(&mut self) {
         let (front, back) = self.as_mut_slices();
         let front_ptr = front.as_mut_ptr();
@@ -1315,41 +1301,31 @@ where
     }
 }
 
-impl<E, B, I> core::fmt::Debug for Deque<E, B, I>
-where
-    E: core::fmt::Debug,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl<T: Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for Deque<T, S, I> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let (front, back) = self.as_slices();
         f.debug_list().entries(front).entries(back).finish()
     }
 }
 
-impl<E, B, I> core::hash::Hash for Deque<E, B, I>
-where
-    E: core::hash::Hash,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+impl<T: Hash, S: Storage<ArrayLike<T>>, I: Capacity> Hash for Deque<T, S, I> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         self.len().hash(state);
         let (front, back) = self.as_slices();
-        core::hash::Hash::hash_slice(front, state);
-        core::hash::Hash::hash_slice(back, state);
+        Hash::hash_slice(front, state);
+        Hash::hash_slice(back, state);
     }
 }
 
-impl<AE, AB, AI, BE, BB, BI> PartialEq<Deque<BE, BB, BI>> for Deque<AE, AB, AI>
+impl<AT, AS, AI, BT, BS, BI> PartialEq<Deque<BT, BS, BI>> for Deque<AT, AS, AI>
 where
-    AE: PartialEq<BE>,
-    AB: ContiguousStorage<AE>,
-    BB: ContiguousStorage<BE>,
+    AT: PartialEq<BT>,
+    AS: Storage<ArrayLike<AT>>,
+    BS: Storage<ArrayLike<BT>>,
     AI: Capacity,
     BI: Capacity,
 {
-    fn eq(&self, other: &Deque<BE, BB, BI>) -> bool {
+    fn eq(&self, other: &Deque<BT, BS, BI>) -> bool {
         if self.len() != other.len() {
             return false;
         }
@@ -1381,20 +1357,10 @@ where
     }
 }
 
-impl<E, B, I> Eq for Deque<E, B, I>
-where
-    E: Eq,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-}
+impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> Eq for Deque<T, S, I> {}
 
-impl<E, B, I, R> PartialEq<R> for Deque<E, B, I>
-where
-    E: PartialEq,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-    R: AsRef<[E]>,
+impl<T: PartialEq, S: Storage<ArrayLike<T>>, I: Capacity, R: AsRef<[T]>> PartialEq<R>
+    for Deque<T, S, I>
 {
     fn eq(&self, other: &R) -> bool {
         let other = other.as_ref();
@@ -1408,47 +1374,33 @@ where
     }
 }
 
-impl<E, AB, AI, BB, BI> PartialOrd<Deque<E, BB, BI>> for Deque<E, AB, AI>
+impl<T, AS, AI, BS, BI> PartialOrd<Deque<T, BS, BI>> for Deque<T, AS, AI>
 where
-    E: PartialOrd,
-    AB: ContiguousStorage<E>,
-    BB: ContiguousStorage<E>,
+    T: PartialOrd,
+    AS: Storage<ArrayLike<T>>,
+    BS: Storage<ArrayLike<T>>,
     AI: Capacity,
     BI: Capacity,
 {
-    fn partial_cmp(&self, other: &Deque<E, BB, BI>) -> Option<core::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Deque<T, BS, BI>) -> Option<core::cmp::Ordering> {
         self.iter().partial_cmp(other.iter())
     }
 }
 
-impl<E, B, I> Ord for Deque<E, B, I>
-where
-    E: Ord,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Ord for Deque<T, S, I> {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.iter().cmp(other.iter())
     }
 }
 
-impl<E, B, I> core::iter::Extend<E> for Deque<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    fn extend<T: IntoIterator<Item = E>>(&mut self, iter: T) {
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Extend<T> for Deque<T, S, I> {
+    fn extend<It: IntoIterator<Item = T>>(&mut self, iter: It) {
         iter.into_iter().for_each(|item| self.push_back(item));
     }
 }
 
-impl<'a, E, B, I> core::iter::Extend<&'a E> for Deque<E, B, I>
-where
-    E: 'a + Clone,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    fn extend<T: IntoIterator<Item = &'a E>>(&mut self, iter: T) {
+impl<'a, T: 'a + Clone, S: Storage<ArrayLike<T>>, I: Capacity> Extend<&'a T> for Deque<T, S, I> {
+    fn extend<It: IntoIterator<Item = &'a T>>(&mut self, iter: It) {
         iter.into_iter()
             .for_each(|item| self.push_back(item.clone()));
     }
@@ -1458,25 +1410,15 @@ where
 ///
 /// This `struct` is created by the [`iter`](Deque::iter) method on [`Deque`].
 /// See its documentation for more.
-pub struct Iter<'a, E, B, I>
-where
-    E: 'a,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+pub struct Iter<'a, T: 'a, S: Storage<ArrayLike<T>>, I: Capacity> {
     front: I,
     len: I,
-    buf: &'a B,
-    _ref: PhantomData<&'a E>,
+    buf: &'a S,
+    _ref: PhantomData<&'a T>,
 }
 
-impl<'a, E, B, I> core::fmt::Debug for Iter<'a, E, B, I>
-where
-    E: 'a + core::fmt::Debug,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl<'a, T: 'a + Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for Iter<'a, T, S, I> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let (front, back) = {
             let front = self.front.as_usize();
             let back = front + self.len.as_usize();
@@ -1484,7 +1426,10 @@ where
             if back <= self.buf.capacity() {
                 unsafe {
                     (
-                        core::slice::from_raw_parts(self.buf.get_ptr(front), self.len.as_usize()),
+                        core::slice::from_raw_parts(
+                            ptr_at_index(self.buf, front),
+                            self.len.as_usize(),
+                        ),
                         &[][..],
                     )
                 }
@@ -1492,11 +1437,11 @@ where
                 unsafe {
                     (
                         core::slice::from_raw_parts(
-                            self.buf.get_ptr(front),
+                            ptr_at_index(self.buf, front),
                             self.buf.capacity() - front,
                         ),
                         core::slice::from_raw_parts(
-                            self.buf.get_ptr(0),
+                            ptr_at_index(self.buf, 0),
                             back - self.buf.capacity(),
                         ),
                     )
@@ -1508,16 +1453,11 @@ where
     }
 }
 
-impl<'a, E, B, I> Iterator for Iter<'a, E, B, I>
-where
-    E: 'a,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    type Item = &'a E;
+impl<'a, T: 'a, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for Iter<'a, T, S, I> {
+    type Item = &'a T;
 
     #[inline]
-    fn next(&mut self) -> Option<&'a E> {
+    fn next(&mut self) -> Option<&'a T> {
         let len = self.len.as_usize();
         if len == 0 {
             return None;
@@ -1526,7 +1466,7 @@ where
         let front = self.front.as_usize();
         self.front = I::from_usize((front + 1) % self.buf.capacity());
         self.len = I::from_usize(len - 1);
-        let result = unsafe { self.buf.get_ptr(front).as_ref() };
+        let result = unsafe { ptr_at_index(self.buf, front).as_ref() };
         debug_assert!(result.is_some());
         result
     }
@@ -1538,14 +1478,9 @@ where
     }
 }
 
-impl<'a, E, B, I> DoubleEndedIterator for Iter<'a, E, B, I>
-where
-    E: 'a,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<'a, T: 'a, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator for Iter<'a, T, S, I> {
     #[inline]
-    fn next_back(&mut self) -> Option<&'a E> {
+    fn next_back(&mut self) -> Option<&'a T> {
         let len = self.len.as_usize();
         if len == 0 {
             return None;
@@ -1554,38 +1489,28 @@ where
         let front = self.front.as_usize();
         let idx = (front + len - 1) % self.buf.capacity();
         self.len = I::from_usize(len - 1);
-        let result = unsafe { self.buf.get_ptr(idx).as_ref() };
+        let result = unsafe { ptr_at_index(self.buf, idx).as_ref() };
         debug_assert!(result.is_some());
         result
     }
 }
 
-impl<E, B: ContiguousStorage<E>, I: Capacity> ExactSizeIterator for Iter<'_, E, B, I> {}
-impl<E, B: ContiguousStorage<E>, I: Capacity> core::iter::FusedIterator for Iter<'_, E, B, I> {}
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> ExactSizeIterator for Iter<'_, T, S, I> {}
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for Iter<'_, T, S, I> {}
 
 /// A mutable iterator over the elements of a deque.
 ///
 /// This `struct` is created by the [`iter_mut`](Deque::iter_mut) method on [`Deque`].
 /// See its documentation for more.
-pub struct IterMut<'a, E, B, I>
-where
-    E: 'a,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+pub struct IterMut<'a, T: 'a, S: Storage<ArrayLike<T>>, I: Capacity> {
     front: I,
     len: I,
-    buf: &'a mut B,
-    _ref: PhantomData<&'a mut E>,
+    buf: &'a mut S,
+    _ref: PhantomData<&'a mut T>,
 }
 
-impl<'a, E, B, I> core::fmt::Debug for IterMut<'a, E, B, I>
-where
-    E: 'a + core::fmt::Debug,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl<'a, T: 'a + Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for IterMut<'a, T, S, I> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> fmt::Result {
         let (front, back) = {
             let front = self.front.as_usize();
             let back = front + self.len.as_usize();
@@ -1593,7 +1518,10 @@ where
             if back <= self.buf.capacity() {
                 unsafe {
                     (
-                        core::slice::from_raw_parts(self.buf.get_ptr(front), self.len.as_usize()),
+                        core::slice::from_raw_parts(
+                            ptr_at_index(&self.buf, front),
+                            self.len.as_usize(),
+                        ),
                         &[][..],
                     )
                 }
@@ -1601,11 +1529,11 @@ where
                 unsafe {
                     (
                         core::slice::from_raw_parts(
-                            self.buf.get_ptr(front),
+                            ptr_at_index(&self.buf, front),
                             self.buf.capacity() - front,
                         ),
                         core::slice::from_raw_parts(
-                            self.buf.get_ptr(0),
+                            ptr_at_index(&self.buf, 0),
                             back - self.buf.capacity(),
                         ),
                     )
@@ -1617,16 +1545,11 @@ where
     }
 }
 
-impl<'a, E, B, I> Iterator for IterMut<'a, E, B, I>
-where
-    E: 'a,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    type Item = &'a mut E;
+impl<'a, T: 'a, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for IterMut<'a, T, S, I> {
+    type Item = &'a mut T;
 
     #[inline]
-    fn next(&mut self) -> Option<&'a mut E> {
+    fn next(&mut self) -> Option<&'a mut T> {
         let len = self.len.as_usize();
         if len == 0 {
             return None;
@@ -1635,7 +1558,7 @@ where
         let front = self.front.as_usize();
         self.front = I::from_usize((front + 1) % self.buf.capacity());
         self.len = I::from_usize(len - 1);
-        let result = unsafe { self.buf.get_mut_ptr(front).as_mut() };
+        let result = unsafe { mut_ptr_at_index(&mut self.buf, front).as_mut() };
         debug_assert!(result.is_some());
         result
     }
@@ -1647,14 +1570,11 @@ where
     }
 }
 
-impl<'a, E, B, I> DoubleEndedIterator for IterMut<'a, E, B, I>
-where
-    E: 'a,
-    B: ContiguousStorage<E>,
-    I: Capacity,
+impl<'a, T: 'a, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator
+    for IterMut<'a, T, S, I>
 {
     #[inline]
-    fn next_back(&mut self) -> Option<&'a mut E> {
+    fn next_back(&mut self) -> Option<&'a mut T> {
         let len = self.len.as_usize();
         if len == 0 {
             return None;
@@ -1663,48 +1583,35 @@ where
         let front = self.front.as_usize();
         let idx = (front + len - 1) % self.buf.capacity();
         self.len = I::from_usize(len - 1);
-        let result = unsafe { self.buf.get_mut_ptr(idx).as_mut() };
+        let result = unsafe { mut_ptr_at_index(&mut self.buf, idx).as_mut() };
         debug_assert!(result.is_some());
         result
     }
 }
 
-impl<E, B: ContiguousStorage<E>, I: Capacity> ExactSizeIterator for IterMut<'_, E, B, I> {}
-impl<E, B: ContiguousStorage<E>, I: Capacity> core::iter::FusedIterator for IterMut<'_, E, B, I> {}
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> ExactSizeIterator for IterMut<'_, T, S, I> {}
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for IterMut<'_, T, S, I> {}
 
 /// An owning iterator over the elements of a deque.
 ///
 /// This `struct` is created by the [`into_iter`](Deque::into_iter) method on
 /// [`Deque`] (provided by the `IntoIterator` trait). See its documentation for
 /// more.
-pub struct IntoIter<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    inner: Deque<E, B, I>,
+pub struct IntoIter<T, S: Storage<ArrayLike<T>>, I: Capacity> {
+    inner: Deque<T, S, I>,
 }
 
-impl<E, B, I> core::fmt::Debug for IntoIter<E, B, I>
-where
-    E: core::fmt::Debug,
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl<T: Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for IntoIter<T, S, I> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_tuple("IntoIterator").field(&self.inner).finish()
     }
 }
 
-impl<E, B, I> Iterator for IntoIter<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    type Item = E;
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for IntoIter<T, S, I> {
+    type Item = T;
 
     #[inline]
-    fn next(&mut self) -> Option<E> {
+    fn next(&mut self) -> Option<T> {
         self.inner.pop_front()
     }
 
@@ -1715,44 +1622,40 @@ where
     }
 }
 
-impl<E, B, I> DoubleEndedIterator for IntoIter<E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator for IntoIter<T, S, I> {
     #[inline]
-    fn next_back(&mut self) -> Option<E> {
+    fn next_back(&mut self) -> Option<T> {
         self.inner.pop_back()
     }
 }
 
-impl<E, B: ContiguousStorage<E>, I: Capacity> ExactSizeIterator for IntoIter<E, B, I> {}
-impl<E, B: ContiguousStorage<E>, I: Capacity> core::iter::FusedIterator for IntoIter<E, B, I> {}
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> ExactSizeIterator for IntoIter<T, S, I> {}
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for IntoIter<T, S, I> {}
 
-impl<E, B: ContiguousStorage<E>, I: Capacity> IntoIterator for Deque<E, B, I> {
-    type Item = E;
-    type IntoIter = IntoIter<E, B, I>;
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for Deque<T, S, I> {
+    type Item = T;
+    type IntoIter = IntoIter<T, S, I>;
 
     /// Converts the `Deque` into a front-to-back iterator yielding elements by value.
-    fn into_iter(self) -> IntoIter<E, B, I> {
+    fn into_iter(self) -> IntoIter<T, S, I> {
         IntoIter { inner: self }
     }
 }
 
-impl<'a, E, B: ContiguousStorage<E>, I: Capacity> IntoIterator for &'a Deque<E, B, I> {
-    type Item = &'a E;
-    type IntoIter = Iter<'a, E, B, I>;
+impl<'a, T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for &'a Deque<T, S, I> {
+    type Item = &'a T;
+    type IntoIter = Iter<'a, T, S, I>;
 
-    fn into_iter(self) -> Iter<'a, E, B, I> {
+    fn into_iter(self) -> Iter<'a, T, S, I> {
         self.iter()
     }
 }
 
-impl<'a, E, B: ContiguousStorage<E>, I: Capacity> IntoIterator for &'a mut Deque<E, B, I> {
-    type Item = &'a mut E;
-    type IntoIter = IterMut<'a, E, B, I>;
+impl<'a, T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for &'a mut Deque<T, S, I> {
+    type Item = &'a mut T;
+    type IntoIter = IterMut<'a, T, S, I>;
 
-    fn into_iter(self) -> IterMut<'a, E, B, I> {
+    fn into_iter(self) -> IterMut<'a, T, S, I> {
         self.iter_mut()
     }
 }
@@ -1761,23 +1664,16 @@ impl<'a, E, B: ContiguousStorage<E>, I: Capacity> IntoIterator for &'a mut Deque
 ///
 /// This `struct` is created by the [`drain`](Deque::drain) method on [`Deque`].
 /// See its documentation for more.
-pub struct Drain<'p, E, B, I>
-where
-    B: ContiguousStorage<E>,
-    I: Capacity,
-{
-    parent: &'p mut Deque<E, B, I>,
+pub struct Drain<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> {
+    parent: &'p mut Deque<T, S, I>,
     target_start: usize,
     front_index: usize,
     back_index: usize,
     target_end: usize,
 }
 
-impl<E, B: ContiguousStorage<E>, I: Capacity> core::fmt::Debug for Drain<'_, E, B, I>
-where
-    E: core::fmt::Debug,
-{
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl<T: Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for Drain<'_, T, S, I> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Drain")
             .field(&self.target_start)
             .field(&self.target_end)
@@ -1790,11 +1686,11 @@ where
     }
 }
 
-impl<E, B: ContiguousStorage<E>, I: Capacity> Iterator for Drain<'_, E, B, I> {
-    type Item = E;
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for Drain<'_, T, S, I> {
+    type Item = T;
 
     #[inline]
-    fn next(&mut self) -> Option<E> {
+    fn next(&mut self) -> Option<T> {
         if self.front_index == self.back_index {
             return None;
         }
@@ -1802,7 +1698,7 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> Iterator for Drain<'_, E, B, I> {
         let idx = (self.parent.front.as_usize() + self.front_index) % self.parent.capacity();
         self.front_index += 1;
 
-        unsafe { Some(self.parent.buf.get_ptr(idx).read()) }
+        unsafe { Some(ptr_at_index(&self.parent.buf, idx).read()) }
     }
 
     #[inline]
@@ -1812,9 +1708,9 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> Iterator for Drain<'_, E, B, I> {
     }
 }
 
-impl<E, B: ContiguousStorage<E>, I: Capacity> DoubleEndedIterator for Drain<'_, E, B, I> {
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator for Drain<'_, T, S, I> {
     #[inline]
-    fn next_back(&mut self) -> Option<E> {
+    fn next_back(&mut self) -> Option<T> {
         if self.back_index == self.front_index {
             return None;
         }
@@ -1822,14 +1718,14 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> DoubleEndedIterator for Drain<'_, 
         let idx = (self.parent.front.as_usize() + self.back_index - 1) % self.parent.capacity();
         self.back_index -= 1;
 
-        unsafe { Some(self.parent.buf.get_ptr(idx).read()) }
+        unsafe { Some(ptr_at_index(&self.parent.buf, idx).read()) }
     }
 }
 
-impl<E, B: ContiguousStorage<E>, I: Capacity> ExactSizeIterator for Drain<'_, E, B, I> {}
-impl<E, B: ContiguousStorage<E>, I: Capacity> core::iter::FusedIterator for Drain<'_, E, B, I> {}
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> ExactSizeIterator for Drain<'_, T, S, I> {}
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for Drain<'_, T, S, I> {}
 
-impl<E, B: ContiguousStorage<E>, I: Capacity> Drop for Drain<'_, E, B, I> {
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Drain<'_, T, S, I> {
     fn drop(&mut self) {
         // 1. drop any items that remain untaken
         let cap = self.parent.capacity();
@@ -1838,15 +1734,15 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> Drop for Drain<'_, E, B, I> {
 
         if front >= cap || back <= cap {
             // remaining items are contiguous, drop as single slice
-            let ptr = self.parent.buf.get_mut_ptr(front % cap);
+            let ptr = mut_ptr_at_index(&mut self.parent.buf, front % cap);
             unsafe { core::ptr::slice_from_raw_parts_mut(ptr, back - front).drop_in_place() };
         } else {
             // remaining items are discontiguous, account for wrapping
-            let ptr = self.parent.buf.get_mut_ptr(front);
+            let ptr = mut_ptr_at_index(&mut self.parent.buf, front);
             let len = cap - front;
             unsafe { core::ptr::slice_from_raw_parts_mut(ptr, len).drop_in_place() };
 
-            let ptr = self.parent.buf.get_mut_ptr(0);
+            let ptr = mut_ptr_at_index(&mut self.parent.buf, 0);
             let len = (back - front) - len;
             unsafe { core::ptr::slice_from_raw_parts_mut(ptr, len).drop_in_place() };
         }
@@ -1870,8 +1766,8 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> Drop for Drain<'_, E, B, I> {
         match (move_front, target_wrapped, source_wrapped) {
             (false, false, false) => {
                 // wrap point is outside relevant range, move back in one copy
-                let src = self.parent.buf.get_ptr(target_end % cap);
-                let dst = self.parent.buf.get_mut_ptr(target_start % cap);
+                let src = ptr_at_index(&self.parent.buf, target_end % cap);
+                let dst = mut_ptr_at_index(&mut self.parent.buf, target_start % cap);
                 unsafe { core::ptr::copy(src, dst, distance_to_back) };
             }
             (true, false, false) => {
@@ -1879,75 +1775,75 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> Drop for Drain<'_, E, B, I> {
                 let new_front = target_end - distance_to_front;
                 self.parent.front = I::from_usize(new_front);
 
-                let src = self.parent.buf.get_ptr(front);
-                let dst = self.parent.buf.get_mut_ptr(new_front);
+                let src = ptr_at_index(&self.parent.buf, front);
+                let dst = mut_ptr_at_index(&mut self.parent.buf, new_front);
                 unsafe { core::ptr::copy(src, dst, distance_to_front) };
             }
             (false, true, false) => {
                 // wrap point is inside target range, move back in two copies
                 let fst_count = usize::min(cap - target_start, distance_to_back);
-                let src = self.parent.buf.get_ptr(target_end % cap);
-                let dst = self.parent.buf.get_mut_ptr(target_start % cap);
+                let src = ptr_at_index(&self.parent.buf, target_end % cap);
+                let dst = mut_ptr_at_index(&mut self.parent.buf, target_start % cap);
                 unsafe { core::ptr::copy(src, dst, fst_count) };
 
                 let dst_idx = (target_start + fst_count) % cap;
-                let src = self.parent.buf.get_ptr((target_end + fst_count) % cap);
-                let dst = self.parent.buf.get_mut_ptr(dst_idx);
+                let src = ptr_at_index(&self.parent.buf, (target_end + fst_count) % cap);
+                let dst = mut_ptr_at_index(&mut self.parent.buf, dst_idx);
                 unsafe { core::ptr::copy(src, dst, distance_to_back - fst_count) };
             }
             (true, true, false) => {
                 // wrap point is inside target range, move front in two copies
                 let fst_count = usize::min(target_end - cap, distance_to_front);
-                let src = self.parent.buf.get_ptr(target_start - fst_count);
-                let dst = self.parent.buf.get_mut_ptr((target_end - fst_count) % cap);
+                let src = ptr_at_index(&self.parent.buf, target_start - fst_count);
+                let dst = mut_ptr_at_index(&mut self.parent.buf, (target_end - fst_count) % cap);
                 unsafe { core::ptr::copy(src, dst, fst_count) };
 
                 let new_front = (target_end - distance_to_front) % cap;
                 self.parent.front = I::from_usize(new_front);
 
-                let src = self.parent.buf.get_ptr(front);
-                let dst = self.parent.buf.get_mut_ptr(new_front);
+                let src = ptr_at_index(&self.parent.buf, front);
+                let dst = mut_ptr_at_index(&mut self.parent.buf, new_front);
                 unsafe { core::ptr::copy(src, dst, distance_to_front - fst_count) };
             }
             (false, false, true) => {
                 // wrap point is inside source range, move back in three copies
                 let fst_count = cap - target_end;
-                let src = self.parent.buf.get_ptr(target_end);
-                let dst = self.parent.buf.get_mut_ptr(target_start);
+                let src = ptr_at_index(&self.parent.buf, target_end);
+                let dst = mut_ptr_at_index(&mut self.parent.buf, target_start);
                 unsafe { core::ptr::copy(src, dst, fst_count) };
 
                 let remaining = distance_to_back - fst_count;
                 let snd_count = usize::min(cap - (target_start + fst_count), remaining);
-                let src = self.parent.buf.get_ptr(0);
-                let dst = self.parent.buf.get_mut_ptr(target_start + fst_count);
+                let src = ptr_at_index(&self.parent.buf, 0);
+                let dst = mut_ptr_at_index(&mut self.parent.buf, target_start + fst_count);
                 unsafe { core::ptr::copy(src, dst, snd_count) };
 
                 let remaining = remaining - snd_count;
-                let src = self.parent.buf.get_ptr(snd_count);
-                let dst = self.parent.buf.get_mut_ptr(0);
+                let src = ptr_at_index(&self.parent.buf, snd_count);
+                let dst = mut_ptr_at_index(&mut self.parent.buf, 0);
                 unsafe { core::ptr::copy(src, dst, remaining) };
             }
             (true, false, true) => {
                 // wrap point is inside source range, move front in three copies
                 let fst_count = target_start - cap;
-                let src = self.parent.buf.get_ptr(0);
-                let dst = self.parent.buf.get_mut_ptr(target_end - cap - fst_count);
+                let src = ptr_at_index(&self.parent.buf, 0);
+                let dst = mut_ptr_at_index(&mut self.parent.buf, target_end - cap - fst_count);
                 unsafe { core::ptr::copy(src, dst, fst_count) };
 
                 let remaining = distance_to_front - fst_count;
                 let snd_count = usize::min(target_end - cap - fst_count, remaining);
                 let dst_idx = target_end - cap - (fst_count + snd_count);
 
-                let src = self.parent.buf.get_ptr(cap - snd_count);
-                let dst = self.parent.buf.get_mut_ptr(dst_idx);
+                let src = ptr_at_index(&self.parent.buf, cap - snd_count);
+                let dst = mut_ptr_at_index(&mut self.parent.buf, dst_idx);
                 unsafe { core::ptr::copy(src, dst, snd_count) };
 
                 let new_front = (front + (target_end - target_start)) % cap;
                 self.parent.front = I::from_usize(new_front);
 
                 let remaining = remaining - snd_count;
-                let src = self.parent.buf.get_ptr(front);
-                let dst = self.parent.buf.get_mut_ptr(new_front);
+                let src = ptr_at_index(&self.parent.buf, front);
+                let dst = mut_ptr_at_index(&mut self.parent.buf, new_front);
                 unsafe { core::ptr::copy(src, dst, remaining) };
             }
             (_, true, true) => {
@@ -1976,11 +1872,11 @@ impl<E, B: ContiguousStorage<E>, I: Capacity> Drop for Drain<'_, E, B, I> {
 /// assert_eq!(deque, &['a', 'b', 'c', 'd']);
 /// assert_eq!(deque.try_push_back('e'), Err('e'));
 /// ```
-pub type AllocDeque<E, I = usize> = Deque<E, crate::storage::HeapStorage<E>, I>;
+pub type AllocDeque<T, I = usize> = Deque<T, crate::storage::HeapStorage<T>, I>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<E: Copy, I: Capacity> AllocDeque<E, I> {
+impl<T: Copy, I: Capacity> AllocDeque<T, I> {
     /// Creates an empty `AllocDeque` with the specified capacity.
     ///
     /// # Panics
@@ -1998,7 +1894,7 @@ impl<E: Copy, I: Capacity> AllocDeque<E, I> {
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<E: Copy, I: Capacity> Clone for AllocDeque<E, I> {
+impl<T: Copy, I: Capacity> Clone for AllocDeque<T, I> {
     fn clone(&self) -> Self {
         let mut result = Self::with_capacity(I::from_usize(self.capacity()));
         result.extend(self.iter().cloned());
@@ -2020,7 +1916,7 @@ impl<E: Copy, I: Capacity> Clone for AllocDeque<E, I> {
 /// ```
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub type ArrayDeque<E, const C: usize> = Deque<E, crate::storage::InlineStorage<E, C>, usize>;
+pub type ArrayDeque<T, const C: usize> = Deque<T, crate::storage::InlineStorage<T, C>, usize>;
 
 /// A deque using an inline array for storage, generic over the index type.
 ///
@@ -2032,11 +1928,11 @@ pub type ArrayDeque<E, const C: usize> = Deque<E, crate::storage::InlineStorage<
 /// ```
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub type TiArrayDeque<E, I, const C: usize> = Deque<E, crate::storage::InlineStorage<E, C>, I>;
+pub type TiArrayDeque<T, I, const C: usize> = Deque<T, crate::storage::InlineStorage<T, C>, I>;
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<E, I: Capacity, const C: usize> Deque<E, [core::mem::MaybeUninit<E>; C], I> {
+impl<T, I: Capacity, const C: usize> Deque<T, [core::mem::MaybeUninit<T>; C], I> {
     /// Constructs a new deque backed by an inline array.
     ///
     /// # Panics
@@ -2063,7 +1959,7 @@ impl<E, I: Capacity, const C: usize> Deque<E, [core::mem::MaybeUninit<E>; C], I>
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<E, I: Capacity, const C: usize> Default for Deque<E, [core::mem::MaybeUninit<E>; C], I> {
+impl<T, I: Capacity, const C: usize> Default for Deque<T, [core::mem::MaybeUninit<T>; C], I> {
     fn default() -> Self {
         Self::new()
     }
@@ -2071,7 +1967,7 @@ impl<E, I: Capacity, const C: usize> Default for Deque<E, [core::mem::MaybeUnini
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<E: Clone, I: Capacity, const C: usize> Clone for Deque<E, [core::mem::MaybeUninit<E>; C], I> {
+impl<T: Clone, I: Capacity, const C: usize> Clone for Deque<T, [core::mem::MaybeUninit<T>; C], I> {
     fn clone(&self) -> Self {
         let mut ret = Self::new();
         ret.extend(self.iter().cloned());
