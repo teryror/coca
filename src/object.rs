@@ -5,7 +5,7 @@
 use core::alloc::{Layout, LayoutError};
 use core::fmt::{self, Debug, Formatter};
 use core::marker::Unsize;
-use core::mem::{align_of, size_of, MaybeUninit};
+use core::mem::{align_of, size_of, ManuallyDrop, MaybeUninit};
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 
@@ -54,8 +54,8 @@ pub struct Align128;
 /// assert_eq!(size_of::<InlineStorage<Align16, 20>>(), 32);
 /// ```
 #[repr(C)]
-pub struct InlineStorage<A, const N: usize> {
-    force_alignment: [A; 0],
+pub union InlineStorage<A, const N: usize> {
+    force_alignment: ManuallyDrop<A>,
     data: [MaybeUninit<u8>; N],
 }
 
@@ -64,10 +64,10 @@ unsafe impl<A, const N: usize> Storage<ObjectLayout> for InlineStorage<A, N> {
         N
     }
     fn get_ptr(&self) -> *const u8 {
-        self.data.as_ptr() as _
+        unsafe { self.data.as_ptr() as _ }
     }
     fn get_mut_ptr(&mut self) -> *mut u8 {
-        self.data.as_mut_ptr() as _
+        unsafe { self.data.as_mut_ptr() as _ }
     }
 }
 
@@ -113,6 +113,14 @@ impl<T: ?Sized, S: Storage<ObjectLayout>> DerefMut for Object<T, S> {
 impl<T: ?Sized + Debug, S: Storage<ObjectLayout>> Debug for Object<T, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         self.deref().fmt(f)
+    }
+}
+
+impl<T: ?Sized, S: Storage<ObjectLayout>> Drop for Object<T, S> {
+    fn drop(&mut self) {
+        let dangling = self.meta.as_ptr() as *mut T;
+        let fat_ptr = dangling.set_ptr_value(self.buf.get_mut_ptr());
+        unsafe { fat_ptr.drop_in_place() };
     }
 }
 
@@ -183,7 +191,6 @@ impl<T: ?Sized, A, const N: usize> Object<T, InlineStorage<A, N>> {
         let mut result = Object {
             meta: NonNull::<U>::dangling() as NonNull<T>,
             buf: InlineStorage {
-                force_alignment: [],
                 data: [MaybeUninit::uninit(); N],
             },
         };
@@ -251,5 +258,35 @@ mod tests {
 
         test_layout::<Align128, 50>(128);
         test_layout::<Align128, 150>(128);
+    }
+
+    #[test]
+    fn drops_correctly() {
+        use core::cell::Cell;
+
+        #[derive(Debug)]
+        struct Droppable<'a> {
+            drop_count: &'a Cell<u32>,
+        }
+
+        impl Drop for Droppable<'_> {
+            fn drop(&mut self) {
+                let c = self.drop_count.get();
+                self.drop_count.set(c + 1);
+            }
+        }
+
+        let drop_count = Cell::new(0);
+        let mut obj: InlineObject<dyn Debug, 8> = InlineObject::new(Droppable {
+            drop_count: &drop_count,
+        });
+
+        obj.set(Droppable {
+            drop_count: &drop_count,
+        });
+        assert_eq!(drop_count.get(), 1);
+
+        drop(obj);
+        assert_eq!(drop_count.get(), 2);
     }
 }
