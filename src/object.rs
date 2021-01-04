@@ -118,9 +118,7 @@ impl<T: ?Sized + Debug, S: Storage<ObjectLayout>> Debug for Object<T, S> {
 
 impl<T: ?Sized, S: Storage<ObjectLayout>> Drop for Object<T, S> {
     fn drop(&mut self) {
-        let dangling = self.meta.as_ptr() as *mut T;
-        let fat_ptr = dangling.set_ptr_value(self.buf.get_mut_ptr());
-        unsafe { fat_ptr.drop_in_place() };
+        unsafe { ((&mut **self) as *mut T).drop_in_place() };
     }
 }
 
@@ -218,9 +216,7 @@ impl<T: ?Sized, A, const N: usize> Object<T, InlineStorage<A, N>> {
     /// ```
     pub fn set<U: Sized + Unsize<T>>(&mut self, val: U) {
         Self::check_layout::<U>();
-        let dangling = self.meta.as_ptr() as *mut T;
-        let fat_ptr = dangling.set_ptr_value(self.buf.get_mut_ptr());
-        unsafe { fat_ptr.drop_in_place() };
+        unsafe { ((&mut **self) as *mut T).drop_in_place() };
 
         self.meta = NonNull::<U>::dangling() as NonNull<T>;
         let ptr = self.buf.get_mut_ptr() as *mut U;
@@ -277,16 +273,16 @@ mod tests {
         }
 
         let drop_count = Cell::new(0);
-        let mut obj: InlineObject<dyn Debug, 8> = InlineObject::new(Droppable {
-            drop_count: &drop_count,
-        });
+        {
+            let mut obj: InlineObject<dyn Debug, 8> = InlineObject::new(Droppable {
+                drop_count: &drop_count,
+            });
 
-        obj.set(Droppable {
-            drop_count: &drop_count,
-        });
-        assert_eq!(drop_count.get(), 1);
-
-        drop(obj);
+            obj.set(Droppable {
+                drop_count: &drop_count,
+            });
+            assert_eq!(drop_count.get(), 1);
+        }
         assert_eq!(drop_count.get(), 2);
     }
 }
