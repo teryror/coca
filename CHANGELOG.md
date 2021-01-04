@@ -1,3 +1,11 @@
+# 0.3.0 (WIP)
+## Breaking Changes
+
+- Renamed `ContiguousStorage<T>` to `Storage<R>` and overhauled the interface;
+  see [this blog post on the design process][storage-abstraction-v2] for motivation
+
+[storage-abstraction-v2]: https://gist.github.com/teryror/7b9a23fd0cd8dcfbcb6ebd34ee2639f8
+
 # 0.2.0 (2020-12-28)
 
 - Add `BinaryHeap` and `Deque` implementations
