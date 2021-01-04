@@ -21,6 +21,7 @@ opt-level = 3
 default = []
 alloc = []
 nightly = []
+unstable = ["nightly"]
 profile = []
 
 [dev-dependencies]

@@ -1,11 +1,11 @@
 #![no_std]
 #![doc(html_root_url = "https://docs.rs/coca/0.2.0")]
-#![cfg_attr(feature = "nightly", feature(min_const_generics))]
 #![cfg_attr(docs_rs, feature(doc_cfg))]
+#![cfg_attr(feature = "unstable", feature(unsize))]
+#![cfg_attr(feature = "unstable", feature(set_ptr_value))]
 #![warn(missing_docs)]
 #![warn(clippy::pedantic)]
 #![allow(
-    stable_features,
     clippy::inline_always,
     clippy::missing_errors_doc,
     clippy::module_name_repetitions,
@@ -29,6 +29,8 @@
 //!   [`ContiguousStorage`](storage::ContiguousStorage).
 //! - `alloc`: Adds trait implementations and convenience functions for working
 //!   with heap allocated memory.
+//! - `unstable`: Enables the [`object`] module, which relies on unstable features.
+//!   Debends on the `nightly` features.
 
 #[cfg(feature = "alloc")]
 #[doc(hidden)]
@@ -39,6 +41,10 @@ pub mod binary_heap;
 pub mod deque;
 pub mod storage;
 pub mod vec;
+
+#[cfg(feature = "unstable")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "unstable")))]
+pub mod object;
 
 pub use crate::{
     arena::{Arena, Box},
@@ -58,3 +64,7 @@ pub use crate::{
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 pub use crate::{binary_heap::AllocHeap, deque::AllocDeque, vec::AllocVec};
+
+#[cfg(feature = "unstable")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "unstable")))]
+pub use crate::object::InlineObject;

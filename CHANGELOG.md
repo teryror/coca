@@ -1,10 +1,16 @@
 # 0.3.0 (WIP)
 ## Breaking Changes
 
-- Renamed `ContiguousStorage<T>` to `Storage<R>` and overhauled the interface;
+- Rename `ContiguousStorage<T>` to `Storage<R>` and overhaul the interface;
   see [this blog post on the design process][storage-abstraction-v2] for motivation
+- Remove the `feature(min_const_generics)` attribute, effectively raising the
+  minimum supported compiler version when using the `nightly` feature to 1.49.
 
 [storage-abstraction-v2]: https://gist.github.com/teryror/7b9a23fd0cd8dcfbcb6ebd34ee2639f8
+
+## New Features
+
+- Experimental `object` module for owned, allocation-free trait objects
 
 # 0.2.0 (2020-12-28)
 
