@@ -26,7 +26,7 @@
 //!   [module-level documentation](arena#memory-profiling) for details.
 //! - `nightly`: Adds trait implementations and convenience functions that require
 //!   the nightly-only `feature(min_const_generics)`, allowing inlining of
-//!   [`ContiguousStorage`](storage::ContiguousStorage).
+//!   [`Storage`](storage::Storage).
 //! - `alloc`: Adds trait implementations and convenience functions for working
 //!   with heap allocated memory.
 //! - `unstable`: Enables the [`object`] module, which relies on unstable features.
