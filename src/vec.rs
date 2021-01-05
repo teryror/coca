@@ -10,7 +10,7 @@
 //! With no optional features enabled, the only supported storage types are
 //! [references to slices](SliceVec) and [arena-allocated slices](ArenaVec).
 //!
-//! The `nightly` feature allows using [arrays inlined in the `Vec`](ArrayVec)
+//! The `nightly` feature allows using [arrays inlined in the `Vec`](InlineVec)
 //! for storage, as well as referenced and (arena-)boxed arrays, which do not
 //! require a runtime representation of their capacity.
 //!
@@ -19,7 +19,7 @@
 //! where domain logic dictates a length limit on a list.
 //!
 //! Specifying an index type smaller than `usize`, such as `u16` or even `u8`,
-//! can aid in struct size optimization, especially with `ArrayVec`. It's also
+//! can aid in struct size optimization, especially with `InlineVec`. It's also
 //! possible to [declare new types](index_type!) for this purpose, leveraging
 //! the type system to avoid using the wrong kind of index.
 //!
@@ -1039,7 +1039,7 @@ impl<T: Copy, I: Capacity> Clone for AllocVec<T, I> {
 ///
 /// # Examples
 /// ```
-/// let mut vec = coca::ArrayVec::<char, 3>::new();
+/// let mut vec = coca::InlineVec::<char, 3>::new();
 /// vec.push('a');
 /// vec.push('b');
 /// vec.push('c');
@@ -1047,19 +1047,19 @@ impl<T: Copy, I: Capacity> Clone for AllocVec<T, I> {
 /// ```
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub type ArrayVec<T, const C: usize> = Vec<T, InlineStorage<T, C>, usize>;
+pub type InlineVec<T, const C: usize> = Vec<T, InlineStorage<T, C>, usize>;
 
 /// A vector using an inline array for storage, generic over the index type.
 ///
 /// # Examples
 /// ```
-/// let mut vec = coca::TiArrayVec::<char, u8, 3>::new();
+/// let mut vec = coca::TiInlineVec::<char, u8, 3>::new();
 /// vec.push('a');
 /// assert_eq!(vec[0u8], 'a');
 /// ```
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub type TiArrayVec<T, Index, const C: usize> = Vec<T, InlineStorage<T, C>, Index>;
+pub type TiInlineVec<T, Index, const C: usize> = Vec<T, InlineStorage<T, C>, Index>;
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
@@ -1071,7 +1071,7 @@ impl<T, I: Capacity, const C: usize> Vec<T, InlineStorage<T, C>, I> {
     ///
     /// # Examples
     /// ```
-    /// let vec = coca::ArrayVec::<u32, 6>::new();
+    /// let vec = coca::InlineVec::<u32, 6>::new();
     /// assert_eq!(vec.capacity(), 6);
     /// assert_eq!(vec.len(), 0);
     /// ```
@@ -1221,8 +1221,8 @@ mod tests {
 
         #[cfg(feature = "nightly")]
         {
-            assert_eq!(size_of::<ArrayVec<u8, 8>>(), size_of::<usize>() + 8);
-            assert_eq!(size_of::<TiArrayVec<u8, u8, 99>>(), 100);
+            assert_eq!(size_of::<InlineVec<u8, 8>>(), size_of::<usize>() + 8);
+            assert_eq!(size_of::<TiInlineVec<u8, u8, 99>>(), 100);
             assert_eq!(
                 size_of::<Vec<u32, &mut [MaybeUninit<u32>; 1000], usize>>(),
                 2 * size_of::<usize>()

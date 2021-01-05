@@ -544,7 +544,7 @@ impl<T: Copy + Ord, I: Capacity> Clone for AllocHeap<T, I> {
 ///
 /// # Examples
 /// ```
-/// let mut heap = coca::ArrayHeap::<char, 3>::new();
+/// let mut heap = coca::InlineHeap::<char, 3>::new();
 /// heap.push('a');
 /// heap.push('b');
 /// heap.push('c');
@@ -552,20 +552,20 @@ impl<T: Copy + Ord, I: Capacity> Clone for AllocHeap<T, I> {
 /// ```
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub type ArrayHeap<T, const C: usize> = BinaryHeap<T, crate::storage::InlineStorage<T, C>, usize>;
+pub type InlineHeap<T, const C: usize> = BinaryHeap<T, crate::storage::InlineStorage<T, C>, usize>;
 
 /// A binary heap using an inline array for storage, generic over the index type.
 ///
 /// # Examples
 /// ```
-/// let mut heap = coca::TiArrayHeap::<char, u8, 3>::new();
+/// let mut heap = coca::TiInlineHeap::<char, u8, 3>::new();
 /// heap.push('a');
 /// let vec = heap.into_vec();
 /// assert_eq!(vec[0u8], 'a');
 /// ```
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub type TiArrayHeap<T, Index, const C: usize> =
+pub type TiInlineHeap<T, Index, const C: usize> =
     BinaryHeap<T, crate::storage::InlineStorage<T, C>, Index>;
 
 #[cfg(feature = "nightly")]
@@ -578,7 +578,7 @@ impl<T: Ord, I: Capacity, const C: usize> BinaryHeap<T, [MaybeUninit<T>; C], I> 
     ///
     /// # Examples
     /// ```
-    /// let heap = coca::ArrayHeap::<char, 4>::new();
+    /// let heap = coca::InlineHeap::<char, 4>::new();
     /// assert_eq!(heap.capacity(), 4);
     /// assert!(heap.is_empty());
     /// ```

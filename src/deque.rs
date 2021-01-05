@@ -1906,7 +1906,7 @@ impl<T: Copy, I: Capacity> Clone for AllocDeque<T, I> {
 ///
 /// # Examples
 /// ```
-/// let mut deque = coca::ArrayDeque::<char, 4>::new();
+/// let mut deque = coca::InlineDeque::<char, 4>::new();
 /// deque.push_front('b');
 /// deque.push_front('a');
 /// deque.push_back('c');
@@ -1916,19 +1916,19 @@ impl<T: Copy, I: Capacity> Clone for AllocDeque<T, I> {
 /// ```
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub type ArrayDeque<T, const C: usize> = Deque<T, crate::storage::InlineStorage<T, C>, usize>;
+pub type InlineDeque<T, const C: usize> = Deque<T, crate::storage::InlineStorage<T, C>, usize>;
 
 /// A deque using an inline array for storage, generic over the index type.
 ///
 /// # Examples
 /// ```
-/// let mut deque = coca::TiArrayDeque::<char, u8, 4>::new();
+/// let mut deque = coca::TiInlineDeque::<char, u8, 4>::new();
 /// deque.push_front('a');
 /// assert_eq!(deque[0u8], 'a');
 /// ```
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub type TiArrayDeque<T, I, const C: usize> = Deque<T, crate::storage::InlineStorage<T, C>, I>;
+pub type TiInlineDeque<T, I, const C: usize> = Deque<T, crate::storage::InlineStorage<T, C>, I>;
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
@@ -1940,7 +1940,7 @@ impl<T, I: Capacity, const C: usize> Deque<T, [core::mem::MaybeUninit<T>; C], I>
     ///
     /// # Examples
     /// ```
-    /// let deque = coca::ArrayDeque::<u32, 7>::new();
+    /// let deque = coca::InlineDeque::<u32, 7>::new();
     /// assert_eq!(deque.len(), 0);
     /// assert_eq!(deque.capacity(), 7);
     /// ```

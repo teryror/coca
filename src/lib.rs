@@ -56,9 +56,9 @@ pub use crate::{
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub use crate::{
-    binary_heap::{ArrayHeap, TiArrayHeap},
-    deque::{ArrayDeque, TiArrayDeque},
-    vec::{ArrayVec, TiArrayVec},
+    binary_heap::{InlineHeap, TiInlineHeap},
+    deque::{InlineDeque, TiInlineDeque},
+    vec::{InlineVec, TiInlineVec},
 };
 
 #[cfg(feature = "alloc")]
