@@ -104,17 +104,19 @@ unsafe impl Capacity for usize {
     }
 }
 
-/// Generates a newtype wrapping an implementor of [`Capacity`].
+/// Generates one or more newtypes wrapping an implementor of [`Capacity`].
 ///
 /// This can help in avoiding use of the wrong index with a [`Vec`](crate::vec::Vec).
 ///
 /// # Examples
 /// ```compile_fail
-/// use coca::{index_type, Vec};
+/// use coca::{index_type, vec::Vec};
 /// use core::mem::MaybeUninit;
 ///
-/// index_type! { pub IndexA: u8 };
-/// index_type! { IndexB: u8 };
+/// index_type! {
+///     pub IndexA: u8;
+///     IndexB: u8
+/// };
 ///
 /// let mut backing_a = [MaybeUninit::<u32>::uninit(); 20];
 /// let mut backing_b = [MaybeUninit::<u32>::uninit(); 30];
@@ -132,7 +134,8 @@ unsafe impl Capacity for usize {
 /// ```
 #[macro_export]
 macro_rules! index_type {
-    ($v:vis $name:ident: $repr:ty) => {
+    ( $(#[$attrs:meta])* $v:vis $name:ident: $repr:ty ) => {
+        $(#[$attrs])*
         #[derive(
             core::marker::Copy,
             core::clone::Clone,
@@ -158,6 +161,11 @@ macro_rules! index_type {
                 <$repr as $crate::storage::Capacity>::as_usize(&self.0)
             }
         }
+    };
+
+    ( $(#[$attrs:meta])* $v:vis $name:ident: $repr:ty ; $($rest:tt)* ) => {
+        $crate::index_type!($(#[$attrs])* $v $name: $repr);
+        $crate::index_type!($($rest)*);
     }
 }
 

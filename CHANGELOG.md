@@ -14,6 +14,7 @@
 ## New Features
 
 - Experimental `object` module for owned, allocation-free trait objects
+- Add support for multiple type declarations in a single `index_type!` invocation
 
 # 0.2.0 (2020-12-28)
 
