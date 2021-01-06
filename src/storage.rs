@@ -115,7 +115,7 @@ unsafe impl Capacity for usize {
 ///
 /// index_type! {
 ///     pub IndexA: u8;
-///     IndexB: u8
+///     IndexB: u8;
 /// };
 ///
 /// let mut backing_a = [MaybeUninit::<u32>::uninit(); 20];
@@ -166,7 +166,9 @@ macro_rules! index_type {
     ( $(#[$attrs:meta])* $v:vis $name:ident: $repr:ty ; $($rest:tt)* ) => {
         $crate::index_type!($(#[$attrs])* $v $name: $repr);
         $crate::index_type!($($rest)*);
-    }
+    };
+
+    () => {}
 }
 
 /// Types that specify a data structure's storage layout requirements.
