@@ -3,6 +3,8 @@
 
 - Rename `ContiguousStorage<T>` to `Storage<R>` and overhaul the interface;
   see [this blog post on the design process][storage-abstraction-v2] for motivation
+- Add super traits to `Capacity` trait, add `const MAX_REPRESENTABLE`; implementors
+  are no longer required to perform validation on _every_ call
 - Remove the `feature(min_const_generics)` attribute, effectively raising the
   minimum supported compiler version when using the `nightly` feature to 1.49.
 - Rename `Array{Vec, Deque, Heap}` to `Inline*` for consistency with `InlineObject`

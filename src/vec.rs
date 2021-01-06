@@ -37,7 +37,9 @@
 #[cfg(feature = "nightly")]
 use crate::storage::InlineStorage;
 
-use crate::storage::{mut_ptr_at_index, ptr_at_index, ArrayLike, Capacity, Storage};
+use crate::storage::{
+    buffer_too_large_for_index_type, mut_ptr_at_index, ptr_at_index, ArrayLike, Capacity, Storage,
+};
 
 use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
 use core::hash::{Hash, Hasher};
@@ -83,7 +85,9 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for Vec<T, S, I> {
     /// # Panics
     /// This may panic if the index type I cannot represent `buf.capacity()`.
     fn from(buf: S) -> Self {
-        I::from_usize(buf.capacity());
+        if buf.capacity() > I::MAX_REPRESENTABLE {
+            buffer_too_large_for_index_type::<I>();
+        }
 
         Vec {
             len: I::from_usize(0),
@@ -1015,9 +1019,14 @@ impl<T: Copy, I: Capacity> AllocVec<T, I> {
     /// # Panics
     /// Panics if the specified capacity cannot be represented by a `usize`.
     pub fn with_capacity(capacity: I) -> Self {
+        let cap = capacity.as_usize();
+        if capacity != I::from_usize(cap) {
+            buffer_too_large_for_index_type::<I>();
+        }
+
         Vec {
             len: I::from_usize(0),
-            buf: alloc::vec![MaybeUninit::uninit(); capacity.as_usize()].into_boxed_slice(),
+            buf: alloc::vec![MaybeUninit::uninit(); cap].into_boxed_slice(),
             elem: PhantomData,
         }
     }
@@ -1077,7 +1086,9 @@ impl<T, I: Capacity, const C: usize> Vec<T, InlineStorage<T, C>, I> {
     /// ```
     #[inline]
     pub fn new() -> Self {
-        I::from_usize(C); // panics if I cannot index the whole array
+        if C > I::MAX_REPRESENTABLE {
+            buffer_too_large_for_index_type::<I>();
+        }
 
         Vec {
             len: I::from_usize(0),
@@ -1116,7 +1127,10 @@ impl<T: Clone, I: Capacity, const C: usize> core::clone::Clone for Vec<T, Inline
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T: Clone, I: Capacity, const C: usize> From<&[T]> for Vec<T, InlineStorage<T, C>, I> {
     fn from(source: &[T]) -> Self {
-        I::from_usize(C); // panics if I cannot index the whole array
+        if C > I::MAX_REPRESENTABLE {
+            buffer_too_large_for_index_type::<I>();
+        }
+
         if source.len() > C {
             panic!(
                 "source should not have more than {} elements (has {})",
@@ -1137,7 +1151,10 @@ impl<T: Clone, I: Capacity, const C: usize> From<&[T]> for Vec<T, InlineStorage<
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T: Clone, I: Capacity, const C: usize> From<&mut [T]> for Vec<T, InlineStorage<T, C>, I> {
     fn from(source: &mut [T]) -> Self {
-        I::from_usize(C); // panics if I cannot index the whole array
+        if C > I::MAX_REPRESENTABLE {
+            buffer_too_large_for_index_type::<I>();
+        }
+
         if source.len() > C {
             panic!(
                 "source should not have more than {} elements (has {})",

@@ -1,118 +1,98 @@
 //! Traits providing genericity over storage strategies and index types.
 
 use core::alloc::{Layout, LayoutError};
-use core::convert::TryInto;
+use core::convert::{TryFrom, TryInto};
+use core::hash::Hash;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 
-/// Two-way conversion between `Self` and `usize`.
+/// Types that can be used for indexing into array-like data structures.
 ///
 /// # Safety
-/// Implementors must ensure the conversion functions are each other's inverse,
-/// i.e. `Capacity::from_usize(i).as_usize()` must either evaluate to `i`, or
-/// panic for all `usize` values.
+/// Implementors must ensure that `Capacity::from_usize(i).as_usize() == i` for
+/// all values `i <= MAX_REPRESENTABLE`. Otherwise, this expression must panic
+/// or evaluate to `false`.
 ///
 /// Using [`index_type!`] should be preferred over implementing this manually.
-pub unsafe trait Capacity: Copy {
+pub unsafe trait Capacity: Copy + Eq + Hash + Ord {
+    /// The maximum `usize` value that can safely be represented by this type.
+    const MAX_REPRESENTABLE: usize;
     /// Convert a `usize` into `Self`.
     fn from_usize(i: usize) -> Self;
     /// Convert `self` into `usize`.
     fn as_usize(&self) -> usize;
 }
 
-#[inline(never)]
 #[cold]
-#[track_caller]
-fn from_value_out_of_range(i: usize) -> ! {
-    panic!("called `from_usize` with value out of range (is {})", i)
-}
-
 #[inline(never)]
-#[cold]
 #[track_caller]
-fn into_value_out_of_range() -> ! {
-    panic!("called `as_usize` with value out of range")
+pub(crate) fn buffer_too_large_for_index_type<I: Capacity>() {
+    panic!(
+        "provided storage block cannot be fully indexed by type {}",
+        core::any::type_name::<I>()
+    );
 }
 
 unsafe impl Capacity for u8 {
+    const MAX_REPRESENTABLE: usize = 0xFF;
     #[inline]
-    #[track_caller]
     fn from_usize(i: usize) -> Self {
-        if let Ok(t) = i.try_into() {
-            t
-        } else {
-            from_value_out_of_range(i);
-        }
+        debug_assert!(<usize as TryInto<Self>>::try_into(i).is_ok());
+        i as u8
     }
 
     #[inline]
     fn as_usize(&self) -> usize {
-        (*self).into()
+        *self as usize
     }
 }
 
 unsafe impl Capacity for u16 {
+    const MAX_REPRESENTABLE: usize = 0xFFFF;
     #[inline]
-    #[track_caller]
     fn from_usize(i: usize) -> Self {
-        if let Ok(t) = i.try_into() {
-            t
-        } else {
-            from_value_out_of_range(i);
-        }
+        debug_assert!(<usize as TryInto<Self>>::try_into(i).is_ok());
+        i as u16
     }
 
     #[inline]
     fn as_usize(&self) -> usize {
-        (*self).into()
+        *self as usize
     }
 }
 
 unsafe impl Capacity for u32 {
+    const MAX_REPRESENTABLE: usize = 0xFFFF_FFFF;
     #[inline]
-    #[track_caller]
     fn from_usize(i: usize) -> Self {
-        if let Ok(t) = i.try_into() {
-            t
-        } else {
-            from_value_out_of_range(i);
-        }
+        debug_assert!(<usize as TryInto<Self>>::try_into(i).is_ok());
+        i as u32
     }
 
     #[inline]
-    #[track_caller]
     fn as_usize(&self) -> usize {
-        if let Ok(t) = (*self).try_into() {
-            t
-        } else {
-            into_value_out_of_range();
-        }
+        debug_assert!(<usize as TryFrom<Self>>::try_from(*self).is_ok());
+        *self as usize
     }
 }
 
 unsafe impl Capacity for u64 {
+    const MAX_REPRESENTABLE: usize = usize::max_value();
     #[inline]
-    #[track_caller]
     fn from_usize(i: usize) -> Self {
-        if let Ok(t) = i.try_into() {
-            t
-        } else {
-            from_value_out_of_range(i);
-        }
+        debug_assert!(<usize as TryInto<Self>>::try_into(i).is_ok());
+        i as u64
     }
 
     #[inline]
-    #[track_caller]
     fn as_usize(&self) -> usize {
-        if let Ok(t) = (*self).try_into() {
-            t
-        } else {
-            into_value_out_of_range();
-        }
+        debug_assert!(<usize as TryFrom<Self>>::try_from(*self).is_ok());
+        *self as usize
     }
 }
 
 unsafe impl Capacity for usize {
+    const MAX_REPRESENTABLE: usize = usize::max_value();
     #[inline]
     fn from_usize(i: usize) -> Self {
         i
@@ -165,6 +145,7 @@ macro_rules! index_type {
         $v struct $name($repr);
 
         unsafe impl $crate::storage::Capacity for $name {
+            const MAX_REPRESENTABLE: usize = <$repr as $crate::storage::Capacity>::MAX_REPRESENTABLE;
             #[inline]
             #[track_caller]
             fn from_usize(i: usize) -> Self {

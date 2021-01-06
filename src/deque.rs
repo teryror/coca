@@ -9,7 +9,9 @@ use core::iter::FusedIterator;
 use core::marker::PhantomData;
 use core::ops::{Index, IndexMut};
 
-use crate::storage::{mut_ptr_at_index, ptr_at_index, ArrayLike, Capacity, Storage};
+use crate::storage::{
+    buffer_too_large_for_index_type, mut_ptr_at_index, ptr_at_index, ArrayLike, Capacity, Storage,
+};
 use crate::vec::Vec;
 
 /// A double-ended queue implemented with a ring buffer.
@@ -56,7 +58,14 @@ pub type ArenaDeque<'a, T, I = usize> = Deque<T, crate::storage::ArenaStorage<'a
 
 impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for Deque<T, S, I> {
     /// Converts a contiguous block of memory into an empty deque.
+    ///
+    /// # Panics
+    /// This may panic if the index type I cannot represent `buf.capacity()`.
     fn from(buf: S) -> Self {
+        if buf.capacity() > I::MAX_REPRESENTABLE {
+            buffer_too_large_for_index_type::<I>();
+        }
+
         Deque {
             front: I::from_usize(0),
             len: I::from_usize(0),
@@ -1880,13 +1889,17 @@ impl<T: Copy, I: Capacity> AllocDeque<T, I> {
     /// Creates an empty `AllocDeque` with the specified capacity.
     ///
     /// # Panics
-    /// Panics if `capacity` cannot be represented by a `usize`.
+    /// Panics if `capacity` cannot be represented by the a `usize`.
     pub fn with_capacity(capacity: I) -> Self {
+        let cap = capacity.as_usize();
+        if capacity != I::from_usize(cap) {
+            buffer_too_large_for_index_type::<I>();
+        }
+
         Deque {
             front: I::from_usize(0),
             len: I::from_usize(0),
-            buf: alloc::vec![core::mem::MaybeUninit::uninit(); capacity.as_usize()]
-                .into_boxed_slice(),
+            buf: alloc::vec![core::mem::MaybeUninit::uninit(); cap].into_boxed_slice(),
             elem: PhantomData,
         }
     }
@@ -1946,7 +1959,9 @@ impl<T, I: Capacity, const C: usize> Deque<T, [core::mem::MaybeUninit<T>; C], I>
     /// ```
     #[inline]
     pub fn new() -> Self {
-        I::from_usize(C);
+        if C > I::MAX_REPRESENTABLE {
+            buffer_too_large_for_index_type::<I>();
+        }
 
         Deque {
             front: I::from_usize(0),
