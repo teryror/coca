@@ -7,7 +7,7 @@ use core::alloc::{Layout, LayoutError};
 use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 
-use super::Handle;
+use super::{DefaultHandle, Handle};
 use crate::storage::{Capacity, LayoutSpec, Storage};
 
 union Slot<T, I: Capacity> {
@@ -31,7 +31,7 @@ impl<T, H: Handle> LayoutSpec for DirectPoolLayout<T, H> {
 /// See the [super module documentation](crate::pool) for information on
 /// pool-based memory management, and [this module's documentation](crate::pool::direct)
 /// for details on this variation of it.
-pub struct DirectPool<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> {
+pub struct DirectPool<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle = DefaultHandle> {
     buf: S,
     len: H::Index,
     next_free_slot: H::Index,
@@ -128,7 +128,15 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     ///
     /// # Examples
     /// ```
-    /// todo!()
+    /// # #[cfg(feature = "nightly")]
+    /// # {
+    /// # use coca::pool::{DefaultHandle, direct::DirectInlinePool};
+    /// let mut pool = DirectInlinePool::<u128, DefaultHandle, 8>::new();
+    /// let h = pool.insert(0xDEAD_BEEF);
+    /// assert!(pool.contains_handle(h));
+    /// pool.remove(h);
+    /// assert!(!pool.contains_handle(h));
+    /// # }
     /// ```
     pub fn contains_handle(&self, handle: H) -> bool {
         let (index, input_gen_count) = handle.into_raw_parts();
@@ -196,7 +204,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// ```
     pub fn remove(&mut self, handle: H) -> Option<T> {
         let (index, input_gen_count) = handle.into_raw_parts();
-        if index > self.buf.capacity() {
+        if index > self.buf.capacity() || input_gen_count % 2 == 0 {
             return None;
         }
 
@@ -206,6 +214,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
             return None;
         }
 
+        self.len = H::Index::from_usize(self.len() - 1);
         let item = unsafe {
             *gen_count_ptr = current_gen_count.wrapping_add(1);
 
@@ -217,5 +226,90 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
         };
         self.next_free_slot = H::Index::from_usize(index);
         Some(ManuallyDrop::into_inner(item))
+    }
+}
+
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+#[repr(C)]
+pub struct InlineStorage<T, H: Handle, const N: usize> {
+    slots: core::mem::MaybeUninit<[Slot<T, H::Index>; N]>,
+    counters: core::mem::MaybeUninit<[u32; N]>,
+}
+
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+unsafe impl<T, H: Handle, const N: usize> Storage<DirectPoolLayout<T, H>>
+    for InlineStorage<T, H, N>
+{
+    #[inline]
+    fn get_ptr(&self) -> *const u8 {
+        self as *const Self as _
+    }
+
+    #[inline]
+    fn get_mut_ptr(&mut self) -> *mut u8 {
+        self as *mut Self as _
+    }
+
+    #[inline]
+    fn capacity(&self) -> usize {
+        N
+    }
+}
+
+/// A pool that stores its contents in an inline array.
+///
+/// # Examples
+/// ```
+/// # use coca::pool::DefaultHandle;
+/// # use coca::pool::direct::DirectInlinePool;
+/// const A: u128 = 0x0123_4567_89AB_CDEF_0123_4567_89AB_CDEF;
+/// const B: u128 = 0xFEDC_BA98_7654_3210_FEDC_BA98_7654_3210;
+///
+/// let mut pool = DirectInlinePool::<u128, DefaultHandle, 8>::new();
+/// let a = pool.insert(A);
+/// //let b = pool.insert(B);
+/// //assert_eq!(pool.len(), 2);
+/// assert_eq!(pool.remove(a), Some(A));
+/// //assert_eq!(pool.remove(b), Some(B));
+/// assert!(pool.is_empty());
+/// ```
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+pub type DirectInlinePool<T, H, const N: usize> = DirectPool<T, InlineStorage<T, H, N>, H>;
+
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+impl<T, H: Handle, const N: usize> DirectInlinePool<T, H, N> {
+    pub fn new() -> Self {
+        Self::from(InlineStorage {
+            slots: core::mem::MaybeUninit::uninit(),
+            counters: core::mem::MaybeUninit::uninit(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pool::{DefaultHandle, Handle};
+    use crate::storage::LayoutSpec;
+
+    #[cfg(feature = "nightly")]
+    #[test]
+    fn inline_storage_layout() {
+        fn test_layout<T, H: Handle, const N: usize>() {
+            use core::alloc::Layout;
+            let inline_layout = Layout::new::<InlineStorage<T, H, N>>();
+            let dynamic_layout = DirectPoolLayout::<T, H>::layout_with_capacity(N).unwrap();
+
+            assert_eq!(inline_layout, dynamic_layout);
+        }
+
+        test_layout::<[u8; 3], DefaultHandle, 10>();
+        test_layout::<[u8; 25], DefaultHandle, 20>();
+        test_layout::<u128, DefaultHandle, 40>();
+        test_layout::<crate::ArenaDeque<u8>, DefaultHandle, 80>();
     }
 }
