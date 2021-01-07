@@ -39,6 +39,7 @@ pub extern crate alloc;
 pub mod arena;
 pub mod binary_heap;
 pub mod deque;
+pub mod pool;
 pub mod storage;
 pub mod vec;
 
