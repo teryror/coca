@@ -57,6 +57,8 @@
 //! your target platform's pointer size and the alignment of the passed buffer).
 //! This does not apply to creating sub-arenas.
 
+use crate::pool::direct::DirectArenaPool;
+use crate::pool::Handle;
 use crate::storage::{ArenaStorage, Capacity, LayoutSpec};
 use crate::vec::ArenaVec;
 use crate::{binary_heap::ArenaHeap, ArenaDeque};
@@ -1001,6 +1003,45 @@ impl<'src> Arena<'src> {
     pub fn try_deque<T, I: Capacity>(&mut self, capacity: I) -> Option<ArenaDeque<'src, T, I>> {
         let storage = self.try_storage_with_capacity(capacity.as_usize())?;
         Some(ArenaDeque::from(storage))
+    }
+
+    /// Constructs a new [`DirectArenaPool`] with the specified capacity.
+    ///
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient. See
+    /// [`try_direct_pool`](Arena::try_direct_pool) for a checked version.
+    #[track_caller]
+    pub fn direct_pool<T, H: Handle>(&mut self, capacity: usize) -> DirectArenaPool<'src, T, H> {
+        self.try_direct_pool(capacity)
+            .expect("unexpected allocation failure in direct_pool")
+    }
+
+    /// Constructs a new [`DirectArenaPool`] with the specified capacity.
+    ///
+    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    ///
+    /// # Examples
+    /// ```
+    /// use coca::{Arena, pool::DefaultHandle};
+    /// use core::mem::MaybeUninit;
+    ///
+    /// # fn test() -> Option<()> {
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from(&mut backing_region[..]);
+    /// let mut pool = arena.try_direct_pool::<&'static str, DefaultHandle>(20)?;
+    ///
+    /// let hello = pool.insert("Hello, World!");
+    /// assert_eq!(pool.remove(hello), Some("Hello, World!"));
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
+    /// ```
+    pub fn try_direct_pool<T, H: Handle>(
+        &mut self,
+        capacity: usize,
+    ) -> Option<DirectArenaPool<'src, T, H>> {
+        let storage = self.try_storage_with_capacity(capacity)?;
+        Some(DirectArenaPool::from(storage))
     }
 
     /// Transforms an iterator into a boxed slice in the arena.

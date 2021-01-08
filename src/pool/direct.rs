@@ -8,7 +8,7 @@ use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 
 use super::{DefaultHandle, Handle};
-use crate::storage::{Capacity, LayoutSpec, Storage};
+use crate::storage::{ArenaStorage, Capacity, LayoutSpec, Storage};
 
 union Slot<T, I: Capacity> {
     item: ManuallyDrop<T>,
@@ -37,6 +37,12 @@ pub struct DirectPool<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle = Default
     next_free_slot: H::Index,
     items: PhantomData<T>,
 }
+
+/// A direct-mapped pool that stores its contents in an arena-allocated memory block.
+///
+/// See [`Arena::try_direct_pool`](crate::Arena::try_direct_pool) for example usage.
+pub type DirectArenaPool<'src, T, H = DefaultHandle> =
+    DirectPool<T, ArenaStorage<'src, DirectPoolLayout<T, H>>, H>;
 
 impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> From<S> for DirectPool<T, S, H> {
     fn from(buf: S) -> Self {
@@ -128,15 +134,14 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     ///
     /// # Examples
     /// ```
-    /// # #[cfg(feature = "nightly")]
-    /// # {
-    /// # use coca::pool::{DefaultHandle, direct::DirectInlinePool};
-    /// let mut pool = DirectInlinePool::<u128, DefaultHandle, 8>::new();
+    /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
+    /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
+    /// # let mut arena = coca::Arena::from(&mut backing[..]);
+    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(8);
     /// let h = pool.insert(0xDEAD_BEEF);
     /// assert!(pool.contains_handle(h));
     /// pool.remove(h);
     /// assert!(!pool.contains_handle(h));
-    /// # }
     /// ```
     pub fn contains_handle(&self, handle: H) -> bool {
         let (index, input_gen_count) = handle.into_raw_parts();
@@ -229,6 +234,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     }
 }
 
+/// A statically-sized storage block for a [`DirectPool`].
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 #[repr(C)]
@@ -258,7 +264,7 @@ unsafe impl<T, H: Handle, const N: usize> Storage<DirectPoolLayout<T, H>>
     }
 }
 
-/// A pool that stores its contents in an inline array.
+/// A direct-mapped pool that stores its contents in an inline array.
 ///
 /// # Examples
 /// ```
@@ -269,10 +275,10 @@ unsafe impl<T, H: Handle, const N: usize> Storage<DirectPoolLayout<T, H>>
 ///
 /// let mut pool = DirectInlinePool::<u128, DefaultHandle, 8>::new();
 /// let a = pool.insert(A);
-/// //let b = pool.insert(B);
-/// //assert_eq!(pool.len(), 2);
+/// let b = pool.insert(B);
+/// assert_eq!(pool.len(), 2);
 /// assert_eq!(pool.remove(a), Some(A));
-/// //assert_eq!(pool.remove(b), Some(B));
+/// assert_eq!(pool.remove(b), Some(B));
 /// assert!(pool.is_empty());
 /// ```
 #[cfg(feature = "nightly")]
@@ -282,6 +288,7 @@ pub type DirectInlinePool<T, H, const N: usize> = DirectPool<T, InlineStorage<T,
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T, H: Handle, const N: usize> DirectInlinePool<T, H, N> {
+    /// Constructs a new, empty `DirectPool` backed by [`InlineStorage`].
     pub fn new() -> Self {
         Self::from(InlineStorage {
             slots: core::mem::MaybeUninit::uninit(),
