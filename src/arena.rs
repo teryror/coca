@@ -504,8 +504,8 @@ impl<'src> Arena<'src> {
     /// the [`LayoutSpec`], leaving the memory uninitialized.
     ///
     /// # Panics
-    /// Panics if `capacity` is large enough to cause a [`LayoutError`], or if
-    /// the remaining space in the arena is insufficient.
+    /// Panics if `capacity` is large enough to cause a [`LayoutError`](core::alloc::LayoutError),
+    /// or if the remaining space in the arena is insufficient.
     /// See [`try_storage_with_capacity`](Arena::try_storage_with_capacity) for
     /// a checked version that never panics.
     #[inline]
@@ -521,7 +521,7 @@ impl<'src> Arena<'src> {
     /// Allocates enough memory in the arena for `capacity` items according to
     /// the [`LayoutSpec`], leaving the memory uninitialized.
     ///
-    /// Returns [`None`] if `capacity` is large enough to cause a [`LayoutError`],
+    /// Returns [`None`] if `capacity` is large enough to cause a [`LayoutError`](core::alloc::LayoutError),
     /// or if the remaining space in the arena is insufficient.
     ///
     /// # Examples
