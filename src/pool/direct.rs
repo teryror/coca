@@ -6,6 +6,7 @@
 use core::alloc::{Layout, LayoutError};
 use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
+use core::ops::{Index, IndexMut};
 
 use super::{DefaultHandle, Handle};
 use crate::storage::{ArenaStorage, Capacity, LayoutSpec, Storage};
@@ -149,7 +150,37 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
             return false;
         }
         let current_gen_count = unsafe { self.gen_counts().add(index).read() };
-        current_gen_count == input_gen_count
+        current_gen_count == input_gen_count && current_gen_count % 2 == 1
+    }
+
+    /// Returns a reference to the value corresponding to the handle.
+    ///
+    /// Returns [`None`] if the handle is invalid for this pool.
+    pub fn get(&self, handle: H) -> Option<&T> {
+        let (index, input_gen_count) = handle.into_raw_parts();
+        if index > self.buf.capacity() {
+            return None;
+        }
+        let current_gen_count = unsafe { self.gen_counts().add(index).read() };
+        if current_gen_count != input_gen_count || input_gen_count % 2 == 0 {
+            return None;
+        }
+        unsafe { (self.slots().add(index) as *const T).as_ref() }
+    }
+
+    /// Returns a mutable reference to the value corresponding to the handle.
+    ///
+    /// Returns [`None`] if the handle is invalid for this pool.
+    pub fn get_mut(&mut self, handle: H) -> Option<&mut T> {
+        let (index, input_gen_count) = handle.into_raw_parts();
+        if index > self.buf.capacity() {
+            return None;
+        }
+        let current_gen_count = unsafe { self.gen_counts().add(index).read() };
+        if current_gen_count != input_gen_count || input_gen_count % 2 == 0 {
+            return None;
+        }
+        unsafe { (self.slots_mut().add(index) as *mut T).as_mut() }
     }
 
     /// Inserts a value into the pool, returning a unique handle to access it.
@@ -158,7 +189,16 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     ///
     /// # Examples
     /// ```
-    /// todo!()
+    /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
+    /// # fn test() -> Result<(), u128> {
+    /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
+    /// # let mut arena = coca::Arena::from(&mut backing[..]);
+    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(8);
+    /// let h = pool.try_insert(42)?;
+    /// assert_eq!(pool[h], 42);
+    /// # Ok(())
+    /// # }
+    /// # assert!(test().is_ok());
     /// ```
     pub fn try_insert(&mut self, value: T) -> Result<H, T> {
         let insert_position = self.next_free_slot.as_usize();
@@ -205,7 +245,13 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     ///
     /// # Examples
     /// ```
-    /// todo!()
+    /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
+    /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
+    /// # let mut arena = coca::Arena::from(&mut backing[..]);
+    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(8);
+    /// let h = pool.insert(42);
+    /// assert_eq!(pool.remove(h), Some(42));
+    /// assert_eq!(pool.remove(h), None);
     /// ```
     pub fn remove(&mut self, handle: H) -> Option<T> {
         let (index, input_gen_count) = handle.into_raw_parts();
@@ -231,6 +277,41 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
         };
         self.next_free_slot = H::Index::from_usize(index);
         Some(ManuallyDrop::into_inner(item))
+    }
+}
+
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Index<H> for DirectPool<T, S, H> {
+    type Output = T;
+
+    fn index(&self, handle: H) -> &Self::Output {
+        self.get(handle).expect("indexed with invalid pool handle")
+    }
+}
+
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> IndexMut<H> for DirectPool<T, S, H> {
+    fn index_mut(&mut self, handle: H) -> &mut Self::Output {
+        self.get_mut(handle)
+            .expect("indexed with invalid pool handle")
+    }
+}
+
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Drop for DirectPool<T, S, H> {
+    fn drop(&mut self) {
+        let mut num_to_drop = self.len();
+        let item_ptr = self.slots_mut();
+        let gen_ptr = self.gen_counts();
+
+        for i in 0..self.capacity() {
+            unsafe {
+                if gen_ptr.add(i).read() % 2 == 1 {
+                    ManuallyDrop::drop((item_ptr.add(i) as *mut ManuallyDrop<T>).as_mut().unwrap());
+                    num_to_drop -= 1;
+                }
+            }
+            if num_to_drop == 0 {
+                break;
+            }
+        }
     }
 }
 
