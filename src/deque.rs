@@ -54,7 +54,7 @@ pub type SliceDeque<'a, T, I = usize> = Deque<T, crate::storage::SliceStorage<'a
 /// A double-ended queue using an arena-allocated slice for storage.
 ///
 /// See [`Arena::try_deque`](crate::Arena::try_deque) for example usage.
-pub type ArenaDeque<'a, T, I = usize> = Deque<T, crate::storage::ArenaStorage<'a, T>, I>;
+pub type ArenaDeque<'a, T, I = usize> = Deque<T, crate::storage::ArenaStorage<'a, ArrayLike<T>>, I>;
 
 impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for Deque<T, S, I> {
     /// Converts a contiguous block of memory into an empty deque.

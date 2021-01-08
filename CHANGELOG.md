@@ -8,6 +8,7 @@
 - Remove the `feature(min_const_generics)` attribute, effectively raising the
   minimum supported compiler version when using the `nightly` feature to 1.49.
 - Rename `Array{Vec, Deque, Heap}` to `Inline*` for consistency with `InlineObject`
+- Redefine `ArenaStorage` as a struct for compatibility with non-array-like layouts
 
 [storage-abstraction-v2]: https://gist.github.com/teryror/7b9a23fd0cd8dcfbcb6ebd34ee2639f8
 

@@ -57,7 +57,7 @@
 //! your target platform's pointer size and the alignment of the passed buffer).
 //! This does not apply to creating sub-arenas.
 
-use crate::storage::Capacity;
+use crate::storage::{ArenaStorage, Capacity, LayoutSpec};
 use crate::vec::ArenaVec;
 use crate::{binary_heap::ArenaHeap, ArenaDeque};
 
@@ -498,6 +498,53 @@ impl<'src> Arena<'src> {
         null_mut()
     }
 
+    /// Allocates enough memory in the arena for `capacity` items according to
+    /// the [`LayoutSpec`], leaving the memory uninitialized.
+    ///
+    /// # Panics
+    /// Panics if `capacity` is large enough to cause a [`LayoutError`], or if
+    /// the remaining space in the arena is insufficient.
+    /// See [`try_storage_with_capacity`](Arena::try_storage_with_capacity) for
+    /// a checked version that never panics.
+    #[inline]
+    #[track_caller]
+    pub fn storage_with_capacity<R: LayoutSpec>(
+        &mut self,
+        capacity: usize,
+    ) -> ArenaStorage<'src, R> {
+        self.try_storage_with_capacity(capacity)
+            .expect("unexpected allocation failure in `storage_with_capacity`")
+    }
+
+    /// Allocates enough memory in the arena for `capacity` items according to
+    /// the [`LayoutSpec`], leaving the memory uninitialized.
+    ///
+    /// Returns [`None`] if `capacity` is large enough to cause a [`LayoutError`],
+    /// or if the remaining space in the arena is insufficient.
+    ///
+    /// # Examples
+    /// ```
+    /// # use core::mem::MaybeUninit;
+    /// # use coca::{arena::Arena, pool::direct::DirectPool};
+    /// # fn test() -> Option<()> {
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from(&mut backing_region[..]);
+    /// let storage = arena.try_storage_with_capacity(10)?;
+    /// let pool = DirectPool::<&'static str, _>::from(storage);
+    /// assert_eq!(pool.capacity(), 10);
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
+    /// ```
+    pub fn try_storage_with_capacity<R: LayoutSpec>(
+        &mut self,
+        capacity: usize,
+    ) -> Option<ArenaStorage<'src, R>> {
+        let layout = R::layout_with_capacity(capacity).ok()?;
+        let ptr = self.try_alloc_raw(&layout) as *mut u8;
+        unsafe { ArenaStorage::from_raw_parts(ptr, capacity) }
+    }
+
     /// Allocates memory in the arena and then places the `Default` value for T
     /// into it.
     ///
@@ -858,9 +905,8 @@ impl<'src> Arena<'src> {
     /// # assert!(test().is_some());
     /// ```
     pub fn try_vec<T, I: Capacity>(&mut self, capacity: I) -> Option<ArenaVec<'src, T, I>> {
-        Some(ArenaVec::<T, I>::from(
-            self.try_reserve_array(capacity.as_usize())?,
-        ))
+        let storage = self.try_storage_with_capacity(capacity.as_usize())?;
+        Some(ArenaVec::<T, I>::from(storage))
     }
 
     /// Constructs a [`ArenaHeap`] with the given capacity.
@@ -906,9 +952,8 @@ impl<'src> Arena<'src> {
     /// # assert!(test().is_some());
     /// ```
     pub fn try_heap<T: Ord, I: Capacity>(&mut self, capacity: I) -> Option<ArenaHeap<'src, T, I>> {
-        Some(ArenaHeap::from(
-            self.try_reserve_array(capacity.as_usize())?,
-        ))
+        let storage = self.try_storage_with_capacity(capacity.as_usize())?;
+        Some(ArenaHeap::from(storage))
     }
 
     /// Constructs a [`ArenaDeque`] with the given capacity.
@@ -954,9 +999,8 @@ impl<'src> Arena<'src> {
     /// # assert!(test().is_some());
     /// ```
     pub fn try_deque<T, I: Capacity>(&mut self, capacity: I) -> Option<ArenaDeque<'src, T, I>> {
-        Some(ArenaDeque::from(
-            self.try_reserve_array(capacity.as_usize())?,
-        ))
+        let storage = self.try_storage_with_capacity(capacity.as_usize())?;
+        Some(ArenaDeque::from(storage))
     }
 
     /// Transforms an iterator into a boxed slice in the arena.

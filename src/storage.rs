@@ -5,6 +5,7 @@ use core::convert::{TryFrom, TryInto};
 use core::hash::Hash;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
+use core::ptr::NonNull;
 
 /// Types that can be used for indexing into array-like data structures.
 ///
@@ -246,18 +247,37 @@ unsafe impl<T: Sized> Storage<ArrayLike<T>> for &mut [MaybeUninit<T>] {
     }
 }
 
-/// Shorthand for [`coca::Box<'a, [MaybeUninit<T>]`](crate::arena::Box) for use
-/// with generic data structures.
-pub type ArenaStorage<'a, T> = crate::arena::Box<'a, [MaybeUninit<T>]>;
-unsafe impl<T> Storage<ArrayLike<T>> for ArenaStorage<'_, T> {
+/// A fat pointer to an arena-allocated storage block conforming to a [`LayoutSpec`].
+pub struct ArenaStorage<'src, R: LayoutSpec> {
+    ptr: NonNull<u8>,
+    cap: usize,
+    spec: PhantomData<R>,
+    src: PhantomData<&'src ()>,
+}
+
+impl<R: LayoutSpec> ArenaStorage<'_, R> {
+    pub(crate) unsafe fn from_raw_parts(ptr: *mut u8, cap: usize) -> Option<Self> {
+        let ptr = NonNull::new(ptr)?;
+        Some(ArenaStorage {
+            ptr,
+            cap,
+            spec: PhantomData,
+            src: PhantomData,
+        })
+    }
+}
+
+unsafe impl<R: LayoutSpec> Storage<R> for ArenaStorage<'_, R> {
     fn get_ptr(&self) -> *const u8 {
-        self.as_ptr() as *const u8
+        self.ptr.as_ptr() as _
     }
+
     fn get_mut_ptr(&mut self) -> *mut u8 {
-        self.as_mut_ptr() as *mut u8
+        self.ptr.as_ptr()
     }
+
     fn capacity(&self) -> usize {
-        self.len()
+        self.cap
     }
 }
 

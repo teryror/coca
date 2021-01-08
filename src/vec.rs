@@ -77,7 +77,7 @@ pub type SliceVec<'a, T, I = usize> = Vec<T, crate::storage::SliceStorage<'a, T>
 /// A vector using an arena-allocated slice for storage.
 ///
 /// See [`Arena::try_vec`](crate::Arena::try_vec) for example usage.
-pub type ArenaVec<'a, T, I = usize> = Vec<T, crate::storage::ArenaStorage<'a, T>, I>;
+pub type ArenaVec<'a, T, I = usize> = Vec<T, crate::storage::ArenaStorage<'a, ArrayLike<T>>, I>;
 
 impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for Vec<T, S, I> {
     /// Converts a contiguous block of memory into an empty vector.

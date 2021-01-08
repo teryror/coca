@@ -46,7 +46,10 @@ pub struct BinaryHeap<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity = usize> {
 /// ```
 pub type SliceHeap<'a, T, I = usize> = BinaryHeap<T, crate::storage::SliceStorage<'a, T>, I>;
 /// A binary heap using an arena-allocated slice for storage.
-pub type ArenaHeap<'a, T, I = usize> = BinaryHeap<T, crate::storage::ArenaStorage<'a, T>, I>;
+///
+/// See [`Arena::try_heap`](crate::Arena::try_heap) for a usage example.
+pub type ArenaHeap<'a, T, I = usize> =
+    BinaryHeap<T, crate::storage::ArenaStorage<'a, ArrayLike<T>>, I>;
 
 /// Structure wrapping a mutable reference to the greatest item on a `BinaryHeap`.
 ///
