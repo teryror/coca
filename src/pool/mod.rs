@@ -17,7 +17,7 @@ pub unsafe trait Handle: Copy + Eq + Hash + Ord {
 
 /// The default handle type, with 32 bits each for the index and generation count.
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DefaultHandle(NonZeroU64);
 unsafe impl Handle for DefaultHandle {
     type Index = u32;

@@ -140,11 +140,11 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// # let mut arena = coca::Arena::from(&mut backing[..]);
     /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(8);
     /// let h = pool.insert(0xDEAD_BEEF);
-    /// assert!(pool.contains_handle(h));
+    /// assert!(pool.contains(h));
     /// pool.remove(h);
-    /// assert!(!pool.contains_handle(h));
+    /// assert!(!pool.contains(h));
     /// ```
-    pub fn contains_handle(&self, handle: H) -> bool {
+    pub fn contains(&self, handle: H) -> bool {
         let (index, input_gen_count) = handle.into_raw_parts();
         if index > self.buf.capacity() {
             return false;
@@ -240,6 +240,60 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
         }
     }
 
+    /// Inserts a value given by `f` into the pool. The handle where the value
+    /// will be stored is passed into `f`. This is useful for storing values
+    /// containing their own handle.
+    ///
+    /// Returns [`None`] if the pool is already full, without calling `f`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
+    /// # fn test() -> Option<()> {
+    /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
+    /// # let mut arena = coca::Arena::from(&mut backing[..]);
+    /// let mut pool = arena.direct_pool::<(DefaultHandle, u64), DefaultHandle>(10);
+    /// let h = pool.insert_with_handle(|h| (h, 20));
+    /// assert_eq!(pool[h], (h, 20));
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
+    /// ```
+    pub fn try_insert_with_handle<F: FnOnce(H) -> T>(&mut self, f: F) -> Option<H> {
+        let insert_position = self.next_free_slot.as_usize();
+        if insert_position == Self::FREE_LIST_SENTINEL {
+            return None;
+        }
+
+        self.len = H::Index::from_usize(self.len() + 1);
+        unsafe {
+            let gen_count_ptr = self.gen_counts_mut().add(insert_position);
+            let gen_count = gen_count_ptr.read().wrapping_add(1);
+            debug_assert_eq!(gen_count % 2, 1);
+            gen_count_ptr.write(gen_count);
+
+            let slot = self.slots_mut().add(insert_position);
+            self.next_free_slot = (*slot).next_free_slot;
+            let handle = H::new(insert_position, gen_count);
+
+            (*slot).item = ManuallyDrop::new(f(handle));
+            Some(handle)
+        }
+    }
+
+    /// Inserts a value given by `f` into the pool. The handle where the value
+    /// will be stored is passed into `f`. This is useful for storing values
+    /// containing their own handle.
+    ///
+    /// # Panics
+    /// Panics if the pool is already full. See
+    /// [`try_insert_with_handle`](DirectPool::try_insert_with_handle) for a
+    /// checked version.
+    pub fn insert_with_handle<F: FnOnce(H) -> T>(&mut self, f: F) -> H {
+        self.try_insert_with_handle(f)
+            .expect("pool is already at capacity")
+    }
+
     /// Removes the value referred to by the specified handle from the pool,
     /// returning it unless the handle is invalid. This invalidates the handle.
     ///
@@ -277,6 +331,88 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
         };
         self.next_free_slot = H::Index::from_usize(index);
         Some(ManuallyDrop::into_inner(item))
+    }
+
+    /// Retains only the elements specified by the predicate.
+    ///
+    /// In other words, remove all handle-value pairs `(h, t)` such that
+    /// `f(h, &mut t)` returns false. This method invalidates any removed
+    /// handles.
+    ///
+    /// This function must iterate over all slots, empty or not. In the face of
+    /// many deleted elements it can be inefficient.
+    ///
+    /// # Examples
+    /// ```
+    /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
+    /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
+    /// # let mut arena = coca::Arena::from(&mut backing[..]);
+    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(4);
+    /// let h1 = pool.insert(1);
+    /// let h2 = pool.insert(2);
+    /// let h3 = pool.insert(3);
+    /// pool.retain(|_, val| *val % 2 == 1);
+    ///
+    /// assert!(pool.contains(h1));
+    /// assert!(!pool.contains(h2));
+    /// assert!(pool.contains(h3));
+    /// assert_eq!(pool.len(), 2);
+    /// ```
+    pub fn retain<F: FnMut(H, &mut T) -> bool>(&mut self, mut f: F) {
+        let mut num_to_check = self.len();
+        let mut new_len = num_to_check;
+        let slots = self.slots_mut();
+        let counts = self.gen_counts_mut();
+        for i in 0..self.capacity() {
+            unsafe {
+                let gen_count_ptr = counts.add(i);
+                let gen_count = gen_count_ptr.read();
+
+                if gen_count % 2 == 1 {
+                    let h = H::new(i, gen_count);
+                    let slot_ptr = slots.add(i);
+                    let item = (slot_ptr as *mut T).as_mut().unwrap();
+
+                    if !f(h, item) {
+                        ManuallyDrop::drop((slot_ptr as *mut ManuallyDrop<T>).as_mut().unwrap());
+                        (*slot_ptr).next_free_slot = self.next_free_slot;
+                        self.next_free_slot = H::Index::from_usize(i);
+                        gen_count_ptr.write(gen_count.wrapping_add(1));
+
+                        new_len -= 1;
+                    }
+
+                    num_to_check -= 1;
+                    if num_to_check == 0 {
+                        break;
+                    }
+                }
+            }
+        }
+        self.len = H::Index::from_usize(new_len);
+    }
+
+    /// Clears the pool, dropping all values. This invalidates all handles.
+    ///
+    /// This function must iterate over all slots, empty or not. In the face of
+    /// many deleted elements it can be inefficient.
+    ///
+    /// # Examples
+    /// ```
+    /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
+    /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
+    /// # let mut arena = coca::Arena::from(&mut backing[..]);
+    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(5);
+    /// for i in 0..5 {
+    ///     pool.insert(i);
+    /// }
+    ///
+    /// assert!(pool.is_full());
+    /// pool.clear();
+    /// assert!(pool.is_empty());
+    /// ```
+    pub fn clear(&mut self) {
+        self.retain(|_, _| false);
     }
 }
 
