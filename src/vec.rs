@@ -1009,7 +1009,7 @@ impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Drain<'p, T, S, I> {
 /// vec.push('c');
 /// assert!(vec.try_push('d').is_err());
 /// ```
-pub type AllocVec<T, I = usize> = Vec<T, crate::storage::HeapStorage<T>, I>;
+pub type AllocVec<T, I = usize> = Vec<T, crate::storage::AllocStorage<ArrayLike<T>>, I>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
@@ -1026,7 +1026,7 @@ impl<T: Copy, I: Capacity> AllocVec<T, I> {
 
         Vec {
             len: I::from_usize(0),
-            buf: alloc::vec![MaybeUninit::uninit(); cap].into_boxed_slice(),
+            buf: crate::storage::AllocStorage::with_capacity(cap),
             elem: PhantomData,
         }
     }

@@ -308,23 +308,57 @@ unsafe impl<R: LayoutSpec, S: Storage<R>> Storage<R> for &mut S {
     }
 }
 
-/// Shorthand for [`alloc::Box<[MaybeUninit<T>]>`](alloc::boxed::Box) for use
-/// with generic data structures.
+/// A fat pointer to a heap-allocated storage block conforming to a [`LayoutSpec`].
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-pub type HeapStorage<T> = alloc::boxed::Box<[MaybeUninit<T>]>;
+pub struct AllocStorage<R: LayoutSpec> {
+    ptr: NonNull<u8>,
+    cap: usize,
+    spec: PhantomData<R>,
+}
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-unsafe impl<T> Storage<ArrayLike<T>> for HeapStorage<T> {
+impl<R: LayoutSpec> AllocStorage<R> {
+    /// Allocates a new storage block with the specified capacity with the
+    /// global allocator.
+    ///
+    /// # Panics
+    /// Panics if `capacity` is large enough to cause a layout error, or if
+    /// allocation fails.
+    pub fn with_capacity(capacity: usize) -> Self {
+        let layout =
+            R::layout_with_capacity(capacity).expect("layout error in AllocStorage::with_capacity");
+        let ptr = unsafe { alloc::alloc::alloc(layout) };
+        let ptr = NonNull::new(ptr).expect("allocation failure in AllocStorage::with_capacity");
+        AllocStorage {
+            ptr,
+            cap: capacity,
+            spec: PhantomData,
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+impl<R: LayoutSpec> Drop for AllocStorage<R> {
+    fn drop(&mut self) {
+        let layout = R::layout_with_capacity(self.cap).expect("dropped an invalid AllocStorage");
+        unsafe { alloc::alloc::dealloc(self.ptr.as_ptr(), layout) };
+    }
+}
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+unsafe impl<R: LayoutSpec> Storage<R> for AllocStorage<R> {
     fn get_ptr(&self) -> *const u8 {
-        self.as_ptr() as *const u8
+        self.ptr.as_ptr() as _
     }
     fn get_mut_ptr(&mut self) -> *mut u8 {
-        self.as_mut_ptr() as *mut u8
+        self.ptr.as_ptr()
     }
     fn capacity(&self) -> usize {
-        self.len()
+        self.cap
     }
 }
 

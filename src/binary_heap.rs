@@ -519,7 +519,7 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Drop for IntoIterSorted<T, S
 /// heap.push('c');
 /// assert!(heap.try_push('d').is_err());
 /// ```
-pub type AllocHeap<T, I = usize> = BinaryHeap<T, crate::storage::HeapStorage<T>, I>;
+pub type AllocHeap<T, I = usize> = BinaryHeap<T, crate::storage::AllocStorage<ArrayLike<T>>, I>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]

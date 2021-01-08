@@ -1881,7 +1881,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Drain<'_, T, S, I> {
 /// assert_eq!(deque, &['a', 'b', 'c', 'd']);
 /// assert_eq!(deque.try_push_back('e'), Err('e'));
 /// ```
-pub type AllocDeque<T, I = usize> = Deque<T, crate::storage::HeapStorage<T>, I>;
+pub type AllocDeque<T, I = usize> = Deque<T, crate::storage::AllocStorage<ArrayLike<T>>, I>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
@@ -1899,7 +1899,7 @@ impl<T: Copy, I: Capacity> AllocDeque<T, I> {
         Deque {
             front: I::from_usize(0),
             len: I::from_usize(0),
-            buf: alloc::vec![core::mem::MaybeUninit::uninit(); cap].into_boxed_slice(),
+            buf: crate::storage::AllocStorage::with_capacity(cap),
             elem: PhantomData,
         }
     }
