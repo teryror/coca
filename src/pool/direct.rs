@@ -9,7 +9,9 @@ use core::mem::ManuallyDrop;
 use core::ops::{Index, IndexMut};
 
 use super::{DefaultHandle, Handle};
-use crate::storage::{ArenaStorage, Capacity, LayoutSpec, Storage};
+use crate::storage::{
+    buffer_too_large_for_index_type, ArenaStorage, Capacity, LayoutSpec, Storage,
+};
 
 union Slot<T, I: Capacity> {
     item: ManuallyDrop<T>,
@@ -448,6 +450,41 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Drop for DirectPool<T, S,
                 break;
             }
         }
+    }
+}
+
+/// A direct-mapped pool that stores its content in globally allocated memory.
+///
+/// # Examples
+/// ```
+/// # use coca::pool::direct::DirectAllocPool;
+/// let mut pool = DirectAllocPool::<u128>::with_capacity(4);
+/// assert_eq!(pool.capacity(), 4);
+///
+/// pool.insert(1);
+/// pool.insert(2);
+/// pool.insert(3);
+/// pool.insert(4);
+/// assert_eq!(pool.try_insert(5), Err(5));
+/// ```
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+pub type DirectAllocPool<T, H = DefaultHandle> =
+    DirectPool<T, crate::storage::AllocStorage<DirectPoolLayout<T, H>>, H>;
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+impl<T, H: Handle> DirectAllocPool<T, H> {
+    /// Constructs a new, empty [`DirectAllocPool`] with the specified capacity.
+    pub fn with_capacity(capacity: H::Index) -> Self {
+        let cap = capacity.as_usize();
+        if capacity != H::Index::from_usize(cap) {
+            buffer_too_large_for_index_type::<H::Index>();
+        }
+
+        // TODO: validate cap for irregular count/index splits (not yet implemented)
+        let storage = crate::storage::AllocStorage::with_capacity(cap);
+        Self::from(storage)
     }
 }
 
