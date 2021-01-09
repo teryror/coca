@@ -3,7 +3,19 @@
 //! Values are stored in an incontiguously populated array. This optimizes for
 //! random access at the cost of iteration speed.
 
+// TODO:
+// - custom handle types (32 or 64 bits, variable number of bits reserved for the index)
+//   - implement capacity validation
+//   - review all &mut self methods for correctness
+// - iterators: values, values_mut, handles, iter, iter_mut, into_iter, drain
+// - trait impls:
+//   - Debug for DirectPool
+//   - Default for DirectInlinePool
+//   - Clone for Direct{Alloc, Inline}Pool,
+// - non-trivial tests
+
 use core::alloc::{Layout, LayoutError};
+use core::fmt::{Debug, Formatter};
 use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::ops::{Index, IndexMut};
@@ -453,6 +465,56 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Drop for DirectPool<T, S,
     }
 }
 
+#[derive(Debug)]
+enum DebugEntry<'a, T: Debug, H: Handle> {
+    Occupied {
+        generation: u32,
+        value: &'a T,
+    },
+    Vacant {
+        generation: u32,
+        next_free_slot: H::Index,
+    },
+}
+
+struct DebugSlots<'a, T: Debug, S: Storage<DirectPoolLayout<T, H>>, H: Handle>(
+    &'a DirectPool<T, S, H>,
+);
+impl<T: Debug, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Debug for DebugSlots<'_, T, S, H> {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> core::fmt::Result {
+        let gen_count_ptr = self.0.gen_counts();
+        let slot_ptr = self.0.slots();
+        fmt.debug_list()
+            .entries(
+                (0..self.0.capacity()).map::<DebugEntry<T, H>, _>(|i| unsafe {
+                    let generation = gen_count_ptr.add(i).read();
+                    if generation % 2 == 0 {
+                        let next_free_slot = (*slot_ptr.add(i)).next_free_slot;
+                        DebugEntry::Vacant {
+                            generation,
+                            next_free_slot,
+                        }
+                    } else {
+                        let value = (slot_ptr.add(i) as *const T).as_ref().unwrap();
+                        DebugEntry::Occupied { generation, value }
+                    }
+                }),
+            )
+            .finish()
+    }
+}
+
+impl<T: Debug, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Debug for DirectPool<T, S, H> {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> core::fmt::Result {
+        let mut builder = fmt.debug_struct("DirectPool");
+        builder
+            .field("len", &self.len.as_usize())
+            .field("next_free_slot", &self.next_free_slot.as_usize())
+            .field("slots", &DebugSlots(self))
+            .finish()
+    }
+}
+
 /// A direct-mapped pool that stores its content in globally allocated memory.
 ///
 /// # Examples
@@ -553,9 +615,12 @@ impl<T, H: Handle, const N: usize> DirectInlinePool<T, H, N> {
 
 #[cfg(test)]
 mod tests {
+    use core::mem::MaybeUninit;
+
     use super::*;
     use crate::pool::{DefaultHandle, Handle};
     use crate::storage::LayoutSpec;
+    use crate::{fmt, Arena};
 
     #[cfg(feature = "nightly")]
     #[test]
@@ -572,5 +637,29 @@ mod tests {
         test_layout::<[u8; 25], DefaultHandle, 20>();
         test_layout::<u128, DefaultHandle, 40>();
         test_layout::<crate::ArenaDeque<u8>, DefaultHandle, 80>();
+    }
+
+    #[test]
+    fn debug_impl() {
+        let mut storage = [MaybeUninit::uninit(); 2048];
+        let mut arena = Arena::from(&mut storage[..]);
+        let mut pool = arena.direct_pool::<&'static str, DefaultHandle>(4);
+
+        let empty = fmt!(arena, "{:?}", pool).unwrap();
+        assert_eq!(&*empty, "DirectPool { len: 0, next_free_slot: 0, slots: [Vacant { generation: 0, next_free_slot: 1 }, Vacant { generation: 0, next_free_slot: 2 }, Vacant { generation: 0, next_free_slot: 3 }, Vacant { generation: 0, next_free_slot: 4294967295 }] }");
+
+        let h1 = pool.insert("First");
+        pool.insert("Second");
+        let h3 = pool.insert("Third");
+        pool.insert("Fourth");
+
+        let full = fmt!(&mut arena, "{:?}", pool).unwrap();
+        assert_eq!(&*full, "DirectPool { len: 4, next_free_slot: 4294967295, slots: [Occupied { generation: 1, value: \"First\" }, Occupied { generation: 1, value: \"Second\" }, Occupied { generation: 1, value: \"Third\" }, Occupied { generation: 1, value: \"Fourth\" }] }");
+
+        pool.remove(h1);
+        pool.remove(h3);
+
+        let partial = fmt!(&mut arena, "{:?}", pool).unwrap();
+        assert_eq!(&*partial, "DirectPool { len: 2, next_free_slot: 2, slots: [Vacant { generation: 2, next_free_slot: 4294967295 }, Occupied { generation: 1, value: \"Second\" }, Vacant { generation: 2, next_free_slot: 0 }, Occupied { generation: 1, value: \"Fourth\" }] }");
     }
 }

@@ -2,6 +2,7 @@
 
 use core::alloc::{Layout, LayoutError};
 use core::convert::{TryFrom, TryInto};
+use core::fmt::Debug;
 use core::hash::Hash;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
@@ -15,7 +16,7 @@ use core::ptr::NonNull;
 /// or evaluate to `false`.
 ///
 /// Using [`index_type!`] should be preferred over implementing this manually.
-pub unsafe trait Capacity: Copy + Eq + Hash + Ord {
+pub unsafe trait Capacity: Copy + Debug + Eq + Hash + Ord {
     /// The maximum `usize` value that can safely be represented by this type.
     const MAX_REPRESENTABLE: usize;
     /// Convert a `usize` into `Self`.
@@ -141,6 +142,7 @@ macro_rules! index_type {
             core::marker::Copy,
             core::clone::Clone,
             core::default::Default,
+            core::fmt::Debug,
             core::hash::Hash,
             core::cmp::PartialEq,
             core::cmp::Eq,

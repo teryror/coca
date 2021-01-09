@@ -2,13 +2,14 @@
 
 pub mod direct;
 
+use core::fmt::Debug;
 use core::hash::Hash;
 use core::num::NonZeroU64;
 
 use crate::storage::Capacity;
 
 /// Stable references to values stored in a pool.
-pub unsafe trait Handle: Copy + Eq + Hash + Ord {
+pub unsafe trait Handle: Copy + Debug + Eq + Hash + Ord {
     type Index: Capacity;
 
     unsafe fn new(index: usize, generation: u32) -> Self;
