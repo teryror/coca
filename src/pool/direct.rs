@@ -4,11 +4,12 @@
 //! random access at the cost of iteration speed.
 
 // TODO:
-// - iterators: values, values_mut, handles, iter, iter_mut, into_iter, drain
+// - iterators: values, values_mut, handles, iter, iter_mut, into_iter
 // - non-trivial tests
 
 use core::alloc::{Layout, LayoutError};
 use core::fmt::{Debug, Formatter};
+use core::iter::FusedIterator;
 use core::marker::PhantomData;
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::{Index, IndexMut};
@@ -366,37 +367,8 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// assert_eq!(pool.len(), 2);
     /// ```
     pub fn retain<F: FnMut(H, &mut T) -> bool>(&mut self, mut f: F) {
-        let mut num_to_check = self.len();
-        let mut new_len = num_to_check;
-        let slots = self.slots_mut();
-        let counts = self.gen_counts_mut();
-        for i in 0..self.capacity() {
-            unsafe {
-                let gen_count_ptr = counts.add(i);
-                let gen_count = gen_count_ptr.read();
-
-                if gen_count % 2 == 1 {
-                    let h = H::new(i, gen_count);
-                    let slot_ptr = slots.add(i);
-                    let item = (slot_ptr as *mut T).as_mut().unwrap();
-
-                    if !f(h, item) {
-                        ManuallyDrop::drop((slot_ptr as *mut ManuallyDrop<T>).as_mut().unwrap());
-                        (*slot_ptr).next_free_slot = self.next_free_slot;
-                        self.next_free_slot = H::Index::from_usize(i);
-                        gen_count_ptr.write(gen_count.wrapping_add(1) & H::MAX_GENERATION);
-
-                        new_len -= 1;
-                    }
-
-                    num_to_check -= 1;
-                    if num_to_check == 0 {
-                        break;
-                    }
-                }
-            }
-        }
-        self.len = H::Index::from_usize(new_len);
+        self.drain_filter(|handle, item| !f(handle, item))
+            .for_each(drop);
     }
 
     /// Clears the pool, dropping all values. This invalidates all handles.
@@ -419,7 +391,83 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// assert!(pool.is_empty());
     /// ```
     pub fn clear(&mut self) {
-        self.retain(|_, _| false);
+        self.drain_filter(|_, _| true).for_each(drop);
+    }
+
+    /// Creates a draining iterator that removes all values from the pool and
+    /// yields them and their handles in an arbitrary order.
+    ///
+    /// When the iterator **is** dropped, all remaining elements are removed
+    /// from the pool, even if the iterator was not fully consumed. If the
+    /// iterator **is not** dropped (with [`core::mem::forget`] for example),
+    /// it is unspecified how many elements are removed.
+    ///
+    /// This iterator must visit all slots, empty or not. In the face of many
+    /// deleted elements it can be inefficient.
+    ///
+    /// # Examples
+    /// ```
+    /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
+    /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
+    /// # let mut arena = coca::Arena::from(&mut backing[..]);
+    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(5);
+    /// pool.insert(0);
+    /// let mut it = pool.drain();
+    /// assert!(matches!(it.next(), Some((_, 0))));
+    /// assert!(it.next().is_none());
+    /// drop(it);
+    ///
+    /// assert_eq!(pool.len(), 0);
+    /// ```
+    pub fn drain(&mut self) -> DrainFilter<'_, T, S, H, fn(H, &mut T) -> bool> {
+        self.drain_filter(|_, _| true)
+    }
+
+    /// Creates an iterator which uses a closure to determine if an element
+    /// should be removed.
+    ///
+    /// If the closure returns `true`, the element is removed and yielded with
+    /// its handle. If the closure returns `false`, the element will remain in
+    /// the pool and will not be yielded by the iterator.
+    ///
+    /// When the iterator **is** dropped, all remaining elements matching the
+    /// filter are removed from the pool, even if the iterator was not fully
+    /// consumed. If the iterator **is not** dropped (with [`core::mem::forget`]
+    /// for example), it is unspecified how many such elements are removed.
+    ///
+    /// This iterator must visit all slots, empty or not. In the face of many
+    /// deleted elements it can be inefficient.
+    ///
+    /// # Examples
+    /// ```
+    /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
+    /// # let mut backing = [core::mem::MaybeUninit::uninit(); 2048];
+    /// # let mut arena = coca::Arena::from(&mut backing[..]);
+    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(10);
+    /// for i in 1..=10 {
+    ///     pool.insert(i);
+    /// }
+    ///
+    /// // filter out the even values:
+    /// let mut it = pool.drain_filter(|_, val| *val % 2 == 0);
+    /// for i in 1..=5 {
+    ///     assert!(matches!(it.next(), Some((_, x)) if x == 2 * i));
+    /// }
+    /// assert!(it.next().is_none());
+    /// drop(it);
+    ///
+    /// assert_eq!(pool.len(), 5);
+    /// ```
+    pub fn drain_filter<F: FnMut(H, &mut T) -> bool>(
+        &mut self,
+        filter: F,
+    ) -> DrainFilter<'_, T, S, H, F> {
+        DrainFilter {
+            pool: self,
+            filter_fn: filter,
+            front: H::Index::from_usize(0),
+            kept: H::Index::from_usize(0),
+        }
     }
 }
 
@@ -579,6 +627,85 @@ impl<T: Clone, H: Handle> Clone for DirectAllocPool<T, H> {
 
         result
     }
+}
+
+/// An iterator which uses a closure to determine if an element should be removed.
+///
+/// This struct is created by [`DirectPool::drain`] and [`DirectPool::drain_filter`].
+/// See their documentation for more.
+#[derive(Debug)]
+pub struct DrainFilter<
+    'a,
+    T,
+    S: Storage<DirectPoolLayout<T, H>>,
+    H: Handle,
+    F: FnMut(H, &mut T) -> bool,
+> {
+    pool: &'a mut DirectPool<T, S, H>,
+    filter_fn: F,
+    front: H::Index,
+    kept: H::Index,
+}
+
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> Iterator
+    for DrainFilter<'_, T, S, H, F>
+{
+    type Item = (H, T);
+    fn next(&mut self) -> Option<Self::Item> {
+        let gen_count_ptr = self.pool.gen_counts_mut();
+        let item_ptr = self.pool.slots_mut();
+
+        for i in self.front.as_usize()..self.pool.capacity() {
+            self.front = H::Index::from_usize(i);
+            if self.kept == self.pool.len {
+                break;
+            }
+
+            let gen_count = unsafe { gen_count_ptr.add(i).read() };
+            if gen_count % 2 == 0 {
+                continue;
+            }
+
+            let handle = unsafe { H::new(i, gen_count) };
+            let item = unsafe { (item_ptr.add(i) as *mut T).as_mut().unwrap() };
+            if !(self.filter_fn)(handle, item) {
+                self.kept = H::Index::from_usize(self.kept.as_usize() + 1);
+                continue;
+            }
+
+            self.pool.len = H::Index::from_usize(self.pool.len() - 1);
+            let gen_count = gen_count.wrapping_add(1) & H::MAX_GENERATION;
+
+            unsafe {
+                gen_count_ptr.add(i).write(gen_count);
+                let result = (item_ptr.add(i) as *mut T).read();
+                (*item_ptr.add(i)).next_free_slot = self.pool.next_free_slot;
+                self.pool.next_free_slot = H::Index::from_usize(i);
+
+                return Some((handle, result));
+            }
+        }
+
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.pool.len() - self.kept.as_usize();
+        (0, Some(remaining))
+    }
+}
+
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> Drop
+    for DrainFilter<'_, T, S, H, F>
+{
+    fn drop(&mut self) {
+        self.for_each(drop);
+    }
+}
+
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> FusedIterator
+    for DrainFilter<'_, T, S, H, F>
+{
 }
 
 /// A statically-sized storage block for a [`DirectPool`].
@@ -766,5 +893,51 @@ mod tests {
                 Occupied { generation: 1, value: \"Fourth\" }\
             ] }"
         );
+    }
+
+    #[test]
+    fn randomized_drain_filter() {
+        use core::cell::Cell;
+        use rand::{rngs::SmallRng, RngCore, SeedableRng};
+        let mut rng = SmallRng::from_seed([
+            0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc,
+            0xde, 0xf0, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78,
+            0x9a, 0xbc, 0xde, 0xf0,
+        ]);
+
+        #[derive(Clone)]
+        struct Droppable<'a> {
+            counter: &'a Cell<u64>,
+        }
+
+        impl Drop for Droppable<'_> {
+            fn drop(&mut self) {
+                let c = self.counter.get();
+                self.counter.set(c + 1);
+            }
+        }
+
+        let drop_count = Cell::new(0);
+        let mut inserted = 0;
+
+        let mut storage = [MaybeUninit::uninit(); 2048];
+        let mut arena = Arena::from(&mut storage[..]);
+        let mut pool = arena.direct_pool::<Droppable, DefaultHandle>(32);
+
+        for _ in 0..1000 {
+            let remaining_slots = pool.capacity() - pool.len();
+            let to_be_inserted = (rng.next_u32() as u64 * remaining_slots as u64) >> 32;
+            for _ in 0..to_be_inserted {
+                pool.insert(Droppable {
+                    counter: &drop_count,
+                });
+            }
+            inserted += to_be_inserted;
+
+            let _ = pool.drain_filter(|_, _| rng.next_u32().count_ones() >= 16);
+        }
+
+        pool.drain();
+        assert_eq!(drop_count.get(), inserted)
     }
 }
