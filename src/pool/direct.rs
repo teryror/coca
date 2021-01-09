@@ -4,9 +4,6 @@
 //! random access at the cost of iteration speed.
 
 // TODO:
-// - custom handle types (32 or 64 bits, variable number of bits reserved for the index)
-//   - implement capacity validation
-//   - review all &mut self methods for correctness
 // - iterators: values, values_mut, handles, iter, iter_mut, into_iter, drain
 // - non-trivial tests
 
@@ -16,10 +13,8 @@ use core::marker::PhantomData;
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::{Index, IndexMut};
 
-use super::{DefaultHandle, Handle};
-use crate::storage::{
-    buffer_too_large_for_index_type, ArenaStorage, Capacity, LayoutSpec, Storage,
-};
+use super::{buffer_too_large_for_handle_type, DefaultHandle, Handle};
+use crate::storage::{ArenaStorage, Capacity, LayoutSpec, Storage};
 
 union Slot<T, I: Capacity> {
     item: ManuallyDrop<T>,
@@ -57,8 +52,10 @@ pub type DirectArenaPool<'src, T, H = DefaultHandle> =
 
 impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> From<S> for DirectPool<T, S, H> {
     fn from(buf: S) -> Self {
-        // TODO: validate buf.capacity
         let cap = buf.capacity();
+        if cap >= H::MAX_INDEX {
+            buffer_too_large_for_handle_type::<H>();
+        }
 
         let mut result = DirectPool {
             buf,
@@ -219,7 +216,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
         self.len = H::Index::from_usize(self.len() + 1);
         unsafe {
             let gen_count_ptr = self.gen_counts_mut().add(insert_position);
-            let gen_count = gen_count_ptr.read().wrapping_add(1);
+            let gen_count = gen_count_ptr.read().wrapping_add(1) & H::MAX_GENERATION;
             debug_assert_eq!(gen_count % 2, 1);
             gen_count_ptr.write(gen_count);
 
@@ -278,7 +275,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
         self.len = H::Index::from_usize(self.len() + 1);
         unsafe {
             let gen_count_ptr = self.gen_counts_mut().add(insert_position);
-            let gen_count = gen_count_ptr.read().wrapping_add(1);
+            let gen_count = gen_count_ptr.read().wrapping_add(1) & H::MAX_GENERATION;
             debug_assert_eq!(gen_count % 2, 1);
             gen_count_ptr.write(gen_count);
 
@@ -331,7 +328,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
 
         self.len = H::Index::from_usize(self.len() - 1);
         let item = unsafe {
-            *gen_count_ptr = current_gen_count.wrapping_add(1);
+            *gen_count_ptr = current_gen_count.wrapping_add(1) & H::MAX_GENERATION;
 
             let slot_ptr = self.slots_mut().add(index);
             let item = slot_ptr.read().item;
@@ -387,7 +384,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
                         ManuallyDrop::drop((slot_ptr as *mut ManuallyDrop<T>).as_mut().unwrap());
                         (*slot_ptr).next_free_slot = self.next_free_slot;
                         self.next_free_slot = H::Index::from_usize(i);
-                        gen_count_ptr.write(gen_count.wrapping_add(1));
+                        gen_count_ptr.write(gen_count.wrapping_add(1) & H::MAX_GENERATION);
 
                         new_len -= 1;
                     }
@@ -534,13 +531,15 @@ pub type DirectAllocPool<T, H = DefaultHandle> =
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 impl<T, H: Handle> DirectAllocPool<T, H> {
     /// Constructs a new, empty [`DirectAllocPool`] with the specified capacity.
+    ///
+    /// # Panics
+    /// Panics if the specified capacity is greater than or equal to `H::MAX_INDEX`.
     pub fn with_capacity(capacity: H::Index) -> Self {
         let cap = capacity.as_usize();
-        if capacity != H::Index::from_usize(cap) {
-            buffer_too_large_for_index_type::<H::Index>();
+        if cap >= H::MAX_INDEX {
+            buffer_too_large_for_handle_type::<H>();
         }
 
-        // TODO: validate cap for irregular count/index splits (not yet implemented)
         let storage = crate::storage::AllocStorage::with_capacity(cap);
         Self::from(storage)
     }
@@ -638,6 +637,10 @@ pub type DirectInlinePool<T, H, const N: usize> = DirectPool<T, InlineStorage<T,
 impl<T, H: Handle, const N: usize> DirectInlinePool<T, H, N> {
     /// Constructs a new, empty `DirectPool` backed by [`InlineStorage`].
     pub fn new() -> Self {
+        if N >= H::MAX_INDEX {
+            buffer_too_large_for_handle_type::<H>();
+        }
+
         Self::from(InlineStorage {
             slots: core::mem::MaybeUninit::uninit(),
             counters: core::mem::MaybeUninit::uninit(),
