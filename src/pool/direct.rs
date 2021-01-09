@@ -8,16 +8,12 @@
 //   - implement capacity validation
 //   - review all &mut self methods for correctness
 // - iterators: values, values_mut, handles, iter, iter_mut, into_iter, drain
-// - trait impls:
-//   - Debug for DirectPool
-//   - Default for DirectInlinePool
-//   - Clone for Direct{Alloc, Inline}Pool,
 // - non-trivial tests
 
 use core::alloc::{Layout, LayoutError};
 use core::fmt::{Debug, Formatter};
 use core::marker::PhantomData;
-use core::mem::ManuallyDrop;
+use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::{Index, IndexMut};
 
 use super::{DefaultHandle, Handle};
@@ -550,6 +546,42 @@ impl<T, H: Handle> DirectAllocPool<T, H> {
     }
 }
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+impl<T: Clone, H: Handle> Clone for DirectAllocPool<T, H> {
+    fn clone(&self) -> Self {
+        let storage = crate::storage::AllocStorage::with_capacity(self.capacity());
+        let mut result = DirectPool {
+            buf: storage,
+            len: self.len,
+            next_free_slot: self.next_free_slot,
+            items: PhantomData,
+        };
+
+        let src_counts = self.gen_counts();
+        let dst_counts = result.gen_counts_mut();
+        unsafe { core::ptr::copy(src_counts, dst_counts, self.capacity()) };
+
+        let src_slots = self.slots();
+        let dst_slots = result.slots_mut();
+
+        for i in 0..self.capacity() {
+            unsafe {
+                let generation = dst_counts.add(i).read();
+                if generation % 2 == 1 {
+                    let item = (src_slots.add(i) as *const T).as_ref().unwrap();
+                    (dst_slots.add(i) as *mut T).write(item.clone());
+                } else {
+                    let next_free_slot = (*src_slots.add(i)).next_free_slot;
+                    (*dst_slots.add(i)).next_free_slot = next_free_slot;
+                }
+            }
+        }
+
+        result
+    }
+}
+
 /// A statically-sized storage block for a [`DirectPool`].
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
@@ -613,6 +645,52 @@ impl<T, H: Handle, const N: usize> DirectInlinePool<T, H, N> {
     }
 }
 
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+impl<T, H: Handle, const N: usize> Default for DirectInlinePool<T, H, N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+impl<T: Clone, H: Handle, const N: usize> Clone for DirectInlinePool<T, H, N> {
+    fn clone(&self) -> Self {
+        let mut result = DirectPool {
+            buf: InlineStorage {
+                slots: MaybeUninit::uninit(),
+                counters: MaybeUninit::uninit(),
+            },
+            len: self.len,
+            next_free_slot: self.next_free_slot,
+            items: PhantomData,
+        };
+
+        let src_counts = self.gen_counts();
+        let dst_counts = result.gen_counts_mut();
+        unsafe { core::ptr::copy(src_counts, dst_counts, self.capacity()) };
+
+        let src_slots = self.slots();
+        let dst_slots = result.slots_mut();
+
+        for i in 0..self.capacity() {
+            unsafe {
+                let generation = dst_counts.add(i).read();
+                if generation % 2 == 1 {
+                    let item = (src_slots.add(i) as *const T).as_ref().unwrap();
+                    (dst_slots.add(i) as *mut T).write(item.clone());
+                } else {
+                    let next_free_slot = (*src_slots.add(i)).next_free_slot;
+                    (*dst_slots.add(i)).next_free_slot = next_free_slot;
+                }
+            }
+        }
+
+        result
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use core::mem::MaybeUninit;
@@ -646,7 +724,15 @@ mod tests {
         let mut pool = arena.direct_pool::<&'static str, DefaultHandle>(4);
 
         let empty = fmt!(arena, "{:?}", pool).unwrap();
-        assert_eq!(&*empty, "DirectPool { len: 0, next_free_slot: 0, slots: [Vacant { generation: 0, next_free_slot: 1 }, Vacant { generation: 0, next_free_slot: 2 }, Vacant { generation: 0, next_free_slot: 3 }, Vacant { generation: 0, next_free_slot: 4294967295 }] }");
+        assert_eq!(
+            &*empty,
+            "DirectPool { len: 0, next_free_slot: 0, slots: [\
+                Vacant { generation: 0, next_free_slot: 1 }, \
+                Vacant { generation: 0, next_free_slot: 2 }, \
+                Vacant { generation: 0, next_free_slot: 3 }, \
+                Vacant { generation: 0, next_free_slot: 4294967295 }\
+            ] }"
+        );
 
         let h1 = pool.insert("First");
         pool.insert("Second");
@@ -654,12 +740,28 @@ mod tests {
         pool.insert("Fourth");
 
         let full = fmt!(&mut arena, "{:?}", pool).unwrap();
-        assert_eq!(&*full, "DirectPool { len: 4, next_free_slot: 4294967295, slots: [Occupied { generation: 1, value: \"First\" }, Occupied { generation: 1, value: \"Second\" }, Occupied { generation: 1, value: \"Third\" }, Occupied { generation: 1, value: \"Fourth\" }] }");
+        assert_eq!(
+            &*full,
+            "DirectPool { len: 4, next_free_slot: 4294967295, slots: [\
+                Occupied { generation: 1, value: \"First\" }, \
+                Occupied { generation: 1, value: \"Second\" }, \
+                Occupied { generation: 1, value: \"Third\" }, \
+                Occupied { generation: 1, value: \"Fourth\" }\
+            ] }"
+        );
 
         pool.remove(h1);
         pool.remove(h3);
 
         let partial = fmt!(&mut arena, "{:?}", pool).unwrap();
-        assert_eq!(&*partial, "DirectPool { len: 2, next_free_slot: 2, slots: [Vacant { generation: 2, next_free_slot: 4294967295 }, Occupied { generation: 1, value: \"Second\" }, Vacant { generation: 2, next_free_slot: 0 }, Occupied { generation: 1, value: \"Fourth\" }] }");
+        assert_eq!(
+            &*partial,
+            "DirectPool { len: 2, next_free_slot: 2, slots: [\
+                Vacant { generation: 2, next_free_slot: 4294967295 }, \
+                Occupied { generation: 1, value: \"Second\" }, \
+                Vacant { generation: 2, next_free_slot: 0 }, \
+                Occupied { generation: 1, value: \"Fourth\" }\
+            ] }"
+        );
     }
 }
