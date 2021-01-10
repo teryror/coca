@@ -391,7 +391,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// assert!(pool.is_empty());
     /// ```
     pub fn clear(&mut self) {
-        self.drain_filter(|_, _| true).for_each(drop);
+        self.drain().for_each(drop);
     }
 
     /// Creates a draining iterator that removes all values from the pool and
@@ -419,8 +419,11 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     ///
     /// assert_eq!(pool.len(), 0);
     /// ```
-    pub fn drain(&mut self) -> DrainFilter<'_, T, S, H, fn(H, &mut T) -> bool> {
-        self.drain_filter(|_, _| true)
+    pub fn drain(&mut self) -> Drain<'_, T, S, H> {
+        Drain {
+            pool: self,
+            front: H::Index::from_usize(0),
+        }
     }
 
     /// Creates an iterator which uses a closure to determine if an element
@@ -556,83 +559,65 @@ impl<T: Debug, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Debug for DirectPo
     }
 }
 
-/// A direct-mapped pool that stores its content in globally allocated memory.
+/// A draining iterator over the elements of a [`DirectPool`].
 ///
-/// # Examples
-/// ```
-/// # use coca::pool::direct::DirectAllocPool;
-/// let mut pool = DirectAllocPool::<u128>::with_capacity(4);
-/// assert_eq!(pool.capacity(), 4);
-///
-/// pool.insert(1);
-/// pool.insert(2);
-/// pool.insert(3);
-/// pool.insert(4);
-/// assert_eq!(pool.try_insert(5), Err(5));
-/// ```
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-pub type DirectAllocPool<T, H = DefaultHandle> =
-    DirectPool<T, crate::storage::AllocStorage<DirectPoolLayout<T, H>>, H>;
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T, H: Handle> DirectAllocPool<T, H> {
-    /// Constructs a new, empty [`DirectAllocPool`] with the specified capacity.
-    ///
-    /// # Panics
-    /// Panics if the specified capacity is greater than or equal to `H::MAX_INDEX`.
-    pub fn with_capacity(capacity: H::Index) -> Self {
-        let cap = capacity.as_usize();
-        if cap >= H::MAX_INDEX {
-            buffer_too_large_for_handle_type::<H>();
-        }
-
-        let storage = crate::storage::AllocStorage::with_capacity(cap);
-        Self::from(storage)
-    }
+/// This struct is created by [`DirectPool::drain`], see its documentation for more.
+pub struct Drain<'a, T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> {
+    pool: &'a mut DirectPool<T, S, H>,
+    front: H::Index,
 }
 
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T: Clone, H: Handle> Clone for DirectAllocPool<T, H> {
-    fn clone(&self) -> Self {
-        let storage = crate::storage::AllocStorage::with_capacity(self.capacity());
-        let mut result = DirectPool {
-            buf: storage,
-            len: self.len,
-            next_free_slot: self.next_free_slot,
-            items: PhantomData,
-        };
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Iterator for Drain<'_, T, S, H> {
+    type Item = (H, T);
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pool.len() == 0 {
+            return None;
+        }
 
-        let src_counts = self.gen_counts();
-        let dst_counts = result.gen_counts_mut();
-        unsafe { core::ptr::copy(src_counts, dst_counts, self.capacity()) };
+        let gen_count_ptr = self.pool.gen_counts_mut();
+        let item_ptr = self.pool.slots_mut();
 
-        let src_slots = self.slots();
-        let dst_slots = result.slots_mut();
+        for i in self.front.as_usize()..self.pool.capacity() {
+            let gen_count = unsafe { gen_count_ptr.add(i).read() };
+            if gen_count % 2 == 0 {
+                continue;
+            }
 
-        for i in 0..self.capacity() {
+            self.pool.len = H::Index::from_usize(self.pool.len() - 1);
+            let new_gen_count = gen_count.wrapping_add(1) & H::MAX_GENERATION;
+
             unsafe {
-                let generation = dst_counts.add(i).read();
-                if generation % 2 == 1 {
-                    let item = (src_slots.add(i) as *const T).as_ref().unwrap();
-                    (dst_slots.add(i) as *mut T).write(item.clone());
-                } else {
-                    let next_free_slot = (*src_slots.add(i)).next_free_slot;
-                    (*dst_slots.add(i)).next_free_slot = next_free_slot;
-                }
+                let handle = H::new(i, gen_count);
+                gen_count_ptr.add(i).write(new_gen_count);
+                let result = (item_ptr.add(i) as *mut T).read();
+                (*item_ptr.add(i)).next_free_slot = self.pool.next_free_slot;
+                self.pool.next_free_slot = H::Index::from_usize(i);
+
+                return Some((handle, result));
             }
         }
 
-        result
+        unreachable!("internal error: mismatch between pool.len and number of occupied slots");
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = self.pool.len();
+        (size, Some(size))
     }
 }
 
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Drop for Drain<'_, T, S, H> {
+    fn drop(&mut self) {
+        self.for_each(drop);
+    }
+}
+
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> ExactSizeIterator for Drain<'_, T, S, H> {}
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> FusedIterator for Drain<'_, T, S, H> {}
+
 /// An iterator which uses a closure to determine if an element should be removed.
 ///
-/// This struct is created by [`DirectPool::drain`] and [`DirectPool::drain_filter`].
-/// See their documentation for more.
+/// This struct is created by [`DirectPool::drain_filter`], see its documentation for more.
 #[derive(Debug)]
 pub struct DrainFilter<
     'a,
@@ -706,6 +691,79 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bo
 impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> FusedIterator
     for DrainFilter<'_, T, S, H, F>
 {
+}
+
+/// A direct-mapped pool that stores its content in globally allocated memory.
+///
+/// # Examples
+/// ```
+/// # use coca::pool::direct::DirectAllocPool;
+/// let mut pool = DirectAllocPool::<u128>::with_capacity(4);
+/// assert_eq!(pool.capacity(), 4);
+///
+/// pool.insert(1);
+/// pool.insert(2);
+/// pool.insert(3);
+/// pool.insert(4);
+/// assert_eq!(pool.try_insert(5), Err(5));
+/// ```
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+pub type DirectAllocPool<T, H = DefaultHandle> =
+    DirectPool<T, crate::storage::AllocStorage<DirectPoolLayout<T, H>>, H>;
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+impl<T, H: Handle> DirectAllocPool<T, H> {
+    /// Constructs a new, empty [`DirectAllocPool`] with the specified capacity.
+    ///
+    /// # Panics
+    /// Panics if the specified capacity is greater than or equal to `H::MAX_INDEX`.
+    pub fn with_capacity(capacity: H::Index) -> Self {
+        let cap = capacity.as_usize();
+        if cap >= H::MAX_INDEX {
+            buffer_too_large_for_handle_type::<H>();
+        }
+
+        let storage = crate::storage::AllocStorage::with_capacity(cap);
+        Self::from(storage)
+    }
+}
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+impl<T: Clone, H: Handle> Clone for DirectAllocPool<T, H> {
+    fn clone(&self) -> Self {
+        let storage = crate::storage::AllocStorage::with_capacity(self.capacity());
+        let mut result = DirectPool {
+            buf: storage,
+            len: self.len,
+            next_free_slot: self.next_free_slot,
+            items: PhantomData,
+        };
+
+        let src_counts = self.gen_counts();
+        let dst_counts = result.gen_counts_mut();
+        unsafe { core::ptr::copy(src_counts, dst_counts, self.capacity()) };
+
+        let src_slots = self.slots();
+        let dst_slots = result.slots_mut();
+
+        for i in 0..self.capacity() {
+            unsafe {
+                let generation = dst_counts.add(i).read();
+                if generation % 2 == 1 {
+                    let item = (src_slots.add(i) as *const T).as_ref().unwrap();
+                    (dst_slots.add(i) as *mut T).write(item.clone());
+                } else {
+                    let next_free_slot = (*src_slots.add(i)).next_free_slot;
+                    (*dst_slots.add(i)).next_free_slot = next_free_slot;
+                }
+            }
+        }
+
+        result
+    }
 }
 
 /// A statically-sized storage block for a [`DirectPool`].
@@ -936,6 +994,8 @@ mod tests {
 
             let _ = pool.drain_filter(|_, _| rng.next_u32().count_ones() >= 16);
         }
+
+        assert_eq!(drop_count.get(), inserted - pool.len() as u64);
 
         pool.drain();
         assert_eq!(drop_count.get(), inserted)
