@@ -187,6 +187,65 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
         unsafe { (self.slots_mut().add(index) as *mut T).as_mut() }
     }
 
+    /// Returns mutable references to the values corresponding to the specified
+    /// handles.
+    ///
+    /// Returns [`None`] if any one of the handles is invalid, or if any two of
+    /// them are equal to each other.
+    ///
+    /// # Examples
+    /// ```
+    /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
+    /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
+    /// # let mut arena = coca::Arena::from(&mut backing[..]);
+    /// let mut pool = arena.direct_pool::<&'static str, DefaultHandle>(8);
+    /// let ha = pool.insert("apple");
+    /// let hb = pool.insert("berry");
+    /// let hc = pool.insert("coconut");
+    /// assert!(pool.get_disjoint_mut([ha, ha]).is_none());
+    /// if let Some([a, c]) = pool.get_disjoint_mut([ha, hc]) {
+    ///     core::mem::swap(a, c);
+    /// }
+    /// assert_eq!(pool[ha], "coconut");
+    /// assert_eq!(pool[hc], "apple");
+    /// ```
+    #[cfg(feature = "nightly")]
+    #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+    pub fn get_disjoint_mut<const N: usize>(&mut self, handles: [H; N]) -> Option<[&mut T; N]> {
+        for i in 1..N {
+            for j in 0..i {
+                if handles[i] == handles[j] {
+                    return None;
+                }
+            }
+        }
+
+        let gen_count_ptr = self.gen_counts();
+        let slot_ptr = self.slots_mut();
+
+        let mut result = MaybeUninit::uninit();
+        let result_ptr = result.as_mut_ptr() as *mut &mut T;
+
+        for i in 0..N {
+            let (index, input_gen_count) = handles[i].into_raw_parts();
+            if index > self.capacity() {
+                return None;
+            }
+
+            let current_gen_count = unsafe { gen_count_ptr.add(index).read() };
+            if current_gen_count != input_gen_count {
+                return None;
+            }
+
+            unsafe {
+                let item = (slot_ptr.add(index) as *mut T).as_mut().unwrap();
+                result_ptr.add(i).write(item);
+            }
+        }
+
+        Some(unsafe { result.assume_init() })
+    }
+
     /// Inserts a value into the pool, returning a unique handle to access it.
     ///
     /// Returns `Err(value)` if the pool is already at capacity.
