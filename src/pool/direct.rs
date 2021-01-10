@@ -3,10 +3,6 @@
 //! Values are stored in an incontiguously populated array. This optimizes for
 //! random access at the cost of iteration speed.
 
-// TODO:
-// - iterators: values, values_mut, handles, iter, iter_mut, into_iter
-// - non-trivial tests
-
 use core::alloc::{Layout, LayoutError};
 use core::fmt::{Debug, Formatter};
 use core::iter::FusedIterator;
@@ -394,6 +390,160 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
         self.drain().for_each(drop);
     }
 
+    /// Creates an iterator visiting all handle-value pairs in arbitrary order,
+    /// yielding `(H, &'a T)`.
+    ///
+    /// This iterator must visit all slots, empty or not. In the face of many
+    /// deleted elements it can be inefficient.
+    ///
+    /// # Examples
+    /// ```
+    /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
+    /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
+    /// # let mut arena = coca::Arena::from(&mut backing[..]);
+    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(5);
+    /// let h0 = pool.insert(0);
+    /// let h1 = pool.insert(1);
+    /// let h2 = pool.insert(2);
+    ///
+    /// let mut counts = [0, 0, 0];
+    /// for (h, v) in pool.iter() {
+    ///     if h == h0 && v == &0 { counts[0] += 1; }
+    ///     else if h == h1 && v == &1 { counts[1] += 1; }
+    ///     else if h == h2 && v == &2 { counts[2] += 1; }
+    /// }
+    ///
+    /// assert_eq!(counts, [1, 1, 1]);
+    /// ```
+    pub fn iter(&self) -> Iter<'_, T, S, H> {
+        Iter {
+            pool: self,
+            front: H::Index::from_usize(0),
+            visited: H::Index::from_usize(0),
+        }
+    }
+
+    /// Creates an iterator visiting all handle-value pairs in arbitrary order,
+    /// yielding `(H, &'a mut T)`.
+    ///
+    /// This iterator must visit all slots, empty or not. In the face of many
+    /// deleted elements it can be inefficient.
+    ///
+    /// # Examples
+    /// ```
+    /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
+    /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
+    /// # let mut arena = coca::Arena::from(&mut backing[..]);
+    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(5);
+    /// let h1 = pool.insert(1);
+    /// let h2 = pool.insert(2);
+    /// let h3 = pool.insert(3);
+    ///
+    /// for (k, v) in pool.iter_mut() {
+    ///     *v *= 2;
+    /// }
+    ///
+    /// assert_eq!(pool[h1], 2);
+    /// assert_eq!(pool[h2], 4);
+    /// assert_eq!(pool[h3], 6);
+    /// ```
+    pub fn iter_mut(&mut self) -> IterMut<'_, T, S, H> {
+        IterMut {
+            pool: self,
+            front: H::Index::from_usize(0),
+            visited: H::Index::from_usize(0),
+        }
+    }
+
+    /// Creates an iterator yielding all valid handles in arbitrary order.
+    ///
+    /// This iterator must visit all slots, empty or not. In the face of many
+    /// deleted elements it can be inefficient.
+    ///
+    /// # Examples
+    /// ```
+    /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
+    /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
+    /// # let mut arena = coca::Arena::from(&mut backing[..]);
+    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(5);
+    /// assert!(pool.handles().next().is_none());
+    ///
+    /// let h0 = pool.insert(10);
+    /// let h1 = pool.insert(20);
+    /// let h2 = pool.insert(30);
+    ///
+    /// let mut counts = [0, 0, 0];
+    /// for handle in pool.handles() {
+    ///     if handle == h0 { counts[0] += 1; }
+    ///     else if handle == h1 { counts[1] += 1; }
+    ///     else if handle == h2 { counts[2] += 1; }
+    /// }
+    ///
+    /// assert_eq!(counts, [1, 1, 1]);
+    /// ```
+    pub fn handles(&self) -> Handles<'_, T, S, H> {
+        Handles { iter: self.iter() }
+    }
+
+    /// Creates an iterator yielding references to all stored values in arbitrary order.
+    ///
+    /// This iterator must visit all slots, empty or not. In the face of many
+    /// deleted elements it can be inefficient.
+    ///
+    /// # Examples
+    /// ```
+    /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
+    /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
+    /// # let mut arena = coca::Arena::from(&mut backing[..]);
+    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(5);
+    /// assert!(pool.values().next().is_none());
+    ///
+    /// let h0 = pool.insert(10);
+    /// let h1 = pool.insert(20);
+    /// let h2 = pool.insert(30);
+    ///
+    /// let mut counts = [0, 0, 0];
+    /// for value in pool.values() {
+    ///     if *value == 10 { counts[0] += 1; }
+    ///     else if *value == 20 { counts[1] += 1; }
+    ///     else if *value == 30 { counts[2] += 1; }
+    /// }
+    ///
+    /// assert_eq!(counts, [1, 1, 1]);
+    /// ```
+    pub fn values(&self) -> Values<'_, T, S, H> {
+        Values { iter: self.iter() }
+    }
+
+    /// Creates an iterator yielding mutable references to all stored values
+    /// in arbitrary order.
+    ///
+    /// This iterator must visit all slots, empty or not. In the face of many
+    /// deleted elements it can be inefficient.
+    ///
+    /// # Examples
+    /// ```
+    /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
+    /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
+    /// # let mut arena = coca::Arena::from(&mut backing[..]);
+    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(5);
+    /// assert!(pool.values_mut().next().is_none());
+    ///
+    /// let h0 = pool.insert(10);
+    /// let h1 = pool.insert(20);
+    /// let h2 = pool.insert(30);
+    /// pool.values_mut().for_each(|n| *n *= 2);
+    ///
+    /// assert_eq!(pool[h0], 20);
+    /// assert_eq!(pool[h1], 40);
+    /// assert_eq!(pool[h2], 60);
+    /// ```
+    pub fn values_mut(&mut self) -> ValuesMut<'_, T, S, H> {
+        ValuesMut {
+            iter: self.iter_mut(),
+        }
+    }
+
     /// Creates a draining iterator that removes all values from the pool and
     /// yields them and their handles in an arbitrary order.
     ///
@@ -559,9 +709,182 @@ impl<T: Debug, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Debug for DirectPo
     }
 }
 
+/// An iterator visiting all handle-value pairs in a pool in arbitrary order, yielding `(H, &'a T)`.
+///
+/// This `struct` is created by [`DirectPool::iter`], see its documentation for more.
+pub struct Iter<'a, T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> {
+    pool: &'a DirectPool<T, S, H>,
+    front: H::Index,
+    visited: H::Index,
+}
+
+impl<'a, T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Iterator for Iter<'a, T, S, H> {
+    type Item = (H, &'a T);
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.visited == self.pool.len {
+            return None;
+        }
+
+        let gen_count_ptr = self.pool.gen_counts();
+        let item_ptr = self.pool.slots();
+
+        for i in self.front.as_usize()..self.pool.capacity() {
+            let gen_count = unsafe { gen_count_ptr.add(i).read() };
+            if gen_count % 2 == 0 {
+                continue;
+            }
+
+            self.visited = H::Index::from_usize(self.visited.as_usize() + 1);
+            self.front = H::Index::from_usize(i + 1);
+            unsafe {
+                let handle = H::new(i, gen_count);
+                let item = (item_ptr.add(i) as *const T).as_ref().unwrap();
+                return Some((handle, item));
+            }
+        }
+
+        unreachable!("internal error: mismatch between pool.len and number of occupied slots")
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.pool.len() - self.visited.as_usize();
+        (len, Some(len))
+    }
+}
+
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> ExactSizeIterator for Iter<'_, T, S, H> {}
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> FusedIterator for Iter<'_, T, S, H> {}
+
+impl<'a, T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> IntoIterator
+    for &'a DirectPool<T, S, H>
+{
+    type IntoIter = Iter<'a, T, S, H>;
+    type Item = (H, &'a T);
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// An iterator visiting all handle-value pairs in a pool in arbitrary order, yielding `(H, &'a mut T)`.
+///
+/// This `struct` is created by [`DirectPool::iter_mut`], see its documentation for more.
+pub struct IterMut<'a, T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> {
+    pool: &'a mut DirectPool<T, S, H>,
+    front: H::Index,
+    visited: H::Index,
+}
+
+impl<'a, T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Iterator for IterMut<'a, T, S, H> {
+    type Item = (H, &'a mut T);
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.visited == self.pool.len {
+            return None;
+        }
+
+        let gen_count_ptr = self.pool.gen_counts();
+        let item_ptr = self.pool.slots_mut();
+
+        for i in self.front.as_usize()..self.pool.capacity() {
+            let gen_count = unsafe { gen_count_ptr.add(i).read() };
+            if gen_count % 2 == 0 {
+                continue;
+            }
+
+            self.visited = H::Index::from_usize(self.visited.as_usize() + 1);
+            self.front = H::Index::from_usize(i + 1);
+            unsafe {
+                let handle = H::new(i, gen_count);
+                let item = (item_ptr.add(i) as *mut T).as_mut().unwrap();
+                return Some((handle, item));
+            }
+        }
+
+        unreachable!("internal error: mismatch between pool.len and number of occupied slots")
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.pool.len() - self.visited.as_usize();
+        (len, Some(len))
+    }
+}
+
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> ExactSizeIterator for IterMut<'_, T, S, H> {}
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> FusedIterator for IterMut<'_, T, S, H> {}
+
+impl<'a, T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> IntoIterator
+    for &'a mut DirectPool<T, S, H>
+{
+    type IntoIter = IterMut<'a, T, S, H>;
+    type Item = (H, &'a mut T);
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
+/// An iterator over the valid handles in a pool.
+///
+/// This struct is created by [`DirectPool::handles`], see its documentation for more.
+pub struct Handles<'a, T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> {
+    iter: Iter<'a, T, S, H>,
+}
+
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Iterator for Handles<'_, T, S, H> {
+    type Item = H;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(h, _)| h)
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> ExactSizeIterator for Handles<'_, T, S, H> {}
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> FusedIterator for Handles<'_, T, S, H> {}
+
+/// An iterator yielding references to all values in a pool.
+///
+/// This struct is created by [`DirectPool::values`], see its documentation for more.
+pub struct Values<'a, T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> {
+    iter: Iter<'a, T, S, H>,
+}
+
+impl<'a, T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Iterator for Values<'a, T, S, H> {
+    type Item = &'a T;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(_, item)| item)
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> ExactSizeIterator for Values<'_, T, S, H> {}
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> FusedIterator for Values<'_, T, S, H> {}
+
+/// An iterator yielding mutable references to all values in a pool.
+///
+/// This struct is created by [`DirectPool::values_mut`], see its documentation for more.
+pub struct ValuesMut<'a, T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> {
+    iter: IterMut<'a, T, S, H>,
+}
+
+impl<'a, T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Iterator for ValuesMut<'a, T, S, H> {
+    type Item = &'a mut T;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(_, item)| item)
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> ExactSizeIterator
+    for ValuesMut<'_, T, S, H>
+{
+}
+impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> FusedIterator for ValuesMut<'_, T, S, H> {}
+
 /// A draining iterator over the elements of a [`DirectPool`].
 ///
-/// This struct is created by [`DirectPool::drain`], see its documentation for more.
+/// This `struct` is created by [`DirectPool::drain`], see its documentation for more.
 pub struct Drain<'a, T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> {
     pool: &'a mut DirectPool<T, S, H>,
     front: H::Index,
@@ -583,6 +906,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Iterator for Drain<'_, T,
                 continue;
             }
 
+            self.front = H::Index::from_usize(i + 1);
             self.pool.len = H::Index::from_usize(self.pool.len() - 1);
             let new_gen_count = gen_count.wrapping_add(1) & H::MAX_GENERATION;
 
@@ -617,7 +941,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> FusedIterator for Drain<'
 
 /// An iterator which uses a closure to determine if an element should be removed.
 ///
-/// This struct is created by [`DirectPool::drain_filter`], see its documentation for more.
+/// This `struct` is created by [`DirectPool::drain_filter`], see its documentation for more.
 #[derive(Debug)]
 pub struct DrainFilter<
     'a,
@@ -641,8 +965,8 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bo
         let item_ptr = self.pool.slots_mut();
 
         for i in self.front.as_usize()..self.pool.capacity() {
-            self.front = H::Index::from_usize(i);
             if self.kept == self.pool.len {
+                self.front = H::Index::from_usize(i);
                 break;
             }
 
@@ -658,6 +982,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bo
                 continue;
             }
 
+            self.front = H::Index::from_usize(i + 1);
             self.pool.len = H::Index::from_usize(self.pool.len() - 1);
             let gen_count = gen_count.wrapping_add(1) & H::MAX_GENERATION;
 
