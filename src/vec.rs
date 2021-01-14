@@ -12,7 +12,7 @@
 //!
 //! The `nightly` feature allows using [arrays inlined in the `Vec`](InlineVec)
 //! for storage, as well as referenced and (arena-)boxed arrays, which do not
-//! require a runtime representation of their capacity.
+//! require a run-time representation of their capacity.
 //!
 //! The `alloc` feature allows using [owned slices](AllocVec) for storage. Note
 //! that such a vector still does not reallocate - this may be useful in cases
@@ -155,7 +155,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
         self.buf.capacity()
     }
 
-    /// Returns the number of elements in the vector, also referred to as its 'length'.
+    /// Returns the number of elements in the vector, also referred to as its *length*.
     #[inline]
     pub fn len(&self) -> usize {
         self.len.as_usize()
@@ -333,7 +333,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// Swaps two elements in the vector.
     ///
     /// # Panics
-    /// Pancis if either argument is out of bounds.
+    /// Panics if either argument is out of bounds.
     ///
     /// # Examples
     /// ```

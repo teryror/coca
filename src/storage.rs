@@ -1,4 +1,4 @@
-//! Traits providing genericity over storage strategies and index types.
+//! Traits abstracting over storage strategies and index types.
 
 use core::alloc::{Layout, LayoutError};
 use core::convert::{TryFrom, TryInto};
@@ -106,7 +106,7 @@ unsafe impl Capacity for usize {
     }
 }
 
-/// Generates one or more newtypes wrapping an implementor of [`Capacity`].
+/// Generates one or more new types wrapping an implementor of [`Capacity`].
 ///
 /// This can help in avoiding use of the wrong index with a [`Vec`](crate::vec::Vec).
 ///
@@ -194,13 +194,13 @@ pub unsafe trait Storage<R: LayoutSpec>: Sized {
     /// Extracts a pointer to the beginning of the memory block.
     ///
     /// # Safety
-    /// Implementors must ensure the same pointer is returned everytime this
+    /// Implementors must ensure the same pointer is returned every time this
     /// method is called throughout the block's lifetime.
     fn get_ptr(&self) -> *const u8;
     /// Extracts a mutable pointer to the beginning of the memory block.
     ///
     /// # Safety
-    /// Implementors must ensure the same pointer is returned everytime this
+    /// Implementors must ensure the same pointer is returned every time this
     /// method is called throughout the block's lifetime.
     fn get_mut_ptr(&mut self) -> *mut u8;
     /// Returns the maximum number of items the memory block can hold.
@@ -210,7 +210,7 @@ pub unsafe trait Storage<R: LayoutSpec>: Sized {
     /// When called on a memory block with a layout matching
     /// `R::layout_with_capacity(n)`, this must return at most `n`.
     ///
-    /// Implementors must ensure the same value is returned everytime this
+    /// Implementors must ensure the same value is returned every time this
     /// method is called throughout the block's lifetime.
     fn capacity(&self) -> usize;
 }

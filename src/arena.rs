@@ -3,7 +3,7 @@
 //! An arena controls a contiguous region of memory, partitioning it by simply
 //! incrementing a pointer. Once such an allocation goes out of scope, the
 //! memory cannot be reused until the entire region is cleared in aggregate.
-//! This scheme has minimal runtime overhead, at the cost of internal memory
+//! This scheme has minimal run-time overhead, at the cost of internal memory
 //! fragmentation.
 //!
 //! In order to guarantee safety, [`Arena`] cannot implement a `clear` method.
@@ -50,7 +50,7 @@
 //! memory than is assumed necessary, and track their peak utilization to
 //! aid in determining a more appropriate size for deployment.
 //!
-//! To accomodate this, the `profile` feature enables the [`Arena::utilization`]
+//! To accommodate this, the `profile` feature enables the [`Arena::utilization`]
 //! method and its return type, [`UtilizationProfile`]. Note that this requires
 //! an allocation for some meta data when creating an arena from a buffer, which
 //! may panic on buffers smaller than 40 bytes (the exact threshold depends on
@@ -1308,7 +1308,7 @@ impl<'buf> From<Writer<'_, 'buf>> for Box<'buf, str> {
     }
 }
 
-/// Creates a `Option<Box<'_, str>>` using interpolation of runtime expressions.
+/// Creates a `Option<Box<'_, str>>` using interpolation of run-time expressions.
 ///
 /// The first argument `fmt!` receives is an [`Arena`] from which the string
 /// will be allocated.

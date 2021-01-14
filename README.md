@@ -23,7 +23,7 @@ Currently, four main components are provided:
   [generic-vec]: https://internals.rust-lang.org/t/is-custom-allocators-the-right-abstraction/13460
   [ticollections]: https://crates.io/crates/typed-index-collections
 
-This crate is still in early development! Currently on the roadmap (in no
+This crate is still in early development! Currently on the road map (in no
 particular order):
 
 - A [`slotmap`][slotmap]-style pool-allocator, as well as a dense pool optimized

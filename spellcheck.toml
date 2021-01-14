@@ -1,0 +1,6 @@
+# Configuration file for cargo-spellcheck
+
+[Hunspell]
+lang = "en_US"
+search_dirs = ["./"]
+extra_dictionaries = ["coca.dic"]

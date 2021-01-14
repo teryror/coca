@@ -7,7 +7,7 @@
 //! can therefore be converted into the underlying vector type at zero cost.
 //! Converting a vector to a binary heap can be done in-place, and has O(n)
 //! complexity. A binary heap can also be converted to a sorted vector in-place,
-//! allowing it to be used for an O(n*log(n)) in-place heapsort.
+//! allowing it to be used for an O(n log(n)) in-place heap sort.
 
 use crate::storage::{ArrayLike, Capacity, Storage};
 use crate::vec::{Drain, Vec};
@@ -272,7 +272,7 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> BinaryHeap<T, S, I> {
         self.a.capacity()
     }
 
-    /// Returns the number of elements in the binary heap, also referred to as its 'length'.
+    /// Returns the number of elements in the binary heap, also referred to as its *length*.
     #[inline]
     pub fn len(&self) -> usize {
         self.a.len()
@@ -323,7 +323,7 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> BinaryHeap<T, S, I> {
     /// be removed on drop in heap order.
     ///
     /// # Remarks
-    /// `.drain_sorted()` is O(n * log(n)), much slower than [`.drain()`](BinaryHeap::drain).
+    /// `.drain_sorted()` is O(n log(n)), much slower than [`.drain()`](BinaryHeap::drain).
     /// The latter is preferable in most cases.
     ///
     /// # Examples
@@ -380,7 +380,7 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> BinaryHeap<T, S, I> {
     /// When dropped, the remaining elements will be dropped in heap order.
     ///
     /// # Remarks
-    /// `.into_iter_sorted()` is O(n * log(n)), much slower than [`.into_iter()`](BinaryHeap::into_iter).
+    /// `.into_iter_sorted()` is O(n log(n)), much slower than [`.into_iter()`](BinaryHeap::into_iter).
     /// The latter is preferable in most cases.
     ///
     /// # Examples

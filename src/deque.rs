@@ -244,7 +244,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
         self.get(I::from_usize(self.len() - 1))
     }
 
-    /// Returns a mutable reference to teh back element, or [`None`] if the `Deque is empty.
+    /// Returns a mutable reference to the back element, or [`None`] if the `Deque is empty.
     #[inline]
     pub fn back_mut(&mut self) -> Option<&mut T> {
         self.get_mut(I::from_usize(self.len() - 1))
@@ -332,7 +332,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     ///
     /// # Panics
     /// Panics if the deque is already at capacity. See [`try_push_front`](Deque::try_push_front)
-    /// for a checked variant that never pancis.
+    /// for a checked variant that never panics.
     pub fn push_front(&mut self, value: T) {
         if self.try_push_front(value).is_err() {
             panic!("deque is already at capacity")
@@ -371,7 +371,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     ///
     /// # Panics
     /// Panics if the deque is already at capacity. See [`try_push_back`](Deque::try_push_back)
-    /// for a checked variant that never pancis.
+    /// for a checked variant that never panics.
     pub fn push_back(&mut self, value: T) {
         if self.try_push_back(value).is_err() {
             panic!("deque is already at capacity")

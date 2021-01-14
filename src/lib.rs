@@ -16,7 +16,7 @@
 //! Allocation-free data structures with constant capacity.
 //!
 //! Designed for use in memory-constrained embedded systems that cannot use
-//! growable structures, and in soft-realtime applications that cannot tolerate
+//! growable structures, and in soft real-time applications that cannot tolerate
 //! latency spikes caused by reallocations.
 //!
 //! These generally require the user to supply memory to work with.
@@ -30,7 +30,7 @@
 //! - `alloc`: Adds trait implementations and convenience functions for working
 //!   with heap allocated memory.
 //! - `unstable`: Enables the [`object`] module, which relies on unstable features.
-//!   Debends on the `nightly` features.
+//!   Depends on the `nightly` features.
 
 #[cfg(feature = "alloc")]
 #[doc(hidden)]
