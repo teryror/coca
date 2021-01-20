@@ -1180,7 +1180,8 @@ unsafe impl<T, H: Handle, const N: usize> Storage<DirectPoolLayout<T, H>>
     }
 }
 
-/// A direct-mapped pool that stores its contents in an inline array.
+/// A direct-mapped pool that stores its contents in an inline array,
+/// indexed by [`DefaultHandle`].
 ///
 /// # Examples
 /// ```
@@ -1189,7 +1190,7 @@ unsafe impl<T, H: Handle, const N: usize> Storage<DirectPoolLayout<T, H>>
 /// const A: u128 = 0x0123_4567_89AB_CDEF_0123_4567_89AB_CDEF;
 /// const B: u128 = 0xFEDC_BA98_7654_3210_FEDC_BA98_7654_3210;
 ///
-/// let mut pool = DirectInlinePool::<u128, DefaultHandle, 8>::new();
+/// let mut pool = DirectInlinePool::<u128, 8>::new();
 /// let a = pool.insert(A);
 /// let b = pool.insert(B);
 /// assert_eq!(pool.len(), 2);
@@ -1199,11 +1200,35 @@ unsafe impl<T, H: Handle, const N: usize> Storage<DirectPoolLayout<T, H>>
 /// ```
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-pub type DirectInlinePool<T, H, const N: usize> = DirectPool<T, InlineStorage<T, H, N>, H>;
+pub type DirectInlinePool<T, const N: usize> = DirectPool<T, InlineStorage<T, DefaultHandle, N>, DefaultHandle>;
+
+/// A direct-mapped pool that stores its contents in an inline array,
+/// indexed by the specified custom [`Handle`].
+///
+/// # Examples
+/// ```
+/// # use coca::handle_type;
+/// # use coca::pool::direct::TiDirectInlinePool;
+/// handle_type! { CustomHandle: 8 / 32; }
+/// 
+/// const A: u128 = 0x0123_4567_89AB_CDEF_0123_4567_89AB_CDEF;
+/// const B: u128 = 0xFEDC_BA98_7654_3210_FEDC_BA98_7654_3210;
+///
+/// let mut pool = TiDirectInlinePool::<u128, CustomHandle, 8>::new();
+/// let a: CustomHandle = pool.insert(A);
+/// let b = pool.insert(B);
+/// assert_eq!(pool.len(), 2);
+/// assert_eq!(pool.remove(a), Some(A));
+/// assert_eq!(pool.remove(b), Some(B));
+/// assert!(pool.is_empty());
+/// ```
+#[cfg(feature = "nightly")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
+pub type TiDirectInlinePool<T, H, const N: usize> = DirectPool<T, InlineStorage<T, H, N>, H>;
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<T, H: Handle, const N: usize> DirectInlinePool<T, H, N> {
+impl<T, H: Handle, const N: usize> DirectPool<T, InlineStorage<T, H, N>, H> {
     /// Constructs a new, empty `DirectPool` backed by [`InlineStorage`].
     pub fn new() -> Self {
         if N >= H::MAX_INDEX {
@@ -1219,7 +1244,7 @@ impl<T, H: Handle, const N: usize> DirectInlinePool<T, H, N> {
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<T, H: Handle, const N: usize> Default for DirectInlinePool<T, H, N> {
+impl<T, H: Handle, const N: usize> Default for DirectPool<T, InlineStorage<T, H, N>, H> {
     fn default() -> Self {
         Self::new()
     }
@@ -1227,7 +1252,7 @@ impl<T, H: Handle, const N: usize> Default for DirectInlinePool<T, H, N> {
 
 #[cfg(feature = "nightly")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
-impl<T: Clone, H: Handle, const N: usize> Clone for DirectInlinePool<T, H, N> {
+impl<T: Clone, H: Handle, const N: usize> Clone for DirectPool<T, InlineStorage<T, H, N>, H> {
     fn clone(&self) -> Self {
         let mut result = DirectPool {
             buf: InlineStorage {
