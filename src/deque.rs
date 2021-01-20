@@ -1200,8 +1200,13 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// ```
     pub fn drain<R: core::ops::RangeBounds<I>>(&mut self, range: R) -> Drain<'_, T, S, I> {
         let Range { start, end } = normalize_range(range, self.len());
+
+        let original_len = self.len();
+        self.len = I::from_usize(start);
+
         Drain {
             parent: self,
+            original_len,
             target_start: start,
             front_index: start,
             back_index: end,
@@ -1603,6 +1608,7 @@ impl<'a, T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for &'a mut Dequ
 /// See its documentation for more.
 pub struct Drain<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> {
     parent: &'p mut Deque<T, S, I>,
+    original_len: usize,
     target_start: usize,
     front_index: usize,
     back_index: usize,
@@ -1686,13 +1692,13 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Drain<'_, T, S, I> {
 
         // 2. choose which portion of the unaffected items to shift over to close the gap
         let front = self.parent.front.as_usize();
-        let back = front + self.parent.len();
+        let back = front + self.original_len;
         let target_start = front + self.target_start;
         let target_end = front + self.target_end;
         let target_wrapped = target_start <= cap && cap <= target_end;
 
         let distance_to_front = self.target_start;
-        let distance_to_back = self.parent.len() - self.target_end;
+        let distance_to_back = self.original_len - self.target_end;
         let move_front = distance_to_front < distance_to_back;
         let source_wrapped = if move_front {
             front < cap && cap < target_start
@@ -1789,7 +1795,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Drain<'_, T, S, I> {
             }
         }
 
-        self.parent.len = I::from_usize(self.parent.len() - (target_end - target_start));
+        self.parent.len = I::from_usize(self.original_len - (target_end - target_start));
     }
 }
 

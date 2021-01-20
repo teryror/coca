@@ -20,6 +20,11 @@
 - Add support for multiple type declarations in a single `index_type!` invocation
 - Implement `Vec::drain_filter` and `Vec::drain_filter_range`
 
+## Bugfixes
+
+- Leaking a `vec::Drain` or `deque::Drain` no longer leaves the underlying data structure
+  in an invalid state, potentially causing undefined behaviour
+
 # 0.2.0 (2020-12-28)
 
 - Add `BinaryHeap` and `Deque` implementations

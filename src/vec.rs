@@ -595,8 +595,15 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// ```
     pub fn drain<R: RangeBounds<I>>(&mut self, range: R) -> Drain<'_, T, S, I> {
         let Range { start, end } = normalize_range(range, self.len());
+
+        // prevent leaking a Drain iterator from leaving the vector
+        // in an invalid state potentially causing undefined behaviour
+        let original_len = self.len();
+        self.len = I::from_usize(start);
+
         Drain {
             parent: self,
+            original_len,
             target_start: start,
             front_index: start,
             back_index: end,
@@ -668,9 +675,16 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// ```
     pub fn drain_filter_range<R: RangeBounds<I>, F: FnMut(I, &mut T) -> bool>(&mut self, range: R, filter: F) -> DrainFilter<'_, T, S, I, F> {
         let Range { start, end } = normalize_range(range, self.len());
+
+        // prevent leaking a DrainFilter from leaving the vector in
+        // an invalid state potentially causing undefined behaviour
+        let original_len = self.len();
+        self.len = I::from_usize(start);
+
         DrainFilter {
             parent: self,
             filter_fn: filter,
+            original_len,
             target_start: start,
             front_index: start,
             back_index: end,
@@ -982,6 +996,7 @@ impl<'a, T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIter for &'a mut Vec<T, S
 /// This `struct` is created by [`Vec::drain`]. See its documentation for more.
 pub struct Drain<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> {
     parent: &'p mut Vec<T, S, I>,
+    original_len: usize,
     target_start: usize,
     front_index: usize,
     back_index: usize,
@@ -1024,11 +1039,14 @@ impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for Drain<'p, T
 impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Drain<'p, T, S, I> {
     fn drop(&mut self) {
         self.for_each(drop);
-        let count = self.target_end - self.target_start;
-        let targets = &mut self.parent.as_mut_slice()[self.target_start..];
-        targets.rotate_left(count);
 
-        let new_len = I::from_usize(self.parent.len() - count);
+        let count = self.original_len - self.target_end;
+        let src = unsafe { self.parent.as_slice().as_ptr().add(self.target_end) };
+        let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_start) };
+        unsafe { ptr::copy(src, dst, count) };
+
+        let removed = self.target_end - self.target_start;
+        let new_len = I::from_usize(self.original_len - removed);
         self.parent.set_len(new_len);
     }
 }
@@ -1039,6 +1057,7 @@ impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Drain<'p, T, S, I> {
 pub struct DrainFilter<'p, T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> {
     parent: &'p mut Vec<T, S, I>,
     filter_fn: F,
+    original_len: usize,
     target_start: usize,
     front_index: usize,
     back_index: usize,
@@ -1096,12 +1115,13 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Drop
     fn drop(&mut self) {
         self.for_each(drop);
         
-        let count = self.target_end - self.target_start;
+        let count = self.original_len - self.target_end;
         let src = unsafe { self.parent.as_slice().as_ptr().add(self.target_end) };
         let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_start) };
         unsafe { ptr::copy(src, dst, count) };
 
-        let new_len = I::from_usize(self.parent.len() - count);
+        let removed = self.target_end - self.target_start;
+        let new_len = I::from_usize(self.original_len - removed);
         self.parent.len = new_len;
     }
 }
@@ -1421,5 +1441,36 @@ mod tests {
         }
         drop(vec);
         assert_eq!(drop_count.get(), 16);
+    }
+
+    #[test]
+    #[should_panic]
+    fn leaking_drain() {
+        let mut a = 1;
+        let mut b = 2;
+        let mut c = 3;
+
+        let mut backing_region = [
+            core::mem::MaybeUninit::<&mut i32>::uninit(),
+            core::mem::MaybeUninit::<&mut i32>::uninit(),
+            core::mem::MaybeUninit::<&mut i32>::uninit(),
+            core::mem::MaybeUninit::<&mut i32>::uninit(),
+        ];
+        let mut vec = SliceVec::<&mut i32>::from(&mut backing_region[..]);
+        vec.push(&mut a);
+        vec.push(&mut b);
+        vec.push(&mut c);
+
+        let mut it = vec.drain(1..);
+        if let Some(cloned_ref) = it.next_back() {
+            core::mem::forget(it);
+
+            if let Some(original_ref) = vec.pop() {
+                let clone = cloned_ref as *mut i32 as usize;
+                let original = original_ref as *mut i32 as usize;
+
+                assert_eq!(clone, original);
+            }
+        }
     }
 }
