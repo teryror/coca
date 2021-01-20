@@ -7,10 +7,10 @@ use core::fmt::{self, Debug, Formatter};
 use core::hash::{Hash, Hasher};
 use core::iter::FusedIterator;
 use core::marker::PhantomData;
-use core::ops::{Index, IndexMut};
+use core::ops::{Index, IndexMut, Range};
 
 use crate::storage::{
-    buffer_too_large_for_index_type, mut_ptr_at_index, ptr_at_index, ArrayLike, Capacity, Storage,
+    buffer_too_large_for_index_type, mut_ptr_at_index, normalize_range, ptr_at_index, ArrayLike, Capacity, Storage,
 };
 use crate::vec::Vec;
 
@@ -1133,31 +1133,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// assert!(it.next().is_none());
     /// ```
     pub fn range<R: core::ops::RangeBounds<I>>(&self, range: R) -> Iter<'_, T, S, I> {
-        use core::ops::Bound;
-        let start = match range.start_bound() {
-            Bound::Included(x) => x.as_usize(),
-            Bound::Excluded(x) => x.as_usize().saturating_add(1),
-            Bound::Unbounded => 0,
-        };
-        let end = match range.end_bound() {
-            Bound::Included(x) => x.as_usize().saturating_add(1),
-            Bound::Excluded(x) => x.as_usize(),
-            Bound::Unbounded => self.len(),
-        };
-
-        assert!(
-            start <= end,
-            "Deque::range Illegal range {} to {}",
-            start,
-            end
-        );
-        assert!(
-            end <= self.len(),
-            "Deque::range Range ends at {} but length is only {}",
-            end,
-            self.len()
-        );
-
+        let Range { start, end } = normalize_range(range, self.len());
         Iter {
             front: I::from_usize((self.front.as_usize() + start) % self.capacity()),
             len: I::from_usize(end - start),
@@ -1183,31 +1159,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// assert_eq!(deque, &[1, 2, 6, 8, 5]);
     /// ```
     pub fn range_mut<R: core::ops::RangeBounds<I>>(&mut self, range: R) -> IterMut<'_, T, S, I> {
-        use core::ops::Bound;
-        let start = match range.start_bound() {
-            Bound::Included(x) => x.as_usize(),
-            Bound::Excluded(x) => x.as_usize().saturating_add(1),
-            Bound::Unbounded => 0,
-        };
-        let end = match range.end_bound() {
-            Bound::Included(x) => x.as_usize().saturating_add(1),
-            Bound::Excluded(x) => x.as_usize(),
-            Bound::Unbounded => self.len(),
-        };
-
-        assert!(
-            start <= end,
-            "Deque::range_mut Illegal range {} to {}",
-            start,
-            end
-        );
-        assert!(
-            end <= self.len(),
-            "Deque::range_mut Range ends at {} but length is only {}",
-            end,
-            self.len()
-        );
-
+        let Range { start, end } = normalize_range(range, self.len());
         IterMut {
             front: I::from_usize((self.front.as_usize() + start) % self.capacity()),
             len: I::from_usize(end - start),
@@ -1247,31 +1199,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// assert!(deque.is_empty());
     /// ```
     pub fn drain<R: core::ops::RangeBounds<I>>(&mut self, range: R) -> Drain<'_, T, S, I> {
-        use core::ops::Bound;
-        let start = match range.start_bound() {
-            Bound::Included(x) => x.as_usize(),
-            Bound::Excluded(x) => x.as_usize().saturating_add(1),
-            Bound::Unbounded => 0,
-        };
-        let end = match range.end_bound() {
-            Bound::Included(x) => x.as_usize().saturating_add(1),
-            Bound::Excluded(x) => x.as_usize(),
-            Bound::Unbounded => self.len(),
-        };
-
-        assert!(
-            start <= end,
-            "Deque::drain Illegal range {} to {}",
-            start,
-            end
-        );
-        assert!(
-            end <= self.len(),
-            "Deque::drain Range ends at {} but length is only {}",
-            end,
-            self.len()
-        );
-
+        let Range { start, end } = normalize_range(range, self.len());
         Drain {
             parent: self,
             target_start: start,

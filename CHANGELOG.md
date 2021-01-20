@@ -18,6 +18,7 @@
 - `DirectPool`, a direct analogue to `slotmap::SlotMap`
 - Experimental `object` module for owned, allocation-free trait objects
 - Add support for multiple type declarations in a single `index_type!` invocation
+- Implement `Vec::drain_filter` and `Vec::drain_filter_range`
 
 # 0.2.0 (2020-12-28)
 

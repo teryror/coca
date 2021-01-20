@@ -6,6 +6,7 @@ use core::fmt::Debug;
 use core::hash::Hash;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
+use core::ops::{Range, RangeBounds};
 use core::ptr::NonNull;
 
 /// Types that can be used for indexing into array-like data structures.
@@ -33,6 +34,25 @@ pub(crate) fn buffer_too_large_for_index_type<I: Capacity>() {
         "provided storage block cannot be fully indexed by type {}",
         core::any::type_name::<I>()
     );
+}
+
+pub(crate) fn normalize_range<I: Capacity, R: RangeBounds<I>>(range: R, max_end: usize) -> Range<usize> {
+    use core::ops::Bound;
+    let start = match range.start_bound() {
+        Bound::Included(x) => x.as_usize(),
+        Bound::Excluded(x) => x.as_usize().saturating_add(1),
+        Bound::Unbounded => 0,
+    };
+    let end = match range.end_bound() {
+        Bound::Included(x) => x.as_usize().saturating_add(1),
+        Bound::Excluded(x) => x.as_usize(),
+        Bound::Unbounded => max_end,
+    };
+
+    assert!(end <= max_end, "invalid range specifier: end (is {:?}) is greater than {:?}", end, max_end);
+    assert!(start <= end, "invalid range specifier: start (is {:?}) is greater than end (is {:?})", start, end);
+
+    Range { start, end }
 }
 
 unsafe impl Capacity for u8 {

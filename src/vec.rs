@@ -38,7 +38,7 @@
 use crate::storage::InlineStorage;
 
 use crate::storage::{
-    buffer_too_large_for_index_type, mut_ptr_at_index, ptr_at_index, ArrayLike, Capacity, Storage,
+    buffer_too_large_for_index_type, mut_ptr_at_index, normalize_range, ptr_at_index, ArrayLike, Capacity, Storage,
 };
 
 use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
@@ -47,7 +47,7 @@ use core::iter::{DoubleEndedIterator, FusedIterator, IntoIterator as IntoIter, I
 use core::marker::PhantomData;
 #[allow(unused_imports)] // used only when some features are enabled
 use core::mem::MaybeUninit;
-use core::ops::RangeBounds;
+use core::ops::{Range, RangeBounds};
 use core::ptr;
 
 /// A contiguous growable array type with constant capacity.
@@ -566,21 +566,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     where
         F: FnMut(&T) -> bool,
     {
-        let len = self.len.as_usize();
-        let mut del = 0;
-        unsafe {
-            for idx in 0..len {
-                let p = mut_ptr_at_index(&mut self.buf, idx);
-                if !f(p.as_mut().unwrap()) {
-                    del += 1;
-                } else if del > 0 {
-                    ptr::swap(p, p.sub(del))
-                }
-            }
-        }
-        if del > 0 {
-            self.truncate(I::from_usize(len - del));
-        }
+        self.drain_filter(|_, item| !f(&*item));
     }
 
     /// Creates a draining iterator that removes the specified range in the vector
@@ -608,31 +594,83 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// assert_eq!(vec, &[1, 4, 5][..]);
     /// ```
     pub fn drain<R: RangeBounds<I>>(&mut self, range: R) -> Drain<'_, T, S, I> {
-        use core::ops::Bound;
-        let start = match range.start_bound() {
-            Bound::Included(x) => x.as_usize(),
-            Bound::Excluded(x) => x.as_usize().saturating_add(1),
-            Bound::Unbounded => 0,
-        };
-        let end = match range.end_bound() {
-            Bound::Included(x) => x.as_usize().saturating_add(1),
-            Bound::Excluded(x) => x.as_usize(),
-            Bound::Unbounded => self.len(),
-        };
-        assert!(
-            start <= end,
-            "Vec::drain Illegal range, {} to {}",
-            start,
-            end
-        );
-        assert!(
-            end <= self.len(),
-            "Vec::drain Range ends at {} but length is only {}",
-            end,
-            self.len()
-        );
+        let Range { start, end } = normalize_range(range, self.len());
         Drain {
             parent: self,
+            target_start: start,
+            front_index: start,
+            back_index: end,
+            target_end: end,
+        }
+    }
+
+    /// Creates an iterator which uses a closure to determine if an element
+    /// should be removed.
+    /// 
+    /// If the closure returns `true`, the element is removed and yielded.
+    /// If the closure returns `false`, the element will remain in the vector
+    /// and will not be yielded by the iterator.
+    /// 
+    /// When the iterator **is** dropped, all remaining items matching the
+    /// filter are removed from the vector, even if the iterator was not fully
+    /// consumed. If the iterator **is not** dropped (with [`core::mem::forget`]
+    /// for example), it is unspecified how many elements are removed.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// vec.push(1); vec.push(2); vec.push(3); vec.push(4); vec.push(5);
+    /// {
+    ///     let mut it = vec.drain_filter(
+    ///         |_idx, num| if *num % 2 == 0 { true } else { *num *= 2; false }
+    ///     );
+    ///     assert_eq!(it.next(), Some(2));
+    ///     assert_eq!(it.next(), Some(4));
+    ///     assert_eq!(it.next(), None);
+    /// }
+    /// assert_eq!(vec, [2, 6, 10]);
+    /// ```
+    pub fn drain_filter<F: FnMut(I, &mut T) -> bool>(&mut self, filter: F) -> DrainFilter<'_, T, S, I, F> {
+        self.drain_filter_range(.., filter)
+    }
+
+    /// Creates an iterator which uses a closure to determine if an element
+    /// in the specified range should be removed.
+    /// 
+    /// If the closure returns `true`, the element is removed and yielded.
+    /// If the closure returns `false`, the element will remain in the vector
+    /// and will not be yielded by the iterator.
+    /// 
+    /// When the iterator **is** dropped, all remaining items matching the
+    /// filter are removed from the vector, even if the iterator was not fully
+    /// consumed. If the iterator **is not** dropped (with [`core::mem::forget`]
+    /// for example), it is unspecified how many elements are removed.
+    ///
+    /// # Panics
+    /// Panics if the starting point is greater than the end point or if the end
+    /// point is greater than the length of the vector.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// vec.push(1); vec.push(2); vec.push(3); vec.push(4); vec.push(5);
+    /// {
+    ///     let mut it = vec.drain_filter_range(1..=3,
+    ///         |_idx, num| if *num % 2 == 0 { true } else { *num *= 2; false }
+    ///     );
+    ///     assert_eq!(it.next(), Some(2));
+    ///     assert_eq!(it.next(), Some(4));
+    ///     assert_eq!(it.next(), None);
+    /// }
+    /// assert_eq!(vec, [1, 6, 5]);
+    /// ```
+    pub fn drain_filter_range<R: RangeBounds<I>, F: FnMut(I, &mut T) -> bool>(&mut self, range: R, filter: F) -> DrainFilter<'_, T, S, I, F> {
+        let Range { start, end } = normalize_range(range, self.len());
+        DrainFilter {
+            parent: self,
+            filter_fn: filter,
             target_start: start,
             front_index: start,
             back_index: end,
@@ -992,6 +1030,79 @@ impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Drain<'p, T, S, I> {
 
         let new_len = I::from_usize(self.parent.len() - count);
         self.parent.set_len(new_len);
+    }
+}
+
+/// An iterator which uses a closure to determine if an element should be removed.
+/// 
+/// This struct is created by [`Vec::drain_filter`]. See its documentation for more.
+pub struct DrainFilter<'p, T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> {
+    parent: &'p mut Vec<T, S, I>,
+    filter_fn: F,
+    target_start: usize,
+    front_index: usize,
+    back_index: usize,
+    target_end: usize,
+}
+
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Iterator for DrainFilter<'_, T, S, I, F> {
+    type Item = T;
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let max_len = self.back_index - self.front_index;
+        (0, Some(max_len))
+    }
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.front_index != self.back_index {
+            let src = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.front_index) };
+            let item = unsafe { src.as_mut().unwrap() };
+            self.front_index += 1;
+            if (self.filter_fn)(I::from_usize(self.front_index), item) {
+                return Some(unsafe { src.read() });
+            } else {
+                let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_start) };
+                unsafe { ptr::copy(src as *const T, dst, 1) };
+                self.target_start += 1;
+            }
+        }
+
+        None
+    }
+}
+
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> DoubleEndedIterator for DrainFilter<'_, T, S, I, F> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        while self.front_index != self.back_index {
+            self.back_index -= 1;
+            let src = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.back_index) };
+            let item = unsafe { src.as_mut().unwrap() };
+            if (self.filter_fn)(I::from_usize(self.back_index), item) {
+                return Some(unsafe { src.read() });
+            } else {
+                self.target_end -= 1;
+                let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_end) };
+                unsafe { ptr::copy(src as *const T, dst, 1) };
+            }
+        }
+
+        None
+    }
+}
+
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> FusedIterator for DrainFilter<'_, T, S, I, F> {}
+
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Drop for DrainFilter<'_, T, S, I, F> {
+    fn drop(&mut self) {
+        self.for_each(drop);
+        
+        let count = self.target_end - self.target_start;
+        let src = unsafe { self.parent.as_slice().as_ptr().add(self.target_end) };
+        let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_start) };
+        unsafe { ptr::copy(src, dst, count) };
+
+        let new_len = I::from_usize(self.parent.len() - count);
+        self.parent.len = new_len;
     }
 }
 
