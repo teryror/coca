@@ -2,6 +2,7 @@
 allocator
 deque
 deque's
+discriminants
 growable
 implementor
 implementors
@@ -17,6 +18,7 @@ prepends
 reallocations
 representable
 struct
+structs
 toolchain
 vec
 Zlib

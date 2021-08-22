@@ -39,6 +39,7 @@ pub extern crate alloc;
 pub mod arena;
 pub mod binary_heap;
 pub mod deque;
+pub mod option_group;
 pub mod pool;
 pub mod storage;
 pub mod vec;
@@ -51,6 +52,7 @@ pub use crate::{
     arena::{Arena, Box},
     binary_heap::{ArenaHeap, SliceHeap},
     deque::{ArenaDeque, SliceDeque},
+    option_group::{OptionGroup8, OptionGroup16},
     vec::{ArenaVec, SliceVec},
 };
 
