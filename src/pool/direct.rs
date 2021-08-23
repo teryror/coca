@@ -71,10 +71,10 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> From<S> for DirectPool<T,
         }
 
         let sentinel = H::Index::from_usize(Self::FREE_LIST_SENTINEL);
-        unsafe { (*ptr).next_free_slot = sentinel };
+        unsafe { (*ptr).next_free_slot = sentinel; }
 
         // initialize generation counters:
-        unsafe { core::ptr::write_bytes(result.gen_counts_mut(), 0x00, cap) };
+        unsafe { core::ptr::write_bytes(result.gen_counts_mut(), 0x00, cap); }
 
         result
     }
@@ -1250,7 +1250,7 @@ impl<T: Clone, H: Handle, const N: usize> Clone for DirectPool<T, InlineStorage<
 
         let src_counts = self.gen_counts();
         let dst_counts = result.gen_counts_mut();
-        unsafe { core::ptr::copy(src_counts, dst_counts, self.capacity()) };
+        unsafe { core::ptr::copy(src_counts, dst_counts, self.capacity()); }
 
         let src_slots = self.slots();
         let dst_slots = result.slots_mut();

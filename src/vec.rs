@@ -265,7 +265,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
         }
 
         let len = self.len();
-        unsafe { mut_ptr_at_index(&mut self.buf, len).write(value) };
+        unsafe { mut_ptr_at_index(&mut self.buf, len).write(value); }
 
         self.len = I::from_usize(len + 1);
         Ok(())
@@ -314,7 +314,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
         }
 
         for i in new_len..old_len {
-            unsafe { mut_ptr_at_index(&mut self.buf, i).drop_in_place() };
+            unsafe { mut_ptr_at_index(&mut self.buf, i).drop_in_place(); }
         }
 
         self.len = len;
@@ -325,7 +325,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// Equivalent to `s.truncate(0)`.
     #[inline]
     pub fn clear(&mut self) {
-        self.truncate(I::from_usize(0))
+        self.truncate(I::from_usize(0));
     }
 
     /// Swaps two elements in the vector.
@@ -774,7 +774,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::Drop for Vec<T, S, I> 
     fn drop(&mut self) {
         unsafe {
             let ptr = self.buf.get_mut_ptr().cast::<T>();
-            ptr::drop_in_place(ptr::slice_from_raw_parts_mut(ptr, self.len()))
+            ptr::drop_in_place(ptr::slice_from_raw_parts_mut(ptr, self.len()));
         }
     }
 }
@@ -794,7 +794,7 @@ where
 {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        Hash::hash(&**self, state)
+        Hash::hash(&**self, state);
     }
 }
 
@@ -1041,7 +1041,7 @@ impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Drain<'p, T, S, I> {
         let count = self.original_len - self.target_end;
         let src = unsafe { self.parent.as_slice().as_ptr().add(self.target_end) };
         let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_start) };
-        unsafe { ptr::copy(src, dst, count) };
+        unsafe { ptr::copy(src, dst, count); }
 
         let removed = self.target_end - self.target_start;
         let new_len = I::from_usize(self.original_len - removed);
@@ -1079,7 +1079,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Iter
                 return Some(unsafe { src.read() });
             }
             let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_start) };
-            unsafe { ptr::copy(src as *const T, dst, 1) };
+            unsafe { ptr::copy(src as *const T, dst, 1); }
             self.target_start += 1;
         }
 
@@ -1098,7 +1098,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Doub
             }
             self.target_end -= 1;
             let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_end) };
-            unsafe { ptr::copy(src as *const T, dst, 1) };
+            unsafe { ptr::copy(src as *const T, dst, 1); }
         }
 
         None
@@ -1114,7 +1114,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Drop
         let count = self.original_len - self.target_end;
         let src = unsafe { self.parent.as_slice().as_ptr().add(self.target_end) };
         let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_start) };
-        unsafe { ptr::copy(src, dst, count) };
+        unsafe { ptr::copy(src, dst, count); }
 
         let removed = self.target_end - self.target_start;
         let new_len = I::from_usize(self.original_len - removed);
