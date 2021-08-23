@@ -53,7 +53,6 @@
 //! assert_eq!(many_options.get(15), Some(&5));
 //! ```
 
-// TODO: get rid of clippy warnings
 // TODO: for the array versions, implement iterators
 // TODO: write more tests to run with miri
 
@@ -443,7 +442,7 @@ macro_rules! impl_array_methods {
                 if self.is_some(idx as u32) {
                     self.clear_flag(idx as u32);
                     Some(unsafe {
-                        (<[T; N] as Compound>::get_ptr(&mut self.value, idx) as *const T).read()
+                        (<[T; N] as Compound>::get_ptr(&self.value, idx) as *const T).read()
                     })
                 } else {
                     None
