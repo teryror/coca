@@ -14,16 +14,15 @@
 //! 
 //! # Examples
 //! 
-//! Using tuples:
+//! Tuples with 2 to 12 components may be used to define groups of values with mixed types:
 //! 
 //! ```
 //! # use coca::option_group::OptionGroup8;
-//! // With tuples:
 //! let mut four_options: OptionGroup8<(u32, i16, u8, i8)> = OptionGroup8::empty();
 //! assert!(four_options.is_empty());
 //! 
-//! four_options.set_0(0xC0FFE);
-//! four_options.set_1(-1337);
+//! assert_eq!(four_options.replace_0(0xC0FFE), None);
+//! assert_eq!(four_options.replace_1(-1337), None);
 //! 
 //! assert_eq!(four_options.get_0(), Some(&0xC0FFE));
 //! assert_eq!(four_options.get_1(), Some(&-1337));
@@ -37,15 +36,16 @@
 //! assert_eq!(four_options.get_1(), Some(&1234));
 //! ```
 //! 
-//! Using arrays:
+//! Arrays can be used to define homogeneous groups. A more ergonomic API is provided in this case:
 //! 
 //! ```
 //! # use coca::option_group::OptionGroup8;
-//! todo!();
+//! // todo!();
 //! ```
 
 // TODO: get rid of clippy warnings
 // TODO: restructure this file, use more macros to cut down on redundant code
+// TODO: for the array versions, implement IntoIter and Index
 // TODO: Add {Compound32, Compound64} traits, and {OptionGroup32, OptionGroup64} types
 // TODO: finish writing documentation
 // TODO: write more tests to run with miri
@@ -689,6 +689,11 @@ where
         self.flags |= 1 << n;
     }
 
+    #[inline(always)]
+    fn clear_flag(&mut self, n: u32) {
+        self.flags &= !(1 << n);
+    }
+
     /// Returns `true` if all options in the group are `None` values.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
@@ -747,7 +752,7 @@ macro_rules! impl_field_access_methods {
             }
         }
 
-        #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_ref()`](core::option::Option::as_mut).")]
+        #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_mut()`](core::option::Option::as_mut).")]
         #[inline(always)]
         pub fn $get_mut(&mut self) -> Option<&mut $t> {
             if self.is_none($idx) {
@@ -757,21 +762,23 @@ macro_rules! impl_field_access_methods {
             }
         }
 
-        #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_ref()`](core::option::Option::take).")]
+        #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".take()`](core::option::Option::take).")]
         #[inline(always)]
         pub fn $take(&mut self) -> Option<$t> {
             if self.is_none($idx) {
                 None
             } else {
+                self.clear_flag($idx);
                 unsafe { Some((<$generic as Compound>::get_ptr(&self.value, $idx) as *const $t).read()) }
             }
         }
 
-        #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_ref()`](core::option::Option::replace).")]
+        #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".replace()`](core::option::Option::replace).")]
         #[inline(always)]
         pub fn $replace(&mut self, value: $t) -> Option<$t> {
             let result = self.$take();
             unsafe { (<$generic as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut $t).write(value) };
+            self.set_flag($idx);
             result
         }
     };
@@ -904,6 +911,11 @@ where
     #[inline(always)]
     fn set_flag(&mut self, n: u32) {
         self.flags |= 1 << n;
+    }
+
+    #[inline(always)]
+    fn clear_flag(&mut self, n: u32) {
+        self.flags &= !(1 << n);
     }
 
     #[inline(always)]
