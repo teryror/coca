@@ -63,305 +63,38 @@ mod private {
         fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut ();
     }
 
-    impl<A, B> Compound for (A, B) {
-        const CAPACITY: usize = 2;
-        fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
-            match idx {
-                0 => unsafe { addr_of!((*this.as_ptr()).0) as _ },
-                1 => unsafe { addr_of!((*this.as_ptr()).1) as _ },
-                _ => null(),
-            }
-        }
-        fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
-            match idx {
-                0 => unsafe { addr_of_mut!((*this.as_mut_ptr()).0) as _ },
-                1 => unsafe { addr_of_mut!((*this.as_mut_ptr()).1) as _ },
-                _ => null_mut(),
-            }
-        }
-    }
-
-    impl<A, B, C> Compound for (A, B, C) {
-        const CAPACITY: usize = 3;
-        fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
-            match idx {
-                0 => unsafe { addr_of!((*this.as_ptr()).0) as _ },
-                1 => unsafe { addr_of!((*this.as_ptr()).1) as _ },
-                2 => unsafe { addr_of!((*this.as_ptr()).2) as _ },
-                _ => null(),
-            }
-        }
-        fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
-            match idx {
-                0 => unsafe { addr_of_mut!((*this.as_mut_ptr()).0) as _ },
-                1 => unsafe { addr_of_mut!((*this.as_mut_ptr()).1) as _ },
-                2 => unsafe { addr_of_mut!((*this.as_mut_ptr()).2) as _ },
-                _ => null_mut(),
+    macro_rules! impl_compound_for_tuple {
+        ($cap:literal ; $($idx:tt : $t:ident),*) => {
+            impl<$($t),*> Compound for ($($t),*) {
+                const CAPACITY: usize = $cap;
+                fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
+                    match idx {
+                        $($idx => unsafe { addr_of!((*this.as_ptr()).$idx) as _ }),*
+                        _ => null(),
+                    }
+                }
+                fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
+                    match idx {
+                        $($idx => unsafe { addr_of_mut!((*this.as_mut_ptr()).$idx) as _ }),*
+                        _ => null_mut(),
+                    }
+                }
             }
         }
     }
 
-    impl<A, B, C, D> Compound for (A, B, C, D) {
-        const CAPACITY: usize = 4;
-        fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
-            match idx {
-                0 => unsafe { addr_of!((*this.as_ptr()).0) as _ },
-                1 => unsafe { addr_of!((*this.as_ptr()).1) as _ },
-                2 => unsafe { addr_of!((*this.as_ptr()).2) as _ },
-                3 => unsafe { addr_of!((*this.as_ptr()).3) as _ },
-                _ => null(),
-            }
-        }
-        fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
-            match idx {
-                0 => unsafe { addr_of_mut!((*this.as_mut_ptr()).0) as _ },
-                1 => unsafe { addr_of_mut!((*this.as_mut_ptr()).1) as _ },
-                2 => unsafe { addr_of_mut!((*this.as_mut_ptr()).2) as _ },
-                3 => unsafe { addr_of_mut!((*this.as_mut_ptr()).3) as _ },
-                _ => null_mut(),
-            }
-        }
-    }
-    impl<A, B, C, D, E> Compound for (A, B, C, D, E) {
-        const CAPACITY: usize = 5;
-        fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
-            match idx {
-                0 => unsafe { addr_of!((*this.as_ptr()).0) as _ },
-                1 => unsafe { addr_of!((*this.as_ptr()).1) as _ },
-                2 => unsafe { addr_of!((*this.as_ptr()).2) as _ },
-                3 => unsafe { addr_of!((*this.as_ptr()).3) as _ },
-                4 => unsafe { addr_of!((*this.as_ptr()).4) as _ },
-                _ => null(),
-            }
-        }
-        fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
-            match idx {
-                0 => unsafe { addr_of_mut!((*this.as_mut_ptr()).0) as _ },
-                1 => unsafe { addr_of_mut!((*this.as_mut_ptr()).1) as _ },
-                2 => unsafe { addr_of_mut!((*this.as_mut_ptr()).2) as _ },
-                3 => unsafe { addr_of_mut!((*this.as_mut_ptr()).3) as _ },
-                4 => unsafe { addr_of_mut!((*this.as_mut_ptr()).4) as _ },
-                _ => null_mut(),
-            }
-        }
-    }
-    impl<A, B, C, D, E, F> Compound for (A, B, C, D, E, F) {
-        const CAPACITY: usize = 6;
-        fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
-            match idx {
-                0 => unsafe { addr_of!((*this.as_ptr()).0) as _ },
-                1 => unsafe { addr_of!((*this.as_ptr()).1) as _ },
-                2 => unsafe { addr_of!((*this.as_ptr()).2) as _ },
-                3 => unsafe { addr_of!((*this.as_ptr()).3) as _ },
-                4 => unsafe { addr_of!((*this.as_ptr()).4) as _ },
-                5 => unsafe { addr_of!((*this.as_ptr()).5) as _ },
-                _ => null(),
-            }
-        }
-        fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
-            match idx {
-                0 => unsafe { addr_of_mut!((*this.as_mut_ptr()).0) as _ },
-                1 => unsafe { addr_of_mut!((*this.as_mut_ptr()).1) as _ },
-                2 => unsafe { addr_of_mut!((*this.as_mut_ptr()).2) as _ },
-                3 => unsafe { addr_of_mut!((*this.as_mut_ptr()).3) as _ },
-                4 => unsafe { addr_of_mut!((*this.as_mut_ptr()).4) as _ },
-                5 => unsafe { addr_of_mut!((*this.as_mut_ptr()).5) as _ },
-                _ => null_mut(),
-            }
-        }
-    }
-    impl<A, B, C, D, E, F, G> Compound for (A, B, C, D, E, F, G) {
-        const CAPACITY: usize = 7;
-        fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
-            match idx {
-                0 => unsafe { addr_of!((*this.as_ptr()).0) as _ },
-                1 => unsafe { addr_of!((*this.as_ptr()).1) as _ },
-                2 => unsafe { addr_of!((*this.as_ptr()).2) as _ },
-                3 => unsafe { addr_of!((*this.as_ptr()).3) as _ },
-                4 => unsafe { addr_of!((*this.as_ptr()).4) as _ },
-                5 => unsafe { addr_of!((*this.as_ptr()).5) as _ },
-                6 => unsafe { addr_of!((*this.as_ptr()).6) as _ },
-                _ => null(),
-            }
-        }
-        fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
-            match idx {
-                0 => unsafe { addr_of_mut!((*this.as_mut_ptr()).0) as _ },
-                1 => unsafe { addr_of_mut!((*this.as_mut_ptr()).1) as _ },
-                2 => unsafe { addr_of_mut!((*this.as_mut_ptr()).2) as _ },
-                3 => unsafe { addr_of_mut!((*this.as_mut_ptr()).3) as _ },
-                4 => unsafe { addr_of_mut!((*this.as_mut_ptr()).4) as _ },
-                5 => unsafe { addr_of_mut!((*this.as_mut_ptr()).5) as _ },
-                6 => unsafe { addr_of_mut!((*this.as_mut_ptr()).6) as _ },
-                _ => null_mut(),
-            }
-        }
-    }
-    impl<A, B, C, D, E, F, G, H> Compound for (A, B, C, D, E, F, G, H) {
-        const CAPACITY: usize = 8;
-        fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
-            match idx {
-                0 => unsafe { addr_of!((*this.as_ptr()).0) as _ },
-                1 => unsafe { addr_of!((*this.as_ptr()).1) as _ },
-                2 => unsafe { addr_of!((*this.as_ptr()).2) as _ },
-                3 => unsafe { addr_of!((*this.as_ptr()).3) as _ },
-                4 => unsafe { addr_of!((*this.as_ptr()).4) as _ },
-                5 => unsafe { addr_of!((*this.as_ptr()).5) as _ },
-                6 => unsafe { addr_of!((*this.as_ptr()).6) as _ },
-                7 => unsafe { addr_of!((*this.as_ptr()).7) as _ },
-                _ => null(),
-            }
-        }
-        fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
-            match idx {
-                0 => unsafe { addr_of_mut!((*this.as_mut_ptr()).0) as _ },
-                1 => unsafe { addr_of_mut!((*this.as_mut_ptr()).1) as _ },
-                2 => unsafe { addr_of_mut!((*this.as_mut_ptr()).2) as _ },
-                3 => unsafe { addr_of_mut!((*this.as_mut_ptr()).3) as _ },
-                4 => unsafe { addr_of_mut!((*this.as_mut_ptr()).4) as _ },
-                5 => unsafe { addr_of_mut!((*this.as_mut_ptr()).5) as _ },
-                6 => unsafe { addr_of_mut!((*this.as_mut_ptr()).6) as _ },
-                7 => unsafe { addr_of_mut!((*this.as_mut_ptr()).7) as _ },
-                _ => null_mut(),
-            }
-        }
-    }
-    impl<A, B, C, D, E, F, G, H, I> Compound for (A, B, C, D, E, F, G, H, I) {
-        const CAPACITY: usize = 9;
-        fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
-            match idx {
-                0 => unsafe { addr_of!((*this.as_ptr()).0) as _ },
-                1 => unsafe { addr_of!((*this.as_ptr()).1) as _ },
-                2 => unsafe { addr_of!((*this.as_ptr()).2) as _ },
-                3 => unsafe { addr_of!((*this.as_ptr()).3) as _ },
-                4 => unsafe { addr_of!((*this.as_ptr()).4) as _ },
-                5 => unsafe { addr_of!((*this.as_ptr()).5) as _ },
-                6 => unsafe { addr_of!((*this.as_ptr()).6) as _ },
-                7 => unsafe { addr_of!((*this.as_ptr()).7) as _ },
-                8 => unsafe { addr_of!((*this.as_ptr()).8) as _ },
-                _ => null(),
-            }
-        }
-        fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
-            match idx {
-                0 => unsafe { addr_of_mut!((*this.as_mut_ptr()).0) as _ },
-                1 => unsafe { addr_of_mut!((*this.as_mut_ptr()).1) as _ },
-                2 => unsafe { addr_of_mut!((*this.as_mut_ptr()).2) as _ },
-                3 => unsafe { addr_of_mut!((*this.as_mut_ptr()).3) as _ },
-                4 => unsafe { addr_of_mut!((*this.as_mut_ptr()).4) as _ },
-                5 => unsafe { addr_of_mut!((*this.as_mut_ptr()).5) as _ },
-                6 => unsafe { addr_of_mut!((*this.as_mut_ptr()).6) as _ },
-                7 => unsafe { addr_of_mut!((*this.as_mut_ptr()).7) as _ },
-                8 => unsafe { addr_of_mut!((*this.as_mut_ptr()).8) as _ },
-                _ => null_mut(),
-            }
-        }
-    }
-    impl<A, B, C, D, E, F, G, H, I, J> Compound for (A, B, C, D, E, F, G, H, I, J) {
-        const CAPACITY: usize = 10;
-        fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
-            match idx {
-                0 => unsafe { addr_of!((*this.as_ptr()).0) as _ },
-                1 => unsafe { addr_of!((*this.as_ptr()).1) as _ },
-                2 => unsafe { addr_of!((*this.as_ptr()).2) as _ },
-                3 => unsafe { addr_of!((*this.as_ptr()).3) as _ },
-                4 => unsafe { addr_of!((*this.as_ptr()).4) as _ },
-                5 => unsafe { addr_of!((*this.as_ptr()).5) as _ },
-                6 => unsafe { addr_of!((*this.as_ptr()).6) as _ },
-                7 => unsafe { addr_of!((*this.as_ptr()).7) as _ },
-                8 => unsafe { addr_of!((*this.as_ptr()).8) as _ },
-                9 => unsafe { addr_of!((*this.as_ptr()).9) as _ },
-                _ => null(),
-            }
-        }
-        fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
-            match idx {
-                0 => unsafe { addr_of_mut!((*this.as_mut_ptr()).0) as _ },
-                1 => unsafe { addr_of_mut!((*this.as_mut_ptr()).1) as _ },
-                2 => unsafe { addr_of_mut!((*this.as_mut_ptr()).2) as _ },
-                3 => unsafe { addr_of_mut!((*this.as_mut_ptr()).3) as _ },
-                4 => unsafe { addr_of_mut!((*this.as_mut_ptr()).4) as _ },
-                5 => unsafe { addr_of_mut!((*this.as_mut_ptr()).5) as _ },
-                6 => unsafe { addr_of_mut!((*this.as_mut_ptr()).6) as _ },
-                7 => unsafe { addr_of_mut!((*this.as_mut_ptr()).7) as _ },
-                8 => unsafe { addr_of_mut!((*this.as_mut_ptr()).8) as _ },
-                9 => unsafe { addr_of_mut!((*this.as_mut_ptr()).9) as _ },
-                _ => null_mut(),
-            }
-        }
-    }
-    impl<A, B, C, D, E, F, G, H, I, J, K> Compound for (A, B, C, D, E, F, G, H, I, J, K) {
-        const CAPACITY: usize = 11;
-        fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
-            match idx {
-                0 => unsafe { addr_of!((*this.as_ptr()).0) as _ },
-                1 => unsafe { addr_of!((*this.as_ptr()).1) as _ },
-                2 => unsafe { addr_of!((*this.as_ptr()).2) as _ },
-                3 => unsafe { addr_of!((*this.as_ptr()).3) as _ },
-                4 => unsafe { addr_of!((*this.as_ptr()).4) as _ },
-                5 => unsafe { addr_of!((*this.as_ptr()).5) as _ },
-                6 => unsafe { addr_of!((*this.as_ptr()).6) as _ },
-                7 => unsafe { addr_of!((*this.as_ptr()).7) as _ },
-                8 => unsafe { addr_of!((*this.as_ptr()).8) as _ },
-                9 => unsafe { addr_of!((*this.as_ptr()).9) as _ },
-                10 => unsafe { addr_of!((*this.as_ptr()).10) as _ },
-                _ => null(),
-            }
-        }
-        fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
-            match idx {
-                0 => unsafe { addr_of_mut!((*this.as_mut_ptr()).0) as _ },
-                1 => unsafe { addr_of_mut!((*this.as_mut_ptr()).1) as _ },
-                2 => unsafe { addr_of_mut!((*this.as_mut_ptr()).2) as _ },
-                3 => unsafe { addr_of_mut!((*this.as_mut_ptr()).3) as _ },
-                4 => unsafe { addr_of_mut!((*this.as_mut_ptr()).4) as _ },
-                5 => unsafe { addr_of_mut!((*this.as_mut_ptr()).5) as _ },
-                6 => unsafe { addr_of_mut!((*this.as_mut_ptr()).6) as _ },
-                7 => unsafe { addr_of_mut!((*this.as_mut_ptr()).7) as _ },
-                8 => unsafe { addr_of_mut!((*this.as_mut_ptr()).8) as _ },
-                9 => unsafe { addr_of_mut!((*this.as_mut_ptr()).9) as _ },
-                10 => unsafe { addr_of_mut!((*this.as_mut_ptr()).10) as _ },
-                _ => null_mut(),
-            }
-        }
-    }
-    impl<A, B, C, D, E, F, G, H, I, J, K, L> Compound for (A, B, C, D, E, F, G, H, I, J, K, L) {
-        const CAPACITY: usize = 12;
-        fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
-            match idx {
-                0 => unsafe { addr_of!((*this.as_ptr()).0) as _ },
-                1 => unsafe { addr_of!((*this.as_ptr()).1) as _ },
-                2 => unsafe { addr_of!((*this.as_ptr()).2) as _ },
-                3 => unsafe { addr_of!((*this.as_ptr()).3) as _ },
-                4 => unsafe { addr_of!((*this.as_ptr()).4) as _ },
-                5 => unsafe { addr_of!((*this.as_ptr()).5) as _ },
-                6 => unsafe { addr_of!((*this.as_ptr()).6) as _ },
-                7 => unsafe { addr_of!((*this.as_ptr()).7) as _ },
-                8 => unsafe { addr_of!((*this.as_ptr()).8) as _ },
-                9 => unsafe { addr_of!((*this.as_ptr()).9) as _ },
-                10 => unsafe { addr_of!((*this.as_ptr()).10) as _ },
-                11 => unsafe { addr_of!((*this.as_ptr()).11) as _ },
-                _ => null(),
-            }
-        }
-        fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
-            match idx {
-                0 => unsafe { addr_of_mut!((*this.as_mut_ptr()).0) as _ },
-                1 => unsafe { addr_of_mut!((*this.as_mut_ptr()).1) as _ },
-                2 => unsafe { addr_of_mut!((*this.as_mut_ptr()).2) as _ },
-                3 => unsafe { addr_of_mut!((*this.as_mut_ptr()).3) as _ },
-                4 => unsafe { addr_of_mut!((*this.as_mut_ptr()).4) as _ },
-                5 => unsafe { addr_of_mut!((*this.as_mut_ptr()).5) as _ },
-                6 => unsafe { addr_of_mut!((*this.as_mut_ptr()).6) as _ },
-                7 => unsafe { addr_of_mut!((*this.as_mut_ptr()).7) as _ },
-                8 => unsafe { addr_of_mut!((*this.as_mut_ptr()).8) as _ },
-                9 => unsafe { addr_of_mut!((*this.as_mut_ptr()).9) as _ },
-                10 => unsafe { addr_of_mut!((*this.as_mut_ptr()).10) as _ },
-                11 => unsafe { addr_of_mut!((*this.as_mut_ptr()).11) as _ },
-                _ => null_mut(),
-            }
-        }
-    }
+    impl_compound_for_tuple!(2; 0: A, 1: B);
+    impl_compound_for_tuple!(3; 0: A, 1: B, 2: C);
+    impl_compound_for_tuple!(4; 0: A, 1: B, 2: C, 3: D);
+    impl_compound_for_tuple!(5; 0: A, 1: B, 2: C, 3: D, 4: E);
+    impl_compound_for_tuple!(6; 0: A, 1: B, 2: C, 3: D, 4: E, 5: F);
+    impl_compound_for_tuple!(7; 0: A, 1: B, 2: C, 3: D, 4: E, 5: F, 6: G);
+    impl_compound_for_tuple!(8; 0: A, 1: B, 2: C, 3: D, 4: E, 5: F, 6: G, 7: H);
+    impl_compound_for_tuple!(9; 0: A, 1: B, 2: C, 3: D, 4: E, 5: F, 6: G, 7: H, 8: I);
+    impl_compound_for_tuple!(10; 0: A, 1: B, 2: C, 3: D, 4: E, 5: F, 6: G, 7: H, 8: I, 9: J);
+    impl_compound_for_tuple!(11; 0: A, 1: B, 2: C, 3: D, 4: E, 5: F, 6: G, 7: H, 8: I, 9: J, 10: K);
+    impl_compound_for_tuple!(12; 0: A, 1: B, 2: C, 3: D, 4: E, 5: F, 6: G, 7: H, 8: I, 9: J, 10: K, 11: L);
+
     impl<T, const N: usize> Compound for [T; N] {
         const CAPACITY: usize = N;
         fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
@@ -387,160 +120,39 @@ pub trait Compound8: Compound {
     type T7;
 }
 
-impl<A, B> Compound8 for (A, B) {
-    type T0 = A;
-    type T1 = B;
-    type T2 = ();
-    type T3 = ();
-    type T4 = ();
-    type T5 = ();
-    type T6 = ();
-    type T7 = ();
+macro_rules! impl_compound_for_tuple {
+    ($traitname:ident : $($assoc:ident = $arg:ident),* ; $($empty_assoc:ident),*) => {
+        impl<$($arg),*> $traitname for ($($arg),*) {
+            $(type $assoc = $arg;)*
+            $(type $empty_assoc = ();)*
+        }
+    };
 }
 
-impl<A, B, C> Compound8 for (A, B, C) {
-    type T0 = A;
-    type T1 = B;
-    type T2 = C;
-    type T3 = ();
-    type T4 = ();
-    type T5 = ();
-    type T6 = ();
-    type T7 = ();
+impl_compound_for_tuple!(Compound8 : T0 = A, T1 = B; T2, T3, T4, T5, T6, T7);
+impl_compound_for_tuple!(Compound8 : T0 = A, T1 = B, T2 = C; T3, T4, T5, T6, T7);
+impl_compound_for_tuple!(Compound8 : T0 = A, T1 = B, T2 = C, T3 = D; T4, T5, T6, T7);
+impl_compound_for_tuple!(Compound8 : T0 = A, T1 = B, T2 = C, T3 = D, T4 = E; T5, T6, T7);
+impl_compound_for_tuple!(Compound8 : T0 = A, T1 = B, T2 = C, T3 = D, T4 = E, T5 = F; T6, T7);
+impl_compound_for_tuple!(Compound8 : T0 = A, T1 = B, T2 = C, T3 = D, T4 = E, T5 = F, T6 = G; T7);
+impl_compound_for_tuple!(Compound8 : T0 = A, T1 = B, T2 = C, T3 = D, T4 = E, T5 = F, T6 = G, T7 = H;);
+
+macro_rules! impl_compound_for_array {
+    ($traitname:ident [$cap:literal] : $($assoc:ident),* ; $($empty_assoc:ident),*) => {
+        impl<T> $traitname for [T; $cap] {
+            $(type $assoc = T;)*
+            $(type $empty_assoc = ();)*
+        }
+    }
 }
 
-impl<A, B, C, D> Compound8 for (A, B, C, D) {
-    type T0 = A;
-    type T1 = B;
-    type T2 = C;
-    type T3 = D;
-    type T4 = ();
-    type T5 = ();
-    type T6 = ();
-    type T7 = ();
-}
-
-impl<A, B, C, D, E> Compound8 for (A, B, C, D, E) {
-    type T0 = A;
-    type T1 = B;
-    type T2 = C;
-    type T3 = D;
-    type T4 = E;
-    type T5 = ();
-    type T6 = ();
-    type T7 = ();
-}
-
-impl<A, B, C, D, E, F> Compound8 for (A, B, C, D, E, F) {
-    type T0 = A;
-    type T1 = B;
-    type T2 = C;
-    type T3 = D;
-    type T4 = E;
-    type T5 = F;
-    type T6 = ();
-    type T7 = ();
-}
-
-impl<A, B, C, D, E, F, G> Compound8 for (A, B, C, D, E, F, G) {
-    type T0 = A;
-    type T1 = B;
-    type T2 = C;
-    type T3 = D;
-    type T4 = E;
-    type T5 = F;
-    type T6 = G;
-    type T7 = ();
-}
-
-impl<A, B, C, D, E, F, G, H> Compound8 for (A, B, C, D, E, F, G, H) {
-    type T0 = A;
-    type T1 = B;
-    type T2 = C;
-    type T3 = D;
-    type T4 = E;
-    type T5 = F;
-    type T6 = G;
-    type T7 = H;
-}
-
-impl<T> Compound8 for [T; 2] {
-    type T0 = T;
-    type T1 = T;
-    type T2 = ();
-    type T3 = ();
-    type T4 = ();
-    type T5 = ();
-    type T6 = ();
-    type T7 = ();
-}
-
-impl<T> Compound8 for [T; 3] {
-    type T0 = T;
-    type T1 = T;
-    type T2 = T;
-    type T3 = ();
-    type T4 = ();
-    type T5 = ();
-    type T6 = ();
-    type T7 = ();
-}
-
-impl<T> Compound8 for [T; 4] {
-    type T0 = T;
-    type T1 = T;
-    type T2 = T;
-    type T3 = T;
-    type T4 = ();
-    type T5 = ();
-    type T6 = ();
-    type T7 = ();
-}
-
-impl<T> Compound8 for [T; 5] {
-    type T0 = T;
-    type T1 = T;
-    type T2 = T;
-    type T3 = T;
-    type T4 = T;
-    type T5 = ();
-    type T6 = ();
-    type T7 = ();
-}
-
-impl<T> Compound8 for [T; 6] {
-    type T0 = T;
-    type T1 = T;
-    type T2 = T;
-    type T3 = T;
-    type T4 = T;
-    type T5 = T;
-    type T6 = ();
-    type T7 = ();
-}
-
-impl<T> Compound8 for [T; 7] {
-    type T0 = T;
-    type T1 = T;
-    type T2 = T;
-    type T3 = T;
-    type T4 = T;
-    type T5 = T;
-    type T6 = T;
-    type T7 = ();
-}
-
-impl<T> Compound8 for [T; 8] {
-    type T0 = T;
-    type T1 = T;
-    type T2 = T;
-    type T3 = T;
-    type T4 = T;
-    type T5 = T;
-    type T6 = T;
-    type T7 = T;
-}
-
+impl_compound_for_array!(Compound8 [2] : T0, T1; T2, T3, T4, T5, T6, T7);
+impl_compound_for_array!(Compound8 [3] : T0, T1, T2; T3, T4, T5, T6, T7);
+impl_compound_for_array!(Compound8 [4] : T0, T1, T2, T3; T4, T5, T6, T7);
+impl_compound_for_array!(Compound8 [5] : T0, T1, T2, T3, T4; T5, T6, T7);
+impl_compound_for_array!(Compound8 [6] : T0, T1, T2, T3, T4, T5; T6, T7);
+impl_compound_for_array!(Compound8 [7] : T0, T1, T2, T3, T4, T5, T6; T7);
+impl_compound_for_array!(Compound8 [8] : T0, T1, T2, T3, T4, T5, T6, T7;);
 
 /// Groups of up to sixteen [`Option`](core::option::Option).
 /// Can be packed into an [`OptionGroup16`] or larger.
@@ -586,81 +198,19 @@ where
     type TF = ();
 }
 
-impl<A, B, C, D, E, F, G, H, I> Compound16 for (A, B, C, D, E, F, G, H, I) {
-    type T0 = A;
-    type T1 = B;
-    type T2 = C;
-    type T3 = D;
-    type T4 = E;
-    type T5 = F;
-    type T6 = G;
-    type T7 = H;
-    type T8 = I;
-    type T9 = ();
-    type TA = ();
-    type TB = ();
-    type TC = ();
-    type TD = ();
-    type TE = ();
-    type TF = ();
-}
+impl_compound_for_tuple!(Compound16 : T0 = A, T1 = B, T2 = C, T3 = D, T4 = E, T5 = F, T6 = G, T7 = H, T8 = I; T9, TA, TB, TC, TD, TE, TF);
+impl_compound_for_tuple!(Compound16 : T0 = A, T1 = B, T2 = C, T3 = D, T4 = E, T5 = F, T6 = G, T7 = H, T8 = I, T9 = J; TA, TB, TC, TD, TE, TF);
+impl_compound_for_tuple!(Compound16 : T0 = A, T1 = B, T2 = C, T3 = D, T4 = E, T5 = F, T6 = G, T7 = H, T8 = I, T9 = J, TA = K; TB, TC, TD, TE, TF);
+impl_compound_for_tuple!(Compound16 : T0 = A, T1 = B, T2 = C, T3 = D, T4 = E, T5 = F, T6 = G, T7 = H, T8 = I, T9 = J, TA = K, TB = L; TC, TD, TE, TF);
 
-impl<A, B, C, D, E, F, G, H, I, J> Compound16 for (A, B, C, D, E, F, G, H, I, J) {
-    type T0 = A;
-    type T1 = B;
-    type T2 = C;
-    type T3 = D;
-    type T4 = E;
-    type T5 = F;
-    type T6 = G;
-    type T7 = H;
-    type T8 = I;
-    type T9 = J;
-    type TA = ();
-    type TB = ();
-    type TC = ();
-    type TD = ();
-    type TE = ();
-    type TF = ();
-}
-
-impl<A, B, C, D, E, F, G, H, I, J, K> Compound16 for (A, B, C, D, E, F, G, H, I, J, K) {
-    type T0 = A;
-    type T1 = B;
-    type T2 = C;
-    type T3 = D;
-    type T4 = E;
-    type T5 = F;
-    type T6 = G;
-    type T7 = H;
-    type T8 = I;
-    type T9 = J;
-    type TA = K;
-    type TB = ();
-    type TC = ();
-    type TD = ();
-    type TE = ();
-    type TF = ();
-}
-
-impl<A, B, C, D, E, F, G, H, I, J, K, L> Compound16 for (A, B, C, D, E, F, G, H, I, J, K, L) {
-    type T0 = A;
-    type T1 = B;
-    type T2 = C;
-    type T3 = D;
-    type T4 = E;
-    type T5 = F;
-    type T6 = G;
-    type T7 = H;
-    type T8 = I;
-    type T9 = J;
-    type TA = K;
-    type TB = L;
-    type TC = ();
-    type TD = ();
-    type TE = ();
-    type TF = ();
-}
+impl_compound_for_array!(Compound16 [9] : T0, T1, T2, T3, T4, T5, T6, T7, T8; T9, TA, TB, TC, TD, TE, TF);
+impl_compound_for_array!(Compound16 [10] : T0, T1, T2, T3, T4, T5, T6, T7, T8, T9; TA, TB, TC, TD, TE, TF);
+impl_compound_for_array!(Compound16 [11] : T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA; TB, TC, TD, TE, TF);
+impl_compound_for_array!(Compound16 [12] : T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB; TC, TD, TE, TF);
+impl_compound_for_array!(Compound16 [13] : T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB, TC; TD, TE, TF);
+impl_compound_for_array!(Compound16 [14] : T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB, TC, TD; TE, TF);
+impl_compound_for_array!(Compound16 [15] : T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB, TC, TD, TE; TF);
+impl_compound_for_array!(Compound16 [16] : T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB, TC, TD, TE, TF;);
 
 /// A group of up to eight [`Option`](core::option::Option)s, with the
 /// discriminants packed into a single `u8`.
