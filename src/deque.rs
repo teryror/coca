@@ -213,7 +213,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     #[inline]
     pub fn get(&self, index: I) -> Option<&T> {
         let index = self.physical_index(index)?;
-        unsafe { Some(ptr_at_index(&self.buf, index).as_ref().unwrap()) }
+        unsafe { Some(&*ptr_at_index(&self.buf, index)) }
     }
 
     /// Returns a mutable reference to the element at the given index, or [`None`]
@@ -223,7 +223,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     #[inline]
     pub fn get_mut(&mut self, index: I) -> Option<&mut T> {
         let index = self.physical_index(index)?;
-        unsafe { Some(mut_ptr_at_index(&mut self.buf, index).as_mut().unwrap()) }
+        unsafe { Some(&mut *mut_ptr_at_index(&mut self.buf, index)) }
     }
 
     /// Returns a reference to the front element, or [`None`] if the `Deque` is empty.
@@ -813,7 +813,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
         for i in 0..old_len {
             let idx = i % capacity;
             let src = ptr_at_index(&self.buf, idx);
-            let retain = f(unsafe { src.as_ref().unwrap() });
+            let retain = f(unsafe { &*src });
 
             if retain {
                 let dst = mut_ptr_at_index(&mut self.buf, new_len % capacity);

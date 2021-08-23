@@ -231,7 +231,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
             return None;
         }
 
-        unsafe { Some(ptr_at_index(&self.buf, index).as_ref().unwrap()) }
+        unsafe { Some(&*ptr_at_index(&self.buf, index)) }
     }
 
     /// Returns a mutable reference to the element at the specified index, or
@@ -243,7 +243,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
             return None;
         }
 
-        unsafe { Some(mut_ptr_at_index(&mut self.buf, index).as_mut().unwrap()) }
+        unsafe { Some(&mut *mut_ptr_at_index(&mut self.buf, index)) }
     }
 
     /// Appends an element to the back of the vector, returning `Err(value)` if

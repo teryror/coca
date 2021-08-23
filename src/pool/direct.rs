@@ -236,7 +236,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
             }
 
             unsafe {
-                let item = (slot_ptr.add(index).cast::<T>()).as_mut().unwrap();
+                let item = &mut *(slot_ptr.add(index).cast::<T>());
                 result_ptr.add(i).write(item);
             }
         }

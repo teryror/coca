@@ -403,6 +403,15 @@ impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple5, 5> get_5, get_mut_5, take
 impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple6, 6> get_6, get_mut_6, take_6, replace_6);
 impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple7, 7> get_7, get_mut_7, take_7, replace_7);
 
+#[cold]
+#[inline(never)]
+fn index_out_of_bounds(index: usize, len: usize) -> ! {
+    panic!(
+        "idx (is {}) should be <= N (is {})",
+        index, len
+    );
+}
+
 macro_rules! impl_array_methods {
     ($typename:ident, $traitname:ident) => {
         impl<T, const N: usize> $typename<[T; N]> where [T; N]: $traitname {
@@ -419,9 +428,12 @@ macro_rules! impl_array_methods {
             }
 
             /// Equivalent to [`array_of_options[idx].as_ref()`](core::option::Option::as_ref).
+            /// 
+            /// # Panics
+            /// Panics if `idx >= N`.
             pub fn get(&self, idx: usize) -> Option<&T> {
                 if idx >= N {
-                    panic!("Index out of bounds!");
+                    index_out_of_bounds(idx, N);
                 }
 
                 if self.flags & (1 << idx) == 0 {
@@ -434,9 +446,12 @@ macro_rules! impl_array_methods {
             }
 
             /// Equivalent to [`array_of_options[idx].take()`](core::option::Option::take).
+            /// 
+            /// # Panics
+            /// Panics if `idx >= N`.
             pub fn take(&mut self, idx: usize) -> Option<T> {
                 if idx >= N {
-                    panic!("Index out of bounds!");
+                    index_out_of_bounds(idx, N);
                 }
 
                 if self.is_some(idx as u32) {
@@ -450,6 +465,9 @@ macro_rules! impl_array_methods {
             }
 
             /// Equivalent to [`array_of_options[idx].replace(value)`](core::option::Option::replace).
+            /// 
+            /// # Panics
+            /// Panics if `idx >= N`.
             pub fn replace(&mut self, idx: usize, value: T) -> Option<T> {
                 let result = self.take(idx);
                 self.set_flag(idx as u32);

@@ -91,9 +91,12 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> PeekMut<'_, T, S, I> {
     /// Removes the peeked value from the heap and returns it.
     pub fn pop(this: PeekMut<'_, T, S, I>) -> T {
         debug_assert!(!this.heap.is_empty());
-        let value = this.heap.pop().unwrap();
-        core::mem::forget(this);
-        value
+        if let Some(value) = this.heap.pop() {
+            core::mem::forget(this);
+            value
+        } else {
+            unreachable!()
+        }
     }
 }
 
