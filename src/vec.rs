@@ -857,7 +857,7 @@ impl<T: PartialOrd, S: Storage<ArrayLike<T>>, I: Capacity> PartialOrd for Vec<T,
 
 impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Ord for Vec<T, S, I> {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.as_slice().cmp(&other.as_slice())
+        self.as_slice().cmp(other.as_slice())
     }
 }
 
@@ -1284,7 +1284,7 @@ impl<T: Clone, I: Capacity, const C: usize> From<&mut [T]> for Vec<T, InlineStor
     }
 }
 
-impl<V: PartialEq<T>, T, S, I, const N: usize> PartialEq<Vec<T, S, I>> for [V; N]
+impl<V, T, S, I, const N: usize> PartialEq<Vec<T, S, I>> for [V; N]
 where
     V: PartialEq<T>,
     S: Storage<ArrayLike<T>>,
