@@ -349,6 +349,26 @@ pub struct Arena<'src> {
     src: PhantomData<&'src mut ()>, // Ensures you can't allocate out of the source arena while this one is still alive
 }
 
+/// Computes the offset that needs to be applied to `ptr` in order to make it
+/// aligned to `layout.align()`.
+/// 
+/// While `core::ptr::align_offset` cannot fail for our use case in practice,
+/// "it is permissible for the implementation to *always* return `usize::MAX`"
+/// (i.e. fail).
+/// 
+/// This function is less generically useful, but it *cannot* fail.
+fn align_offset(ptr: *mut MaybeUninit<u8>, layout: &Layout) -> usize {
+    let p = ptr as usize;
+
+    let align = layout.align();
+    let a = align.wrapping_sub(1);
+
+    let result = (p.wrapping_add(a) & 0_usize.wrapping_sub(align)).wrapping_sub(p);
+    debug_assert_eq!(result, ptr.align_offset(align));
+
+    result
+}
+
 impl<'src> From<&'src mut [MaybeUninit<u8>]> for Arena<'src> {
     /// Constructs a new `Arena` allocating out of `buf`.
     ///
@@ -376,18 +396,18 @@ impl<'src> From<&'src mut [MaybeUninit<u8>]> for Arena<'src> {
             use core::mem::size_of;
 
             let layout = Layout::new::<ProfileMetaData>();
-            let align_offset = end.align_offset(layout.align());
-            assert!(align_offset < size_of::<usize>());
+            let offset = align_offset(end, &layout);
+            assert!(offset < size_of::<usize>());
 
             let end_of_meta = end
-                .wrapping_add(align_offset)
+                .wrapping_add(offset)
                 .wrapping_sub(size_of::<usize>());
             let new_end = end_of_meta.wrapping_sub(layout.size());
             assert!(start <= new_end);
             assert!(new_end < end_of_meta);
             assert!(end_of_meta <= end);
 
-            debug_assert_eq!(new_end.align_offset(layout.align()), 0);
+            debug_assert_eq!(align_offset(new_end, &layout), 0);
             let meta = new_end as *mut ProfileMetaData;
             unsafe {
                 meta.write(ProfileMetaData {
@@ -458,13 +478,7 @@ impl<'src> Arena<'src> {
 
     #[inline]
     fn try_alloc_raw(&mut self, alloc_layout: &Layout) -> *mut MaybeUninit<u8> {
-        let align_offset = self.cursor.align_offset(alloc_layout.align());
-
-        // `ptr::align_offset()` returns `usize::MAX` when aligning the pointer
-        // isn't possible, which shouldn't ever happen with a `*u8`, BUT:
-        // the implementation is free to _always_ return `usize::MAX`, so
-        // we'll leave getting rid of this check to the optimizer
-        assert!(align_offset != usize::MAX);
+        let align_offset = align_offset(self.cursor, alloc_layout);
 
         #[cfg(feature = "profile")]
         {
@@ -1085,8 +1099,7 @@ impl<'src> Arena<'src> {
         I: IntoIterator<Item = T>,
     {
         let alloc_layout = Layout::new::<T>();
-        let align_offset = self.cursor.align_offset(alloc_layout.align());
-        assert!(align_offset != usize::MAX);
+        let align_offset = align_offset(self.cursor, &alloc_layout);
 
         #[cfg(feature = "profile")]
         {
@@ -1220,8 +1233,8 @@ impl Arena<'_> {
     #[inline]
     #[allow(clippy::cast_ptr_alignment)]
     pub fn utilization(&self) -> UtilizationProfile {
-        let expected_alignment = Layout::new::<ProfileMetaData>().align();
-        debug_assert_eq!(self.end.align_offset(expected_alignment), 0);
+        let layout = Layout::new::<ProfileMetaData>();
+        debug_assert_eq!(align_offset(self.end, &layout), 0);
         let &ProfileMetaData {
             initial_cursor_pos,
             peak_cursor_pos,
@@ -1238,8 +1251,8 @@ impl Arena<'_> {
     #[inline]
     #[allow(clippy::cast_ptr_alignment)]
     fn profile_meta_data_mut(&mut self) -> &mut ProfileMetaData {
-        let expected_alignment = Layout::new::<ProfileMetaData>().align();
-        debug_assert_eq!(self.end.align_offset(expected_alignment), 0);
+        let layout = Layout::new::<ProfileMetaData>();
+        debug_assert_eq!(align_offset(self.end, &layout), 0);
         unsafe { (self.end as *mut ProfileMetaData).as_mut().unwrap() }
     }
 }
