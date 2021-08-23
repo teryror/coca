@@ -19,11 +19,14 @@
 - Experimental `object` module for owned, allocation-free trait objects
 - Add support for multiple type declarations in a single `index_type!` invocation
 - Implement `Vec::drain_filter` and `Vec::drain_filter_range`
+- New `option_group` module for bit-packing discriminants of multiple optional values
 
 ## Bugfixes
 
 - Leaking a `vec::Drain` or `deque::Drain` no longer leaves the underlying data structure
   in an invalid state, potentially causing undefined behaviour
+- Failing to allocate an array from an `Arena` no longer creates a null reference to an
+  empty slice, causing undefined behaviour
 
 # 0.2.0 (2020-12-28)
 
