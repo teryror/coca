@@ -732,11 +732,7 @@ impl<'src> Arena<'src> {
         &mut self,
         count: usize,
     ) -> Option<Box<'src, [MaybeUninit<T>]>> {
-        let ptr = self.try_array_raw(count);
-        if ptr.is_null() {
-            return None;
-        }
-
+        let ptr = self.try_array_raw(count)?;
         Some(Box {
             ptr: unsafe { NonNull::new_unchecked(ptr) },
             val: PhantomData,
@@ -817,23 +813,23 @@ impl<'src> Arena<'src> {
     }
 
     #[inline]
-    fn try_array_raw<T>(&mut self, count: usize) -> *mut [MaybeUninit<T>]
+    fn try_array_raw<T>(&mut self, count: usize) -> Option<*mut [MaybeUninit<T>]>
     where
         T: Sized,
     {
         let alloc_layout = match Layout::array::<T>(count) {
             Ok(layout) => layout,
             Err(_) => {
-                return slice_from_raw_parts_mut(null_mut(), 0);
+                return None;
             }
         };
 
         let ptr = self.try_alloc_raw(&alloc_layout) as *mut MaybeUninit<T>;
         if ptr.is_null() {
-            return slice_from_raw_parts_mut(null_mut(), 0);
+            return None;
         }
 
-        slice_from_raw_parts_mut(ptr, count)
+        Some(slice_from_raw_parts_mut(ptr, count))
     }
 
     /// Allocates memory in the arena and then places `count` copies of `x`
