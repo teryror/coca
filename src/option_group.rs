@@ -43,6 +43,7 @@
 //! // todo!();
 //! ```
 
+// TODO: Reconsider how these traits and bounds should work - maybe we can cut down on redundant method implementations?
 // TODO: get rid of clippy warnings
 // TODO: restructure this file, use more macros to cut down on redundant code
 // TODO: for the array versions, implement IntoIter and Index
@@ -58,26 +59,36 @@ mod private {
     use core::ptr::{addr_of, addr_of_mut, null, null_mut};
 
     pub trait Compound: Sized {
-        const CAPACITY: usize;
         fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const ();
         fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut ();
+        unsafe fn drop_all_in_place(this: &mut MaybeUninit<Self>, flags: u64);
     }
 
     macro_rules! impl_compound_for_tuple {
         ($cap:literal ; $($idx:tt : $t:ident),*) => {
             impl<$($t),*> Compound for ($($t),*) {
-                const CAPACITY: usize = $cap;
+                #[inline(always)]
                 fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
                     match idx {
                         $($idx => unsafe { addr_of!((*this.as_ptr()).$idx) as _ }),*
                         _ => null(),
                     }
                 }
+                #[inline(always)]
                 fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
                     match idx {
                         $($idx => unsafe { addr_of_mut!((*this.as_mut_ptr()).$idx) as _ }),*
                         _ => null_mut(),
                     }
+                }
+                #[inline(always)]
+                #[allow(unused_assignments)]
+                unsafe fn drop_all_in_place(this: &mut MaybeUninit<Self>, flags: u64) {
+                    let mut mask = 1;
+                    $(
+                        if flags & mask != 0 { (Self::get_mut_ptr(this, $idx) as *mut $t).drop_in_place(); }
+                        mask <<= 1;
+                    )*
                 }
             }
         }
@@ -96,12 +107,19 @@ mod private {
     impl_compound_for_tuple!(12; 0: A, 1: B, 2: C, 3: D, 4: E, 5: F, 6: G, 7: H, 8: I, 9: J, 10: K, 11: L);
 
     impl<T, const N: usize> Compound for [T; N] {
-        const CAPACITY: usize = N;
+        #[inline(always)]
         fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
             this.as_ptr().wrapping_add(idx) as _
         }
+        #[inline(always)]
         fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
             this.as_mut_ptr().wrapping_add(idx) as _
+        }
+        #[inline(always)]
+        unsafe fn drop_all_in_place(this: &mut MaybeUninit<Self>, flags: u64) {
+            for idx in 0..N {
+                if flags & (1 << idx) != 0 { Self::get_mut_ptr(this, idx).drop_in_place(); }
+            }
         }
     }
 }
@@ -277,16 +295,7 @@ where
     T: Compound8,
 {
     fn drop(&mut self) {
-        unsafe {
-            if self.is_some(0) { (T::get_mut_ptr(&mut self.value, 0) as *mut T::T0).drop_in_place() }
-            if self.is_some(1) { (T::get_mut_ptr(&mut self.value, 1) as *mut T::T0).drop_in_place() }
-            if self.is_some(2) { (T::get_mut_ptr(&mut self.value, 2) as *mut T::T0).drop_in_place() }
-            if self.is_some(3) { (T::get_mut_ptr(&mut self.value, 3) as *mut T::T0).drop_in_place() }
-            if self.is_some(4) { (T::get_mut_ptr(&mut self.value, 4) as *mut T::T0).drop_in_place() }
-            if self.is_some(5) { (T::get_mut_ptr(&mut self.value, 5) as *mut T::T0).drop_in_place() }
-            if self.is_some(6) { (T::get_mut_ptr(&mut self.value, 6) as *mut T::T0).drop_in_place() }
-            if self.is_some(7) { (T::get_mut_ptr(&mut self.value, 7) as *mut T::T0).drop_in_place() }
-        }
+        unsafe { T::drop_all_in_place(&mut self.value, self.flags as u64); }
     }
 }
 
@@ -498,7 +507,7 @@ where
     T: Compound16,
 {
     fn drop(&mut self) {
-        todo!()
+        unsafe { T::drop_all_in_place(&mut self.value, self.flags as u64); }
     }
 }
 
