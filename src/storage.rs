@@ -55,6 +55,7 @@ pub(crate) fn normalize_range<I: Capacity, R: RangeBounds<I>>(range: R, max_end:
     Range { start, end }
 }
 
+#[allow(clippy::cast_possible_truncation)]
 unsafe impl Capacity for u8 {
     const MAX_REPRESENTABLE: usize = 0xFF;
     #[inline]
@@ -69,6 +70,7 @@ unsafe impl Capacity for u8 {
     }
 }
 
+#[allow(clippy::cast_possible_truncation)]
 unsafe impl Capacity for u16 {
     const MAX_REPRESENTABLE: usize = 0xFFFF;
     #[inline]
@@ -83,6 +85,7 @@ unsafe impl Capacity for u16 {
     }
 }
 
+#[allow(clippy::cast_possible_truncation)]
 unsafe impl Capacity for u32 {
     const MAX_REPRESENTABLE: usize = 0xFFFF_FFFF;
     #[inline]
@@ -98,6 +101,7 @@ unsafe impl Capacity for u32 {
     }
 }
 
+#[allow(clippy::cast_possible_truncation)]
 unsafe impl Capacity for u64 {
     const MAX_REPRESENTABLE: usize = usize::max_value();
     #[inline]
