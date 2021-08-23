@@ -43,7 +43,6 @@
 //! // todo!();
 //! ```
 
-// TODO: Reconsider how these traits and bounds should work - maybe we can cut down on redundant method implementations?
 // TODO: get rid of clippy warnings
 // TODO: restructure this file, use more macros to cut down on redundant code
 // TODO: for the array versions, implement IntoIter and Index
@@ -124,111 +123,147 @@ mod private {
     }
 }
 
-/// Groups of up to eight [`Option`](core::option::Option).
-/// Can be packed into an [`OptionGroup8`] or larger.
-#[allow(missing_docs)]
-pub trait Compound8: Compound {
-    type T0;
-    type T1;
-    type T2;
-    type T3;
-    type T4;
-    type T5;
-    type T6;
-    type T7;
-}
-
-macro_rules! impl_compound_for_tuple {
-    ($traitname:ident : $($assoc:ident = $arg:ident),* ; $($empty_assoc:ident),*) => {
-        impl<$($arg),*> $traitname for ($($arg),*) {
-            $(type $assoc = $arg;)*
-            $(type $empty_assoc = ();)*
+macro_rules! define_tuple_trait {
+    ($num:literal : $traitname:ident < $t:ident > : $supertrait:ident) => {
+        #[doc = core::concat!("Tuples with more than ", $num, " element(s).")]
+        pub trait $traitname : $supertrait {
+            #[doc = core::concat!("The type of the element at position ", $num, ".")]
+            type $t;
         }
     };
 }
 
-impl_compound_for_tuple!(Compound8 : T0 = A, T1 = B; T2, T3, T4, T5, T6, T7);
-impl_compound_for_tuple!(Compound8 : T0 = A, T1 = B, T2 = C; T3, T4, T5, T6, T7);
-impl_compound_for_tuple!(Compound8 : T0 = A, T1 = B, T2 = C, T3 = D; T4, T5, T6, T7);
-impl_compound_for_tuple!(Compound8 : T0 = A, T1 = B, T2 = C, T3 = D, T4 = E; T5, T6, T7);
-impl_compound_for_tuple!(Compound8 : T0 = A, T1 = B, T2 = C, T3 = D, T4 = E, T5 = F; T6, T7);
-impl_compound_for_tuple!(Compound8 : T0 = A, T1 = B, T2 = C, T3 = D, T4 = E, T5 = F, T6 = G; T7);
-impl_compound_for_tuple!(Compound8 : T0 = A, T1 = B, T2 = C, T3 = D, T4 = E, T5 = F, T6 = G, T7 = H;);
+define_tuple_trait!(0 : Tuple0<T>: Compound);
+impl<A, B> Tuple0 for (A, B) { type T = A; }
+impl<A, B, C> Tuple0 for (A, B, C) { type T = A; }
+impl<A, B, C, D> Tuple0 for (A, B, C, D) { type T = A; }
+impl<A, B, C, D, E> Tuple0 for (A, B, C, D, E) { type T = A; }
+impl<A, B, C, D, E, F> Tuple0 for (A, B, C, D, E, F) { type T = A; }
+impl<A, B, C, D, E, F, G> Tuple0 for (A, B, C, D, E, F, G) { type T = A; }
+impl<A, B, C, D, E, F, G, H> Tuple0 for (A, B, C, D, E, F, G, H) { type T = A; }
+impl<A, B, C, D, E, F, G, H, I> Tuple0 for (A, B, C, D, E, F, G, H, I) { type T = A; }
+impl<A, B, C, D, E, F, G, H, I, J> Tuple0 for (A, B, C, D, E, F, G, H, I, J) { type T = A; }
+impl<A, B, C, D, E, F, G, H, I, J, K> Tuple0 for (A, B, C, D, E, F, G, H, I, J, K) { type T = A; }
+impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple0 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = A; }
 
-macro_rules! impl_compound_for_array {
-    ($traitname:ident [$cap:literal] : $($assoc:ident),* ; $($empty_assoc:ident),*) => {
-        impl<T> $traitname for [T; $cap] {
-            $(type $assoc = T;)*
-            $(type $empty_assoc = ();)*
-        }
+define_tuple_trait!(1 : Tuple1<T>: Tuple0);
+impl<A, B> Tuple1 for (A, B) { type T = B; }
+impl<A, B, C> Tuple1 for (A, B, C) { type T = B; }
+impl<A, B, C, D> Tuple1 for (A, B, C, D) { type T = B; }
+impl<A, B, C, D, E> Tuple1 for (A, B, C, D, E) { type T = B; }
+impl<A, B, C, D, E, F> Tuple1 for (A, B, C, D, E, F) { type T = B; }
+impl<A, B, C, D, E, F, G> Tuple1 for (A, B, C, D, E, F, G) { type T = B; }
+impl<A, B, C, D, E, F, G, H> Tuple1 for (A, B, C, D, E, F, G, H) { type T = B; }
+impl<A, B, C, D, E, F, G, H, I> Tuple1 for (A, B, C, D, E, F, G, H, I) { type T = B; }
+impl<A, B, C, D, E, F, G, H, I, J> Tuple1 for (A, B, C, D, E, F, G, H, I, J) { type T = B; }
+impl<A, B, C, D, E, F, G, H, I, J, K> Tuple1 for (A, B, C, D, E, F, G, H, I, J, K) { type T = B; }
+impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple1 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = B; }
+
+define_tuple_trait!(2 : Tuple2<T>: Tuple1);
+impl<A, B, C> Tuple2 for (A, B, C) { type T = C; }
+impl<A, B, C, D> Tuple2 for (A, B, C, D) { type T = C; }
+impl<A, B, C, D, E> Tuple2 for (A, B, C, D, E) { type T = C; }
+impl<A, B, C, D, E, F> Tuple2 for (A, B, C, D, E, F) { type T = C; }
+impl<A, B, C, D, E, F, G> Tuple2 for (A, B, C, D, E, F, G) { type T = C; }
+impl<A, B, C, D, E, F, G, H> Tuple2 for (A, B, C, D, E, F, G, H) { type T = C; }
+impl<A, B, C, D, E, F, G, H, I> Tuple2 for (A, B, C, D, E, F, G, H, I) { type T = C; }
+impl<A, B, C, D, E, F, G, H, I, J> Tuple2 for (A, B, C, D, E, F, G, H, I, J) { type T = C; }
+impl<A, B, C, D, E, F, G, H, I, J, K> Tuple2 for (A, B, C, D, E, F, G, H, I, J, K) { type T = C; }
+impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple2 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = C; }
+
+define_tuple_trait!(3 : Tuple3<T>: Tuple2);
+impl<A, B, C, D> Tuple3 for (A, B, C, D) { type T = D; }
+impl<A, B, C, D, E> Tuple3 for (A, B, C, D, E) { type T = D; }
+impl<A, B, C, D, E, F> Tuple3 for (A, B, C, D, E, F) { type T = D; }
+impl<A, B, C, D, E, F, G> Tuple3 for (A, B, C, D, E, F, G) { type T = D; }
+impl<A, B, C, D, E, F, G, H> Tuple3 for (A, B, C, D, E, F, G, H) { type T = D; }
+impl<A, B, C, D, E, F, G, H, I> Tuple3 for (A, B, C, D, E, F, G, H, I) { type T = D; }
+impl<A, B, C, D, E, F, G, H, I, J> Tuple3 for (A, B, C, D, E, F, G, H, I, J) { type T = D; }
+impl<A, B, C, D, E, F, G, H, I, J, K> Tuple3 for (A, B, C, D, E, F, G, H, I, J, K) { type T = D; }
+impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple3 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = D; }
+
+define_tuple_trait!(4 : Tuple4<T>: Tuple3);
+impl<A, B, C, D, E> Tuple4 for (A, B, C, D, E) { type T = E; }
+impl<A, B, C, D, E, F> Tuple4 for (A, B, C, D, E, F) { type T = E; }
+impl<A, B, C, D, E, F, G> Tuple4 for (A, B, C, D, E, F, G) { type T = E; }
+impl<A, B, C, D, E, F, G, H> Tuple4 for (A, B, C, D, E, F, G, H) { type T = E; }
+impl<A, B, C, D, E, F, G, H, I> Tuple4 for (A, B, C, D, E, F, G, H, I) { type T = E; }
+impl<A, B, C, D, E, F, G, H, I, J> Tuple4 for (A, B, C, D, E, F, G, H, I, J) { type T = E; }
+impl<A, B, C, D, E, F, G, H, I, J, K> Tuple4 for (A, B, C, D, E, F, G, H, I, J, K) { type T = E; }
+impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple4 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = E; }
+
+define_tuple_trait!(5 : Tuple5<T>: Tuple4);
+impl<A, B, C, D, E, F> Tuple5 for (A, B, C, D, E, F) { type T = F; }
+impl<A, B, C, D, E, F, G> Tuple5 for (A, B, C, D, E, F, G) { type T = F; }
+impl<A, B, C, D, E, F, G, H> Tuple5 for (A, B, C, D, E, F, G, H) { type T = F; }
+impl<A, B, C, D, E, F, G, H, I> Tuple5 for (A, B, C, D, E, F, G, H, I) { type T = F; }
+impl<A, B, C, D, E, F, G, H, I, J> Tuple5 for (A, B, C, D, E, F, G, H, I, J) { type T = F; }
+impl<A, B, C, D, E, F, G, H, I, J, K> Tuple5 for (A, B, C, D, E, F, G, H, I, J, K) { type T = F; }
+impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple5 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = F; }
+
+define_tuple_trait!(6 : Tuple6<T>: Tuple5);
+impl<A, B, C, D, E, F, G> Tuple6 for (A, B, C, D, E, F, G) { type T = G; }
+impl<A, B, C, D, E, F, G, H> Tuple6 for (A, B, C, D, E, F, G, H) { type T = G; }
+impl<A, B, C, D, E, F, G, H, I> Tuple6 for (A, B, C, D, E, F, G, H, I) { type T = G; }
+impl<A, B, C, D, E, F, G, H, I, J> Tuple6 for (A, B, C, D, E, F, G, H, I, J) { type T = G; }
+impl<A, B, C, D, E, F, G, H, I, J, K> Tuple6 for (A, B, C, D, E, F, G, H, I, J, K) { type T = G; }
+impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple6 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = G; }
+
+define_tuple_trait!(7 : Tuple7<T>: Tuple6);
+impl<A, B, C, D, E, F, G, H> Tuple7 for (A, B, C, D, E, F, G, H) { type T = H; }
+impl<A, B, C, D, E, F, G, H, I> Tuple7 for (A, B, C, D, E, F, G, H, I) { type T = H; }
+impl<A, B, C, D, E, F, G, H, I, J> Tuple7 for (A, B, C, D, E, F, G, H, I, J) { type T = H; }
+impl<A, B, C, D, E, F, G, H, I, J, K> Tuple7 for (A, B, C, D, E, F, G, H, I, J, K) { type T = H; }
+impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple7 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = H; }
+
+define_tuple_trait!(8 : Tuple8<T>: Tuple7);
+impl<A, B, C, D, E, F, G, H, I> Tuple8 for (A, B, C, D, E, F, G, H, I) { type T = I; }
+impl<A, B, C, D, E, F, G, H, I, J> Tuple8 for (A, B, C, D, E, F, G, H, I, J) { type T = I; }
+impl<A, B, C, D, E, F, G, H, I, J, K> Tuple8 for (A, B, C, D, E, F, G, H, I, J, K) { type T = I; }
+impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple8 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = I; }
+
+define_tuple_trait!(9 : Tuple9<T>: Tuple8);
+impl<A, B, C, D, E, F, G, H, I, J> Tuple9 for (A, B, C, D, E, F, G, H, I, J) { type T = J; }
+impl<A, B, C, D, E, F, G, H, I, J, K> Tuple9 for (A, B, C, D, E, F, G, H, I, J, K) { type T = J; }
+impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple9 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = J; }
+
+define_tuple_trait!(10 : Tuple10<T>: Tuple9);
+impl<A, B, C, D, E, F, G, H, I, J, K> Tuple10 for (A, B, C, D, E, F, G, H, I, J, K) { type T = K; }
+impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple10 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = K; }
+
+define_tuple_trait!(11 : Tuple11<T>: Tuple10);
+impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple11 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = L; }
+
+/// Groups of up to eight values. Can be packed into an [`OptionGroup8`] or larger.
+pub trait Compound8: Compound {}
+impl<A, B> Compound8 for (A, B) {}
+impl<A, B, C> Compound8 for (A, B, C) {}
+impl<A, B, C, D> Compound8 for (A, B, C, D) {}
+impl<A, B, C, D, E> Compound8 for (A, B, C, D, E) {}
+impl<A, B, C, D, E, F> Compound8 for (A, B, C, D, E, F) {}
+impl<A, B, C, D, E, F, G> Compound8 for (A, B, C, D, E, F, G) {}
+impl<A, B, C, D, E, F, G, H> Compound8 for (A, B, C, D, E, F, G, H) {}
+
+macro_rules! impl_marker_trait_for_arrays {
+    ($traitname:ident for [$($cap:literal),*]) => {
+        $(impl<T> $traitname for [T; $cap] {})*
     }
 }
 
-impl_compound_for_array!(Compound8 [2] : T0, T1; T2, T3, T4, T5, T6, T7);
-impl_compound_for_array!(Compound8 [3] : T0, T1, T2; T3, T4, T5, T6, T7);
-impl_compound_for_array!(Compound8 [4] : T0, T1, T2, T3; T4, T5, T6, T7);
-impl_compound_for_array!(Compound8 [5] : T0, T1, T2, T3, T4; T5, T6, T7);
-impl_compound_for_array!(Compound8 [6] : T0, T1, T2, T3, T4, T5; T6, T7);
-impl_compound_for_array!(Compound8 [7] : T0, T1, T2, T3, T4, T5, T6; T7);
-impl_compound_for_array!(Compound8 [8] : T0, T1, T2, T3, T4, T5, T6, T7;);
+impl_marker_trait_for_arrays!(Compound8 for [2, 3, 4, 5, 6, 7, 8]);
 
-/// Groups of up to sixteen [`Option`](core::option::Option).
-/// Can be packed into an [`OptionGroup16`] or larger.
+/// Groups of up to sixteen values. Can be packed into an [`OptionGroup16`] or larger.
 #[allow(missing_docs)]
-pub trait Compound16: Compound {
-    type T0;
-    type T1;
-    type T2;
-    type T3;
-    type T4;
-    type T5;
-    type T6;
-    type T7;
-    type T8;
-    type T9;
-    type TA;
-    type TB;
-    type TC;
-    type TD;
-    type TE;
-    type TF;
-}
+pub trait Compound16: Compound {}
 
-impl<C> Compound16 for C
-where
-    C: Compound8,
-{
-    type T0 = C::T0;
-    type T1 = C::T1;
-    type T2 = C::T2;
-    type T3 = C::T3;
-    type T4 = C::T4;
-    type T5 = C::T5;
-    type T6 = C::T6;
-    type T7 = C::T7;
-    type T8 = ();
-    type T9 = ();
-    type TA = ();
-    type TB = ();
-    type TC = ();
-    type TD = ();
-    type TE = ();
-    type TF = ();
-}
+impl<C> Compound16 for C where C: Compound8 {}
 
-impl_compound_for_tuple!(Compound16 : T0 = A, T1 = B, T2 = C, T3 = D, T4 = E, T5 = F, T6 = G, T7 = H, T8 = I; T9, TA, TB, TC, TD, TE, TF);
-impl_compound_for_tuple!(Compound16 : T0 = A, T1 = B, T2 = C, T3 = D, T4 = E, T5 = F, T6 = G, T7 = H, T8 = I, T9 = J; TA, TB, TC, TD, TE, TF);
-impl_compound_for_tuple!(Compound16 : T0 = A, T1 = B, T2 = C, T3 = D, T4 = E, T5 = F, T6 = G, T7 = H, T8 = I, T9 = J, TA = K; TB, TC, TD, TE, TF);
-impl_compound_for_tuple!(Compound16 : T0 = A, T1 = B, T2 = C, T3 = D, T4 = E, T5 = F, T6 = G, T7 = H, T8 = I, T9 = J, TA = K, TB = L; TC, TD, TE, TF);
+impl<A, B, C, D, E, F, G, H, I> Compound16 for (A, B, C, D, E, F, G, H, I) {}
+impl<A, B, C, D, E, F, G, H, I, J> Compound16 for (A, B, C, D, E, F, G, H, I, J) {}
+impl<A, B, C, D, E, F, G, H, I, J, K> Compound16 for (A, B, C, D, E, F, G, H, I, J, K) {}
+impl<A, B, C, D, E, F, G, H, I, J, K, L> Compound16 for (A, B, C, D, E, F, G, H, I, J, K, L) {}
 
-impl_compound_for_array!(Compound16 [9] : T0, T1, T2, T3, T4, T5, T6, T7, T8; T9, TA, TB, TC, TD, TE, TF);
-impl_compound_for_array!(Compound16 [10] : T0, T1, T2, T3, T4, T5, T6, T7, T8, T9; TA, TB, TC, TD, TE, TF);
-impl_compound_for_array!(Compound16 [11] : T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA; TB, TC, TD, TE, TF);
-impl_compound_for_array!(Compound16 [12] : T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB; TC, TD, TE, TF);
-impl_compound_for_array!(Compound16 [13] : T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB, TC; TD, TE, TF);
-impl_compound_for_array!(Compound16 [14] : T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB, TC, TD; TE, TF);
-impl_compound_for_array!(Compound16 [15] : T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB, TC, TD, TE; TF);
-impl_compound_for_array!(Compound16 [16] : T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB, TC, TD, TE, TF;);
+impl_marker_trait_for_arrays!(Compound16 for [9, 10, 11, 12, 13, 14, 15, 16]);
 
 /// A group of up to eight [`Option`](core::option::Option)s, with the
 /// discriminants packed into a single `u8`.
@@ -299,105 +334,60 @@ where
     }
 }
 
-macro_rules! impl_field_access_methods {
-    ($generic:ty, $idx:literal, $t:ty, $get:ident, $get_mut:ident, $take:ident, $replace:ident) => {
-        #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_ref()`](core::option::Option::as_ref).")]
-        #[inline(always)]
-        pub fn $get(&self) -> Option<&$t> {
-            if self.is_none($idx) {
-                None
-            } else {
-                unsafe { (<$generic as Compound>::get_ptr(&self.value, $idx) as *const $t).as_ref() }
+macro_rules! impl_tuple_accessors {
+    ($ogtype:ident < $compoundtrait:ident + $tupletrait:ident , $idx:literal > $get:ident, $get_mut:ident, $take:ident, $replace:ident) => {
+        impl<T> $ogtype <T> where T: $compoundtrait + $tupletrait {
+            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_ref()`](core::option::Option::as_ref).")]
+            #[inline(always)]
+            pub fn $get(&self) -> Option<& <T as $tupletrait>::T> {
+                if self.is_none($idx) {
+                    None
+                } else {
+                    unsafe { (<T as Compound>::get_ptr(&self.value, $idx) as *const <T as $tupletrait>::T).as_ref() }
+                }
             }
-        }
 
-        #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_mut()`](core::option::Option::as_mut).")]
-        #[inline(always)]
-        pub fn $get_mut(&mut self) -> Option<&mut $t> {
-            if self.is_none($idx) {
-                None
-            } else {
-                unsafe { (<$generic as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut $t).as_mut() }
+            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_mut()`](core::option::Option::as_mut).")]
+            #[inline(always)]
+            pub fn $get_mut(&mut self) -> Option<&mut <T as $tupletrait>::T> {
+                if self.is_none($idx) {
+                    None
+                } else {
+                    unsafe { (<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as $tupletrait>::T).as_mut() }
+                }
             }
-        }
 
-        #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".take()`](core::option::Option::take).")]
-        #[inline(always)]
-        pub fn $take(&mut self) -> Option<$t> {
-            if self.is_none($idx) {
-                None
-            } else {
-                self.clear_flag($idx);
-                unsafe { Some((<$generic as Compound>::get_ptr(&self.value, $idx) as *const $t).read()) }
+            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".take()`](core::option::Option::take).")]
+            #[inline(always)]
+            pub fn $take(&mut self) -> Option<<T as $tupletrait>::T> {
+                if self.is_none($idx) {
+                    None
+                } else {
+                    self.clear_flag($idx);
+                    unsafe { Some((<T as Compound>::get_ptr(&self.value, $idx) as *const <T as $tupletrait>::T).read()) }
+                }
             }
-        }
 
-        #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".replace()`](core::option::Option::replace).")]
-        #[inline(always)]
-        pub fn $replace(&mut self, value: $t) -> Option<$t> {
-            let result = self.$take();
-            unsafe { (<$generic as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut $t).write(value) };
-            self.set_flag($idx);
-            result
+            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".replace()`](core::option::Option::replace).")]
+            #[inline(always)]
+            pub fn $replace(&mut self, value: <T as $tupletrait>::T) -> Option<<T as $tupletrait>::T> {
+                let result = self.$take();
+                unsafe { (<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as $tupletrait>::T ).write(value) };
+                self.set_flag($idx);
+                result
+            }
         }
     };
 }
 
-impl<T0, T1> OptionGroup8<(T0, T1)> {
-    impl_field_access_methods!((T0, T1), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1), 1, T1, get_1, get_mut_1, take_1, replace_1);
-}
-
-impl<T0, T1, T2> OptionGroup8<(T0, T1, T2)> {
-    impl_field_access_methods!((T0, T1, T2), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1, T2), 1, T1, get_1, get_mut_1, take_1, replace_1);
-    impl_field_access_methods!((T0, T1, T2), 2, T2, get_2, get_mut_2, take_2, replace_2);
-}
-
-impl<T0, T1, T2, T3> OptionGroup8<(T0, T1, T2, T3)> {
-    impl_field_access_methods!((T0, T1, T2, T3), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1, T2, T3), 1, T1, get_1, get_mut_1, take_1, replace_1);
-    impl_field_access_methods!((T0, T1, T2, T3), 2, T2, get_2, get_mut_2, take_2, replace_2);
-    impl_field_access_methods!((T0, T1, T2, T3), 3, T3, get_3, get_mut_3, take_3, replace_3);
-}
-
-impl<T0, T1, T2, T3, T4> OptionGroup8<(T0, T1, T2, T3, T4)> {
-    impl_field_access_methods!((T0, T1, T2, T3, T4), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1, T2, T3, T4), 1, T1, get_1, get_mut_1, take_1, replace_1);
-    impl_field_access_methods!((T0, T1, T2, T3, T4), 2, T2, get_2, get_mut_2, take_2, replace_2);
-    impl_field_access_methods!((T0, T1, T2, T3, T4), 3, T3, get_3, get_mut_3, take_3, replace_3);
-    impl_field_access_methods!((T0, T1, T2, T3, T4), 4, T4, get_4, get_mut_4, take_4, replace_4);
-}
-
-impl<T0, T1, T2, T3, T4, T5> OptionGroup8<(T0, T1, T2, T3, T4, T5)> {
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5), 1, T1, get_1, get_mut_1, take_1, replace_1);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5), 2, T2, get_2, get_mut_2, take_2, replace_2);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5), 3, T3, get_3, get_mut_3, take_3, replace_3);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5), 4, T4, get_4, get_mut_4, take_4, replace_4);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5), 5, T5, get_5, get_mut_5, take_5, replace_5);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6> OptionGroup8<(T0, T1, T2, T3, T4, T5, T6)> {
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6), 1, T1, get_1, get_mut_1, take_1, replace_1);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6), 2, T2, get_2, get_mut_2, take_2, replace_2);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6), 3, T3, get_3, get_mut_3, take_3, replace_3);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6), 4, T4, get_4, get_mut_4, take_4, replace_4);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6), 5, T5, get_5, get_mut_5, take_5, replace_5);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6), 6, T6, get_6, get_mut_6, take_6, replace_6);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7> OptionGroup8<(T0, T1, T2, T3, T4, T5, T6, T7)> {
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7), 1, T1, get_1, get_mut_1, take_1, replace_1);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7), 2, T2, get_2, get_mut_2, take_2, replace_2);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7), 3, T3, get_3, get_mut_3, take_3, replace_3);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7), 4, T4, get_4, get_mut_4, take_4, replace_4);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7), 5, T5, get_5, get_mut_5, take_5, replace_5);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7), 6, T6, get_6, get_mut_6, take_6, replace_6);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7), 7, T7, get_7, get_mut_7, take_7, replace_7);
-}
+impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple0, 0> get_0, get_mut_0, take_0, replace_0);
+impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple1, 1> get_1, get_mut_1, take_1, replace_1);
+impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple2, 2> get_2, get_mut_2, take_2, replace_2);
+impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple3, 3> get_3, get_mut_3, take_3, replace_3);
+impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple4, 4> get_4, get_mut_4, take_4, replace_4);
+impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple5, 5> get_5, get_mut_5, take_5, replace_5);
+impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple6, 6> get_6, get_mut_6, take_6, replace_6);
+impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple7, 7> get_7, get_mut_7, take_7, replace_7);
 
 macro_rules! impl_array_methods {
     ($typename:ident, $traitname:ident) => {
@@ -511,116 +501,15 @@ where
     }
 }
 
-impl<T0, T1> OptionGroup16<(T0, T1)> {
-    impl_field_access_methods!((T0, T1), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1), 1, T1, get_1, get_mut_1, take_1, replace_1);
-}
-
-impl<T0, T1, T2> OptionGroup16<(T0, T1, T2)> {
-    impl_field_access_methods!((T0, T1, T2), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1, T2), 1, T1, get_1, get_mut_1, take_1, replace_1);
-    impl_field_access_methods!((T0, T1, T2), 2, T2, get_2, get_mut_2, take_2, replace_2);
-}
-
-impl<T0, T1, T2, T3> OptionGroup16<(T0, T1, T2, T3)> {
-    impl_field_access_methods!((T0, T1, T2, T3), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1, T2, T3), 1, T1, get_1, get_mut_1, take_1, replace_1);
-    impl_field_access_methods!((T0, T1, T2, T3), 2, T2, get_2, get_mut_2, take_2, replace_2);
-    impl_field_access_methods!((T0, T1, T2, T3), 3, T3, get_3, get_mut_3, take_3, replace_3);
-}
-
-impl<T0, T1, T2, T3, T4> OptionGroup16<(T0, T1, T2, T3, T4)> {
-    impl_field_access_methods!((T0, T1, T2, T3, T4), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1, T2, T3, T4), 1, T1, get_1, get_mut_1, take_1, replace_1);
-    impl_field_access_methods!((T0, T1, T2, T3, T4), 2, T2, get_2, get_mut_2, take_2, replace_2);
-    impl_field_access_methods!((T0, T1, T2, T3, T4), 3, T3, get_3, get_mut_3, take_3, replace_3);
-    impl_field_access_methods!((T0, T1, T2, T3, T4), 4, T4, get_4, get_mut_4, take_4, replace_4);
-}
-
-impl<T0, T1, T2, T3, T4, T5> OptionGroup16<(T0, T1, T2, T3, T4, T5)> {
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5), 1, T1, get_1, get_mut_1, take_1, replace_1);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5), 2, T2, get_2, get_mut_2, take_2, replace_2);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5), 3, T3, get_3, get_mut_3, take_3, replace_3);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5), 4, T4, get_4, get_mut_4, take_4, replace_4);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5), 5, T5, get_5, get_mut_5, take_5, replace_5);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6> OptionGroup16<(T0, T1, T2, T3, T4, T5, T6)> {
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6), 1, T1, get_1, get_mut_1, take_1, replace_1);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6), 2, T2, get_2, get_mut_2, take_2, replace_2);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6), 3, T3, get_3, get_mut_3, take_3, replace_3);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6), 4, T4, get_4, get_mut_4, take_4, replace_4);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6), 5, T5, get_5, get_mut_5, take_5, replace_5);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6), 6, T6, get_6, get_mut_6, take_6, replace_6);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7> OptionGroup16<(T0, T1, T2, T3, T4, T5, T6, T7)> {
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7), 1, T1, get_1, get_mut_1, take_1, replace_1);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7), 2, T2, get_2, get_mut_2, take_2, replace_2);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7), 3, T3, get_3, get_mut_3, take_3, replace_3);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7), 4, T4, get_4, get_mut_4, take_4, replace_4);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7), 5, T5, get_5, get_mut_5, take_5, replace_5);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7), 6, T6, get_6, get_mut_6, take_6, replace_6);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7), 7, T7, get_7, get_mut_7, take_7, replace_7);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7, T8> OptionGroup16<(T0, T1, T2, T3, T4, T5, T6, T7, T8)> {
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8), 1, T1, get_1, get_mut_1, take_1, replace_1);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8), 2, T2, get_2, get_mut_2, take_2, replace_2);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8), 3, T3, get_3, get_mut_3, take_3, replace_3);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8), 4, T4, get_4, get_mut_4, take_4, replace_4);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8), 5, T5, get_5, get_mut_5, take_5, replace_5);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8), 6, T6, get_6, get_mut_6, take_6, replace_6);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8), 7, T7, get_7, get_mut_7, take_7, replace_7);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8), 8, T8, get_8, get_mut_8, take_8, replace_8);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> OptionGroup16<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9)> {
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9), 1, T1, get_1, get_mut_1, take_1, replace_1);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9), 2, T2, get_2, get_mut_2, take_2, replace_2);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9), 3, T3, get_3, get_mut_3, take_3, replace_3);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9), 4, T4, get_4, get_mut_4, take_4, replace_4);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9), 5, T5, get_5, get_mut_5, take_5, replace_5);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9), 6, T6, get_6, get_mut_6, take_6, replace_6);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9), 7, T7, get_7, get_mut_7, take_7, replace_7);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9), 8, T8, get_8, get_mut_8, take_8, replace_8);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9), 9, T9, get_9, get_mut_9, take_9, replace_9);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA>
-    OptionGroup16<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA)>
-{
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA), 1, T1, get_1, get_mut_1, take_1, replace_1);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA), 2, T2, get_2, get_mut_2, take_2, replace_2);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA), 3, T3, get_3, get_mut_3, take_3, replace_3);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA), 4, T4, get_4, get_mut_4, take_4, replace_4);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA), 5, T5, get_5, get_mut_5, take_5, replace_5);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA), 6, T6, get_6, get_mut_6, take_6, replace_6);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA), 7, T7, get_7, get_mut_7, take_7, replace_7);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA), 8, T8, get_8, get_mut_8, take_8, replace_8);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA), 9, T9, get_9, get_mut_9, take_9, replace_9);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA), 10, TA, get_10, get_mut_10, take_10, replace_10);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB>
-    OptionGroup16<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB)>
-{
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB), 0, T0, get_0, get_mut_0, take_0, replace_0);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB), 1, T1, get_1, get_mut_1, take_1, replace_1);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB), 2, T2, get_2, get_mut_2, take_2, replace_2);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB), 3, T3, get_3, get_mut_3, take_3, replace_3);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB), 4, T4, get_4, get_mut_4, take_4, replace_4);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB), 5, T5, get_5, get_mut_5, take_5, replace_5);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB), 6, T6, get_6, get_mut_6, take_6, replace_6);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB), 7, T7, get_7, get_mut_7, take_7, replace_7);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB), 8, T8, get_8, get_mut_8, take_8, replace_8);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB), 9, T9, get_9, get_mut_9, take_9, replace_9);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB), 10, TA, get_10, get_mut_10, take_10, replace_10);
-    impl_field_access_methods!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, TA, TB), 11, TB, get_11, get_mut_11, take_11, replace_11);
-}
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple0, 0> get_0, get_mut_0, take_0, replace_0);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple1, 1> get_1, get_mut_1, take_1, replace_1);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple2, 2> get_2, get_mut_2, take_2, replace_2);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple3, 3> get_3, get_mut_3, take_3, replace_3);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple4, 4> get_4, get_mut_4, take_4, replace_4);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple5, 5> get_5, get_mut_5, take_5, replace_5);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple6, 6> get_6, get_mut_6, take_6, replace_6);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple7, 7> get_7, get_mut_7, take_7, replace_7);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple8, 8> get_8, get_mut_8, take_8, replace_8);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple9, 9> get_9, get_mut_9, take_9, replace_9);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple10, 10> get_10, get_mut_10, take_10, replace_10);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple11, 11> get_11, get_mut_11, take_11, replace_11);
