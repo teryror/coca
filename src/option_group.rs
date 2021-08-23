@@ -349,7 +349,7 @@ macro_rules! impl_option_group {
 impl_option_group!(OptionGroup8, Compound8);
 
 macro_rules! impl_tuple_accessors {
-    ($ogtype:ident < $compoundtrait:ident + $tupletrait:ident , $idx:literal > $get:ident, $get_mut:ident, $take:ident, $replace:ident) => {
+    ($ogtype:ident < $compoundtrait:ident + $tupletrait:ident , $idx:literal > $get:ident, $get_mut:ident, $get_mut_unchecked:ident, $insert:ident, $get_or_insert:ident, $get_or_insert_with:ident, $take:ident, $replace:ident) => {
         impl<T> $ogtype <T> where T: $compoundtrait + $tupletrait {
             #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_ref()`](core::option::Option::as_ref).")]
             #[inline(always)]
@@ -367,8 +367,41 @@ macro_rules! impl_tuple_accessors {
                 if self.is_none($idx) {
                     None
                 } else {
-                    unsafe { (<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as $tupletrait>::T).as_mut() }
+                    unsafe { Some(self.$get_mut_unchecked()) }
                 }
+            }
+
+            #[doc = concat!(" Returns a mutable reference to the `Some` value at position ", $idx, ", without checking that the value is not `None`.")]
+            #[doc = " # Safety"]
+            #[doc = " Calling this method on `None` is undefined behavior."]
+            #[inline(always)]
+            pub unsafe fn $get_mut_unchecked(&mut self) -> &mut <T as $tupletrait>::T {
+                &mut *(<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as $tupletrait>::T)
+            }
+
+            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".insert(value)`](core::option::Option::insert).")]
+            #[inline(always)]
+            pub fn $insert(&mut self, value: <T as $tupletrait>::T) -> &mut <T as $tupletrait>::T {
+                self.$replace(value);
+                unsafe { self.$get_mut_unchecked() }
+            }
+
+            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".get_or_insert(value)`](core::option::Option::get_or_insert).")]
+            #[inline(always)]
+            pub fn $get_or_insert(&mut self, value: <T as $tupletrait>::T) -> &mut <T as $tupletrait>::T {
+                if self.is_none($idx) {
+                    self.$replace(value);
+                }
+                unsafe { self.$get_mut_unchecked() }
+            }
+
+            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".get_or_insert_with(f)`](core::option::Option::get_or_insert_with).")]
+            #[inline(always)]
+            pub fn $get_or_insert_with<F: FnOnce() -> <T as $tupletrait>::T>(&mut self, f: F) -> &mut <T as $tupletrait>::T {
+                if self.is_none($idx) {
+                    self.$replace(f());
+                }
+                unsafe { self.$get_mut_unchecked() }
             }
 
             #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".take()`](core::option::Option::take).")]
@@ -382,7 +415,7 @@ macro_rules! impl_tuple_accessors {
                 }
             }
 
-            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".replace()`](core::option::Option::replace).")]
+            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".replace(value)`](core::option::Option::replace).")]
             #[inline(always)]
             pub fn $replace(&mut self, value: <T as $tupletrait>::T) -> Option<<T as $tupletrait>::T> {
                 let result = self.$take();
@@ -394,14 +427,14 @@ macro_rules! impl_tuple_accessors {
     };
 }
 
-impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple0, 0> get_0, get_mut_0, take_0, replace_0);
-impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple1, 1> get_1, get_mut_1, take_1, replace_1);
-impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple2, 2> get_2, get_mut_2, take_2, replace_2);
-impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple3, 3> get_3, get_mut_3, take_3, replace_3);
-impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple4, 4> get_4, get_mut_4, take_4, replace_4);
-impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple5, 5> get_5, get_mut_5, take_5, replace_5);
-impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple6, 6> get_6, get_mut_6, take_6, replace_6);
-impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple7, 7> get_7, get_mut_7, take_7, replace_7);
+impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple0, 0> get_0, get_mut_0, get_mut_unchecked_0, insert_0, get_or_insert_0, get_or_insert_with_0, take_0, replace_0);
+impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple1, 1> get_1, get_mut_1, get_mut_unchecked_1, insert_1, get_or_insert_1, get_or_insert_with_1, take_1, replace_1);
+impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple2, 2> get_2, get_mut_2, get_mut_unchecked_2, insert_2, get_or_insert_2, get_or_insert_with_2, take_2, replace_2);
+impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple3, 3> get_3, get_mut_3, get_mut_unchecked_3, insert_3, get_or_insert_3, get_or_insert_with_3, take_3, replace_3);
+impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple4, 4> get_4, get_mut_4, get_mut_unchecked_4, insert_4, get_or_insert_4, get_or_insert_with_4, take_4, replace_4);
+impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple5, 5> get_5, get_mut_5, get_mut_unchecked_5, insert_5, get_or_insert_5, get_or_insert_with_5, take_5, replace_5);
+impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple6, 6> get_6, get_mut_6, get_mut_unchecked_6, insert_6, get_or_insert_6, get_or_insert_with_6, take_6, replace_6);
+impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple7, 7> get_7, get_mut_7, get_mut_unchecked_7, insert_7, get_or_insert_7, get_or_insert_with_7, take_7, replace_7);
 
 #[cold]
 #[inline(never)]
@@ -431,6 +464,7 @@ macro_rules! impl_array_methods {
             /// 
             /// # Panics
             /// Panics if `idx >= N`.
+            #[inline(always)]
             pub fn get(&self, idx: usize) -> Option<&T> {
                 if idx >= N {
                     index_out_of_bounds(idx, N);
@@ -445,10 +479,80 @@ macro_rules! impl_array_methods {
                 }
             }
 
+            /// Equivalent to [`array_of_options[idx].as_mut()`](core::option::Option::as_ref).
+            /// 
+            /// # Panics
+            /// Panics if `idx >= N`.
+            #[inline(always)]
+            pub fn get_mut(&mut self, idx: usize) -> Option<&mut T> {
+                if idx >= N {
+                    index_out_of_bounds(idx, N);
+                }
+
+                if self.flags & (1 << idx) == 0 {
+                    return None;
+                }
+
+                unsafe { Some(self.get_mut_unchecked(idx)) }
+            }
+
+            /// Returns a mutable reference to the `Some` value at position
+            /// `idx`, without checking that `idx` is in bounds or that the
+            /// value is not `None`.
+            /// 
+            /// # Safety
+            /// Calling this method with `idx >= N` or when the value at that
+            /// position is `None` is undefined behavior.
+            #[inline(always)]
+            pub unsafe fn get_mut_unchecked(&mut self, idx: usize) -> &mut T {
+                &mut *(<[T; N] as Compound>::get_mut_ptr(&mut self.value, idx) as *mut T)
+            }
+
+            /// Equivalent to [`array_of_options[idx].insert(value)`](core::option::Option::insert).
+            /// 
+            /// # Panics
+            /// Panics if `idx >= N`.
+            #[inline(always)]
+            pub fn insert(&mut self, idx: usize, value: T) -> &mut T {
+                self.replace(idx, value);
+                unsafe { self.get_mut_unchecked(idx) }
+            }
+
+            /// Equivalent to [`array_of_options[idx].get_or_insert(value)`](core::option::Option::get_or_insert).
+            /// 
+            /// # Panics
+            /// Panics if `idx >= N`.
+            #[inline(always)]
+            pub fn get_or_insert(&mut self, idx: usize, value: T) -> &mut T {
+                if idx >= N {
+                    index_out_of_bounds(idx, N);
+                }
+                if self.is_none(idx as u32) {
+                    self.replace(idx, value);
+                }
+                unsafe { self.get_mut_unchecked(idx) }
+            }
+
+            /// Equivalent to [`array_of_options[idx].get_or_insert_with(f)`](core::option::Option::get_or_insert_with).
+            /// 
+            /// # Panics
+            /// Panics if `idx >= N`.
+            #[inline(always)]
+            pub fn get_or_insert_with<F: FnOnce() -> T>(&mut self, idx: usize, f: F) -> &mut T {
+                if idx >= N {
+                    index_out_of_bounds(idx, N);
+                }
+                if self.is_none(idx as u32) {
+                    self.replace(idx, f());
+                }
+                unsafe { self.get_mut_unchecked(idx) }
+            }
+
             /// Equivalent to [`array_of_options[idx].take()`](core::option::Option::take).
             /// 
             /// # Panics
             /// Panics if `idx >= N`.
+            #[inline(always)]
             pub fn take(&mut self, idx: usize) -> Option<T> {
                 if idx >= N {
                     index_out_of_bounds(idx, N);
@@ -468,6 +572,7 @@ macro_rules! impl_array_methods {
             /// 
             /// # Panics
             /// Panics if `idx >= N`.
+            #[inline(always)]
             pub fn replace(&mut self, idx: usize, value: T) -> Option<T> {
                 let result = self.take(idx);
                 self.set_flag(idx as u32);
@@ -492,18 +597,18 @@ pub struct OptionGroup16<T: Compound16> {
 }
 
 impl_option_group!(OptionGroup16, Compound16);
-impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple0, 0> get_0, get_mut_0, take_0, replace_0);
-impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple1, 1> get_1, get_mut_1, take_1, replace_1);
-impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple2, 2> get_2, get_mut_2, take_2, replace_2);
-impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple3, 3> get_3, get_mut_3, take_3, replace_3);
-impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple4, 4> get_4, get_mut_4, take_4, replace_4);
-impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple5, 5> get_5, get_mut_5, take_5, replace_5);
-impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple6, 6> get_6, get_mut_6, take_6, replace_6);
-impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple7, 7> get_7, get_mut_7, take_7, replace_7);
-impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple8, 8> get_8, get_mut_8, take_8, replace_8);
-impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple9, 9> get_9, get_mut_9, take_9, replace_9);
-impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple10, 10> get_10, get_mut_10, take_10, replace_10);
-impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple11, 11> get_11, get_mut_11, take_11, replace_11);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple0, 0> get_0, get_mut_0, get_mut_unchecked_0, insert_0, get_or_insert_0, get_or_insert_with_0, take_0, replace_0);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple1, 1> get_1, get_mut_1, get_mut_unchecked_1, insert_1, get_or_insert_1, get_or_insert_with_1, take_1, replace_1);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple2, 2> get_2, get_mut_2, get_mut_unchecked_2, insert_2, get_or_insert_2, get_or_insert_with_2, take_2, replace_2);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple3, 3> get_3, get_mut_3, get_mut_unchecked_3, insert_3, get_or_insert_3, get_or_insert_with_3, take_3, replace_3);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple4, 4> get_4, get_mut_4, get_mut_unchecked_4, insert_4, get_or_insert_4, get_or_insert_with_4, take_4, replace_4);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple5, 5> get_5, get_mut_5, get_mut_unchecked_5, insert_5, get_or_insert_5, get_or_insert_with_5, take_5, replace_5);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple6, 6> get_6, get_mut_6, get_mut_unchecked_6, insert_6, get_or_insert_6, get_or_insert_with_6, take_6, replace_6);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple7, 7> get_7, get_mut_7, get_mut_unchecked_7, insert_7, get_or_insert_7, get_or_insert_with_7, take_7, replace_7);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple8, 8> get_8, get_mut_8, get_mut_unchecked_8, insert_8, get_or_insert_8, get_or_insert_with_8, take_8, replace_8);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple9, 9> get_9, get_mut_9, get_mut_unchecked_9, insert_9, get_or_insert_9, get_or_insert_with_9, take_9, replace_9);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple10, 10> get_10, get_mut_10, get_mut_unchecked_10, insert_10, get_or_insert_10, get_or_insert_with_10, take_10, replace_10);
+impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple11, 11> get_11, get_mut_11, get_mut_unchecked_11, insert_11, get_or_insert_11, get_or_insert_with_11, take_11, replace_11);
 impl_array_methods!(OptionGroup16, Compound16);
 
 
@@ -517,18 +622,18 @@ pub struct OptionGroup32<T: Compound32> {
 }
 
 impl_option_group!(OptionGroup32, Compound32);
-impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple0, 0> get_0, get_mut_0, take_0, replace_0);
-impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple1, 1> get_1, get_mut_1, take_1, replace_1);
-impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple2, 2> get_2, get_mut_2, take_2, replace_2);
-impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple3, 3> get_3, get_mut_3, take_3, replace_3);
-impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple4, 4> get_4, get_mut_4, take_4, replace_4);
-impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple5, 5> get_5, get_mut_5, take_5, replace_5);
-impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple6, 6> get_6, get_mut_6, take_6, replace_6);
-impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple7, 7> get_7, get_mut_7, take_7, replace_7);
-impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple8, 8> get_8, get_mut_8, take_8, replace_8);
-impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple9, 9> get_9, get_mut_9, take_9, replace_9);
-impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple10, 10> get_10, get_mut_10, take_10, replace_10);
-impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple11, 11> get_11, get_mut_11, take_11, replace_11);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple0, 0> get_0, get_mut_0, get_mut_unchecked_0, insert_0, get_or_insert_0, get_or_insert_with_0, take_0, replace_0);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple1, 1> get_1, get_mut_1, get_mut_unchecked_1, insert_1, get_or_insert_1, get_or_insert_with_1, take_1, replace_1);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple2, 2> get_2, get_mut_2, get_mut_unchecked_2, insert_2, get_or_insert_2, get_or_insert_with_2, take_2, replace_2);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple3, 3> get_3, get_mut_3, get_mut_unchecked_3, insert_3, get_or_insert_3, get_or_insert_with_3, take_3, replace_3);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple4, 4> get_4, get_mut_4, get_mut_unchecked_4, insert_4, get_or_insert_4, get_or_insert_with_4, take_4, replace_4);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple5, 5> get_5, get_mut_5, get_mut_unchecked_5, insert_5, get_or_insert_5, get_or_insert_with_5, take_5, replace_5);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple6, 6> get_6, get_mut_6, get_mut_unchecked_6, insert_6, get_or_insert_6, get_or_insert_with_6, take_6, replace_6);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple7, 7> get_7, get_mut_7, get_mut_unchecked_7, insert_7, get_or_insert_7, get_or_insert_with_7, take_7, replace_7);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple8, 8> get_8, get_mut_8, get_mut_unchecked_8, insert_8, get_or_insert_8, get_or_insert_with_8, take_8, replace_8);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple9, 9> get_9, get_mut_9, get_mut_unchecked_9, insert_9, get_or_insert_9, get_or_insert_with_9, take_9, replace_9);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple10, 10> get_10, get_mut_10, get_mut_unchecked_10, insert_10, get_or_insert_10, get_or_insert_with_10, take_10, replace_10);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple11, 11> get_11, get_mut_11, get_mut_unchecked_11, insert_11, get_or_insert_11, get_or_insert_with_11, take_11, replace_11);
 impl_array_methods!(OptionGroup32, Compound32);
 
 /// A group of up to 64 [`Option`](core::option::Option)s, with the
@@ -541,17 +646,17 @@ pub struct OptionGroup64<T: Compound64> {
 }
 
 impl_option_group!(OptionGroup64, Compound64);
-impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple0, 0> get_0, get_mut_0, take_0, replace_0);
-impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple1, 1> get_1, get_mut_1, take_1, replace_1);
-impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple2, 2> get_2, get_mut_2, take_2, replace_2);
-impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple3, 3> get_3, get_mut_3, take_3, replace_3);
-impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple4, 4> get_4, get_mut_4, take_4, replace_4);
-impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple5, 5> get_5, get_mut_5, take_5, replace_5);
-impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple6, 6> get_6, get_mut_6, take_6, replace_6);
-impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple7, 7> get_7, get_mut_7, take_7, replace_7);
-impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple8, 8> get_8, get_mut_8, take_8, replace_8);
-impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple9, 9> get_9, get_mut_9, take_9, replace_9);
-impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple10, 10> get_10, get_mut_10, take_10, replace_10);
-impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple11, 11> get_11, get_mut_11, take_11, replace_11);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple0, 0> get_0, get_mut_0, get_mut_unchecked_0, insert_0, get_or_insert_0, get_or_insert_with_0, take_0, replace_0);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple1, 1> get_1, get_mut_1, get_mut_unchecked_1, insert_1, get_or_insert_1, get_or_insert_with_1, take_1, replace_1);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple2, 2> get_2, get_mut_2, get_mut_unchecked_2, insert_2, get_or_insert_2, get_or_insert_with_2, take_2, replace_2);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple3, 3> get_3, get_mut_3, get_mut_unchecked_3, insert_3, get_or_insert_3, get_or_insert_with_3, take_3, replace_3);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple4, 4> get_4, get_mut_4, get_mut_unchecked_4, insert_4, get_or_insert_4, get_or_insert_with_4, take_4, replace_4);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple5, 5> get_5, get_mut_5, get_mut_unchecked_5, insert_5, get_or_insert_5, get_or_insert_with_5, take_5, replace_5);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple6, 6> get_6, get_mut_6, get_mut_unchecked_6, insert_6, get_or_insert_6, get_or_insert_with_6, take_6, replace_6);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple7, 7> get_7, get_mut_7, get_mut_unchecked_7, insert_7, get_or_insert_7, get_or_insert_with_7, take_7, replace_7);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple8, 8> get_8, get_mut_8, get_mut_unchecked_8, insert_8, get_or_insert_8, get_or_insert_with_8, take_8, replace_8);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple9, 9> get_9, get_mut_9, get_mut_unchecked_9, insert_9, get_or_insert_9, get_or_insert_with_9, take_9, replace_9);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple10, 10> get_10, get_mut_10, get_mut_unchecked_10, insert_10, get_or_insert_10, get_or_insert_with_10, take_10, replace_10);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple11, 11> get_11, get_mut_11, get_mut_unchecked_11, insert_11, get_or_insert_11, get_or_insert_with_11, take_11, replace_11);
 impl_array_methods!(OptionGroup64, Compound64);
 
