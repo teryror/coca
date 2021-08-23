@@ -1077,11 +1077,10 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Iter
             self.front_index += 1;
             if (self.filter_fn)(I::from_usize(self.front_index), item) {
                 return Some(unsafe { src.read() });
-            } else {
-                let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_start) };
-                unsafe { ptr::copy(src as *const T, dst, 1) };
-                self.target_start += 1;
             }
+            let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_start) };
+            unsafe { ptr::copy(src as *const T, dst, 1) };
+            self.target_start += 1;
         }
 
         None
@@ -1096,11 +1095,10 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Doub
             let item = unsafe { src.as_mut().unwrap() };
             if (self.filter_fn)(I::from_usize(self.back_index), item) {
                 return Some(unsafe { src.read() });
-            } else {
-                self.target_end -= 1;
-                let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_end) };
-                unsafe { ptr::copy(src as *const T, dst, 1) };
             }
+            self.target_end -= 1;
+            let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_end) };
+            unsafe { ptr::copy(src as *const T, dst, 1) };
         }
 
         None
