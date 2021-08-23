@@ -970,12 +970,11 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     pub fn as_slices(&self) -> (&[T], &[T]) {
         let front = self.front.as_usize();
         let back = front + self.len();
+        let ptr = self.buf.get_ptr().cast::<T>();
         if back <= self.capacity() {
-            let ptr = self.buf.get_ptr().cast::<T>();
             let slice = unsafe { core::slice::from_raw_parts(ptr.add(front), self.len()) };
             (slice, &[])
         } else {
-            let ptr = self.buf.get_ptr().cast::<T>();
             let fst =
                 unsafe { core::slice::from_raw_parts(ptr.add(front), self.capacity() - front) };
             let snd =
