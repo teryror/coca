@@ -553,8 +553,6 @@ impl<T: Copy + Ord, I: Capacity> Clone for AllocHeap<T, I> {
 /// heap.push('c');
 /// assert_eq!(heap.peek(), Some(&'c'));
 /// ```
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub type InlineHeap<T, const C: usize> = BinaryHeap<T, crate::storage::InlineStorage<T, C>, usize>;
 
 /// A binary heap using an inline array for storage, generic over the index type.
@@ -566,13 +564,9 @@ pub type InlineHeap<T, const C: usize> = BinaryHeap<T, crate::storage::InlineSto
 /// let vec = heap.into_vec();
 /// assert_eq!(vec[0u8], 'a');
 /// ```
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub type TiInlineHeap<T, Index, const C: usize> =
     BinaryHeap<T, crate::storage::InlineStorage<T, C>, Index>;
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T: Ord, I: Capacity, const C: usize> BinaryHeap<T, [MaybeUninit<T>; C], I> {
     /// Constructs a new, empty `BinaryHeap` backed by an inline array.
     ///
@@ -591,16 +585,12 @@ impl<T: Ord, I: Capacity, const C: usize> BinaryHeap<T, [MaybeUninit<T>; C], I> 
     }
 }
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T: Ord, I: Capacity, const C: usize> Default for BinaryHeap<T, [MaybeUninit<T>; C], I> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T: Clone + Ord, I: Capacity, const C: usize> Clone for BinaryHeap<T, [MaybeUninit<T>; C], I> {
     fn clone(&self) -> Self {
         BinaryHeap { a: self.a.clone() }

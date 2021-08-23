@@ -24,13 +24,10 @@
 //! # Features
 //! - `profile`: Enables memory profiling in arenas; see the
 //!   [module-level documentation](arena#memory-profiling) for details.
-//! - `nightly`: Adds trait implementations and convenience functions that require
-//!   the nightly-only `feature(min_const_generics)`, allowing inlining of
-//!   [`Storage`](storage::Storage).
 //! - `alloc`: Adds trait implementations and convenience functions for working
 //!   with heap allocated memory.
-//! - `unstable`: Enables the [`object`] module, which relies on unstable features.
-//!   Depends on the `nightly` features.
+//! - `unstable`: Enables the [`object`] module, which relies on unstable features,
+//!   namely `feature(unsize)` and `feature(set_ptr_value)`.
 
 #[cfg(feature = "alloc")]
 #[doc(hidden)]
@@ -56,8 +53,6 @@ pub use crate::{
     vec::{ArenaVec, SliceVec},
 };
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub use crate::{
     binary_heap::{InlineHeap, TiInlineHeap},
     deque::{InlineDeque, TiInlineDeque},

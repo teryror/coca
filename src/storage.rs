@@ -399,12 +399,8 @@ unsafe impl<R: LayoutSpec, S: Storage<R>> Storage<R> for alloc::boxed::Box<S> {
 }
 
 /// Shorthand for `[MaybeUninit<T>; C]` for use with generic data structures.
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub type InlineStorage<T, const C: usize> = [MaybeUninit<T>; C];
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 unsafe impl<T, const C: usize> Storage<ArrayLike<T>> for InlineStorage<T, C> {
     fn get_ptr(&self) -> *const u8 {
         self.as_ptr() as *const u8

@@ -1861,8 +1861,6 @@ impl<T: Copy, I: Capacity> Clone for AllocDeque<T, I> {
 /// assert_eq!(deque, &['a', 'b', 'c', 'd']);
 /// assert_eq!(deque.try_push_back('e'), Err('e'));
 /// ```
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub type InlineDeque<T, const C: usize> = Deque<T, crate::storage::InlineStorage<T, C>, usize>;
 
 /// A deque using an inline array for storage, generic over the index type.
@@ -1873,12 +1871,8 @@ pub type InlineDeque<T, const C: usize> = Deque<T, crate::storage::InlineStorage
 /// deque.push_front('a');
 /// assert_eq!(deque[0u8], 'a');
 /// ```
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub type TiInlineDeque<T, I, const C: usize> = Deque<T, crate::storage::InlineStorage<T, C>, I>;
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T, I: Capacity, const C: usize> Deque<T, [core::mem::MaybeUninit<T>; C], I> {
     /// Constructs a new deque backed by an inline array.
     ///
@@ -1906,16 +1900,12 @@ impl<T, I: Capacity, const C: usize> Deque<T, [core::mem::MaybeUninit<T>; C], I>
     }
 }
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T, I: Capacity, const C: usize> Default for Deque<T, [core::mem::MaybeUninit<T>; C], I> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T: Clone, I: Capacity, const C: usize> Clone for Deque<T, [core::mem::MaybeUninit<T>; C], I> {
     fn clone(&self) -> Self {
         let mut ret = Self::new();

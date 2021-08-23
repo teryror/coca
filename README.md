@@ -47,12 +47,11 @@ coca = "0.2"
 
 - `alloc`: By default, coca is `no_std` compatible; this feature flag enables
   some trait implementations for conveniently working with heap-allocated storage.
-- `nightly`: If you're working with the nightly rust toolchain, you can enable
-  this feature to get access to `InlineStorage` and `ArrayVec`, both of which
-  are implemented using the nightly-only `min_const_generics` feature; this flag
-  will eventually be removed.
 - `profile`: Enables memory profiling in arenas; see the module-level documentation
   for details.
+- `unstable`: If you're working with the nightly rust toolchain, and don't mind
+  depending on unstable features, you can enable this feature to get access to
+  `InlineObject`, allowing you to create trait objects without indirection.
 
 ## License
 

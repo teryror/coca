@@ -5,8 +5,8 @@
   see [this blog post on the design process][storage-abstraction-v2] for motivation
 - Add super traits to `Capacity` trait, add `const MAX_REPRESENTABLE`; implementors
   are no longer required to perform validation on _every_ call
-- Remove the `feature(min_const_generics)` attribute, effectively raising the
-  minimum supported compiler version when using the `nightly` feature to 1.49.
+- Remove the `nightly` feature flag and the `feature(min_const_generics)` attribute,
+  raising the minimum supported compiler version to 1.51.
 - Rename `Array{Vec, Deque, Heap}` to `Inline*` for consistency with `InlineObject`
 - Redefine `ArenaStorage` as a struct for compatibility with non-array-like layouts
 - Remove `HeapStorage` type alias and add `AllocStorage` struct (similar to `ArenaStorage`)

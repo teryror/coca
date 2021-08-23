@@ -8,11 +8,10 @@
 //! `usize`).
 //!
 //! With no optional features enabled, the only supported storage types are
-//! [references to slices](SliceVec) and [arena-allocated slices](ArenaVec).
-//!
-//! The `nightly` feature allows using [arrays inlined in the `Vec`](InlineVec)
-//! for storage, as well as referenced and (arena-)boxed arrays, which do not
-//! require a run-time representation of their capacity.
+//! [references to slices](SliceVec), [arena-allocated slices](ArenaVec),
+//! [arrays inlined in the `Vec`](InlineVec), as well as referenced and
+//! (arena-)boxed arrays, which do not require a run-time representation of
+//! their capacity.
 //!
 //! The `alloc` feature allows using [owned slices](AllocVec) for storage. Note
 //! that such a vector still does not reallocate - this may be useful in cases
@@ -34,7 +33,6 @@
 //! from the Rust standard library Vec, and from `tinyvec::SliceVec` (Copyright
 //! (c) 2019 by Daniel "Lokathor" Gee).
 
-#[cfg(feature = "nightly")]
 use crate::storage::InlineStorage;
 
 use crate::storage::{
@@ -1185,8 +1183,6 @@ impl<T: Copy, I: Capacity> Clone for AllocVec<T, I> {
 /// vec.push('c');
 /// assert!(vec.try_push('d').is_err());
 /// ```
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub type InlineVec<T, const C: usize> = Vec<T, InlineStorage<T, C>, usize>;
 
 /// A vector using an inline array for storage, generic over the index type.
@@ -1197,12 +1193,8 @@ pub type InlineVec<T, const C: usize> = Vec<T, InlineStorage<T, C>, usize>;
 /// vec.push('a');
 /// assert_eq!(vec[0u8], 'a');
 /// ```
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub type TiInlineVec<T, Index, const C: usize> = Vec<T, InlineStorage<T, C>, Index>;
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T, I: Capacity, const C: usize> Vec<T, InlineStorage<T, C>, I> {
     /// Constructs a new, empty `Vec` backed by an inline array.
     ///
@@ -1229,16 +1221,12 @@ impl<T, I: Capacity, const C: usize> Vec<T, InlineStorage<T, C>, I> {
     }
 }
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T, I: Capacity, const C: usize> Default for Vec<T, InlineStorage<T, C>, I> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T: Clone, I: Capacity, const C: usize> core::clone::Clone for Vec<T, InlineStorage<T, C>, I> {
     fn clone(&self) -> Self {
         let mut ret = Self::new();
@@ -1254,8 +1242,6 @@ impl<T: Clone, I: Capacity, const C: usize> core::clone::Clone for Vec<T, Inline
     }
 }
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T: Clone, I: Capacity, const C: usize> From<&[T]> for Vec<T, InlineStorage<T, C>, I> {
     fn from(source: &[T]) -> Self {
         if C > I::MAX_REPRESENTABLE {
@@ -1278,8 +1264,6 @@ impl<T: Clone, I: Capacity, const C: usize> From<&[T]> for Vec<T, InlineStorage<
     }
 }
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T: Clone, I: Capacity, const C: usize> From<&mut [T]> for Vec<T, InlineStorage<T, C>, I> {
     fn from(source: &mut [T]) -> Self {
         if C > I::MAX_REPRESENTABLE {
@@ -1302,8 +1286,6 @@ impl<T: Clone, I: Capacity, const C: usize> From<&mut [T]> for Vec<T, InlineStor
     }
 }
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<V: PartialEq<T>, T, S, I, const N: usize> PartialEq<Vec<T, S, I>> for [V; N]
 where
     V: PartialEq<T>,
@@ -1316,8 +1298,6 @@ where
     }
 }
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<V, T, S, I, const N: usize> PartialEq<[V; N]> for Vec<T, S, I>
 where
     T: PartialEq<V>,
@@ -1330,8 +1310,6 @@ where
     }
 }
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T, I: Capacity, const C: usize> core::iter::FromIterator<T>
     for Vec<T, InlineStorage<T, C>, I>
 {
@@ -1367,15 +1345,12 @@ mod tests {
         #[cfg(feature = "alloc")]
         assert_eq!(size_of::<AllocVec<u64, usize>>(), 3 * size_of::<usize>());
 
-        #[cfg(feature = "nightly")]
-        {
-            assert_eq!(size_of::<InlineVec<u8, 8>>(), size_of::<usize>() + 8);
-            assert_eq!(size_of::<TiInlineVec<u8, u8, 99>>(), 100);
-            assert_eq!(
-                size_of::<Vec<u32, &mut [MaybeUninit<u32>; 1000], usize>>(),
-                2 * size_of::<usize>()
-            );
-        }
+        assert_eq!(size_of::<InlineVec<u8, 8>>(), size_of::<usize>() + 8);
+        assert_eq!(size_of::<TiInlineVec<u8, u8, 99>>(), 100);
+        assert_eq!(
+            size_of::<Vec<u32, &mut [MaybeUninit<u32>; 1000], usize>>(),
+            2 * size_of::<usize>()
+        );
     }
 
     #[test]

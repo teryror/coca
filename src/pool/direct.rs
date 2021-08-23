@@ -209,8 +209,6 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// assert_eq!(pool[ha], "coconut");
     /// assert_eq!(pool[hc], "apple");
     /// ```
-    #[cfg(feature = "nightly")]
-    #[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
     pub fn get_disjoint_mut<const N: usize>(&mut self, handles: [H; N]) -> Option<[&mut T; N]> {
         for i in 1..N {
             for j in 0..i {
@@ -1151,16 +1149,12 @@ impl<T: Clone, H: Handle> Clone for DirectAllocPool<T, H> {
 }
 
 /// A statically-sized storage block for a [`DirectPool`].
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 #[repr(C)]
 pub struct InlineStorage<T, H: Handle, const N: usize> {
     slots: core::mem::MaybeUninit<[Slot<T, H::Index>; N]>,
     counters: core::mem::MaybeUninit<[u32; N]>,
 }
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 unsafe impl<T, H: Handle, const N: usize> Storage<DirectPoolLayout<T, H>>
     for InlineStorage<T, H, N>
 {
@@ -1198,8 +1192,6 @@ unsafe impl<T, H: Handle, const N: usize> Storage<DirectPoolLayout<T, H>>
 /// assert_eq!(pool.remove(b), Some(B));
 /// assert!(pool.is_empty());
 /// ```
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub type DirectInlinePool<T, const N: usize> = DirectPool<T, InlineStorage<T, DefaultHandle, N>, DefaultHandle>;
 
 /// A direct-mapped pool that stores its contents in an inline array,
@@ -1222,12 +1214,8 @@ pub type DirectInlinePool<T, const N: usize> = DirectPool<T, InlineStorage<T, De
 /// assert_eq!(pool.remove(b), Some(B));
 /// assert!(pool.is_empty());
 /// ```
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 pub type TiDirectInlinePool<T, H, const N: usize> = DirectPool<T, InlineStorage<T, H, N>, H>;
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T, H: Handle, const N: usize> DirectPool<T, InlineStorage<T, H, N>, H> {
     /// Constructs a new, empty `DirectPool` backed by [`InlineStorage`].
     pub fn new() -> Self {
@@ -1242,16 +1230,12 @@ impl<T, H: Handle, const N: usize> DirectPool<T, InlineStorage<T, H, N>, H> {
     }
 }
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T, H: Handle, const N: usize> Default for DirectPool<T, InlineStorage<T, H, N>, H> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-#[cfg(feature = "nightly")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "nightly")))]
 impl<T: Clone, H: Handle, const N: usize> Clone for DirectPool<T, InlineStorage<T, H, N>, H> {
     fn clone(&self) -> Self {
         let mut result = DirectPool {
@@ -1297,7 +1281,6 @@ mod tests {
     use crate::storage::LayoutSpec;
     use crate::{fmt, Arena};
 
-    #[cfg(feature = "nightly")]
     #[test]
     fn inline_storage_layout() {
         fn test_layout<T, H: Handle, const N: usize>() {

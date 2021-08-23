@@ -11,7 +11,7 @@ repository = "https://github.com/teryror/coca"
 readme = "README.md"
 
 [package.metadata.docs.rs]
-features = ["alloc", "nightly", "profile"]
+features = ["alloc", "unstable", "profile"]
 rustdoc-args = ["--cfg", "docs_rs"]
 
 [profile.test]
@@ -20,8 +20,7 @@ opt-level = 3
 [features]
 default = []
 alloc = []
-nightly = []
-unstable = ["nightly"]
+unstable = []
 profile = []
 
 [dev-dependencies]
