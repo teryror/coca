@@ -238,7 +238,7 @@ pub unsafe trait Storage<R: LayoutSpec>: Sized {
 #[inline(always)]
 pub(crate) fn ptr_at_index<T, S: Storage<ArrayLike<T>>>(storage: &S, index: usize) -> *const T {
     debug_assert!(index <= storage.capacity());
-    let ptr = storage.get_ptr() as *const T;
+    let ptr = storage.get_ptr().cast::<T>();
     ptr.wrapping_add(index)
 }
 
@@ -248,7 +248,7 @@ pub(crate) fn mut_ptr_at_index<T, S: Storage<ArrayLike<T>>>(
     index: usize,
 ) -> *mut T {
     debug_assert!(index <= storage.capacity());
-    let ptr = storage.get_mut_ptr() as *mut T;
+    let ptr = storage.get_mut_ptr().cast::<T>();
     ptr.wrapping_add(index)
 }
 
@@ -257,11 +257,11 @@ pub type SliceStorage<'a, T> = &'a mut [MaybeUninit<T>];
 unsafe impl<T: Sized> Storage<ArrayLike<T>> for &mut [MaybeUninit<T>] {
     #[inline]
     fn get_ptr(&self) -> *const u8 {
-        self.as_ptr() as *const u8
+        self.as_ptr().cast()
     }
     #[inline]
     fn get_mut_ptr(&mut self) -> *mut u8 {
-        self.as_mut_ptr() as *mut u8
+        self.as_mut_ptr().cast()
     }
     #[inline]
     fn capacity(&self) -> usize {
@@ -403,10 +403,10 @@ pub type InlineStorage<T, const C: usize> = [MaybeUninit<T>; C];
 
 unsafe impl<T, const C: usize> Storage<ArrayLike<T>> for InlineStorage<T, C> {
     fn get_ptr(&self) -> *const u8 {
-        self.as_ptr() as *const u8
+        self.as_ptr().cast()
     }
     fn get_mut_ptr(&mut self) -> *mut u8 {
-        self.as_mut_ptr() as *mut u8
+        self.as_mut_ptr().cast()
     }
     fn capacity(&self) -> usize {
         C

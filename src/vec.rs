@@ -695,7 +695,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::Deref for Vec<T, S, I>
     type Target = [T];
     fn deref(&self) -> &[T] {
         unsafe {
-            let ptr = self.buf.get_ptr() as *const T;
+            let ptr = self.buf.get_ptr().cast::<T>();
             core::slice::from_raw_parts(ptr, self.len.as_usize())
         }
     }
@@ -704,7 +704,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::Deref for Vec<T, S, I>
 impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::DerefMut for Vec<T, S, I> {
     fn deref_mut(&mut self) -> &mut [T] {
         unsafe {
-            let ptr = self.buf.get_mut_ptr() as *mut T;
+            let ptr = self.buf.get_mut_ptr().cast::<T>();
             core::slice::from_raw_parts_mut(ptr, self.len.as_usize())
         }
     }
@@ -773,7 +773,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::convert::AsMut<[T]> for Vec
 impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::Drop for Vec<T, S, I> {
     fn drop(&mut self) {
         unsafe {
-            let ptr = self.buf.get_mut_ptr() as *mut T;
+            let ptr = self.buf.get_mut_ptr().cast::<T>();
             ptr::drop_in_place(ptr::slice_from_raw_parts_mut(ptr, self.len()))
         }
     }
@@ -918,7 +918,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for IntoIterator<T, S, I
             return None;
         }
 
-        let ptr = (self.buf.get_ptr() as *const T).wrapping_add(start);
+        let ptr = (self.buf.get_ptr().cast::<T>()).wrapping_add(start);
         let ret = unsafe { ptr.read() };
         self.start = I::from_usize(start + 1);
 
@@ -936,7 +936,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator for IntoItera
         }
 
         let end = end - 1;
-        let ptr = (self.buf.get_ptr() as *const T).wrapping_add(end);
+        let ptr = (self.buf.get_ptr().cast::<T>()).wrapping_add(end);
         let ret = unsafe { ptr.read() };
         self.end = I::from_usize(end);
 

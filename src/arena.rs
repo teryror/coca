@@ -133,7 +133,7 @@ impl<'src, T: Sized> Box<'src, [MaybeUninit<T>]> {
     /// about this initialization invariant.
     #[inline]
     pub unsafe fn assume_init(mut self) -> Box<'src, [T]> {
-        let ptr = self.as_mut_ptr() as *mut T;
+        let ptr = self.as_mut_ptr().cast::<T>();
         let len = self.len();
         core::mem::forget(self);
 
@@ -543,7 +543,7 @@ impl<'src> Arena<'src> {
         capacity: usize,
     ) -> Option<ArenaStorage<'src, R>> {
         let layout = R::layout_with_capacity(capacity).ok()?;
-        let ptr = self.try_alloc_raw(&layout) as *mut u8;
+        let ptr = self.try_alloc_raw(&layout).cast::<u8>();
         unsafe { ArenaStorage::from_raw_parts(ptr, capacity) }
     }
 
@@ -678,7 +678,7 @@ impl<'src> Arena<'src> {
     /// ```
     #[inline]
     pub fn try_reserve<T: Sized>(&mut self) -> Option<Box<'src, MaybeUninit<T>>> {
-        let ptr = self.try_alloc_raw(&Layout::new::<T>()) as *mut MaybeUninit<T>;
+        let ptr = self.try_alloc_raw(&Layout::new::<T>()).cast::<MaybeUninit<T>>();
         if ptr.is_null() {
             return None;
         }
@@ -824,7 +824,7 @@ impl<'src> Arena<'src> {
             }
         };
 
-        let ptr = self.try_alloc_raw(&alloc_layout) as *mut MaybeUninit<T>;
+        let ptr = self.try_alloc_raw(&alloc_layout).cast::<MaybeUninit<T>>();
         if ptr.is_null() {
             return None;
         }
@@ -1104,7 +1104,7 @@ impl<'src> Arena<'src> {
 
         let item_capacity = (bytes_remaining - align_offset) / core::mem::size_of::<T>();
 
-        let base = unsafe { self.cursor.add(align_offset) as *mut T };
+        let base = unsafe { self.cursor.add(align_offset).cast::<T>() };
         let mut count = 0_usize;
         let mut cursor = base;
 
@@ -1131,7 +1131,7 @@ impl<'src> Arena<'src> {
             }
         }
 
-        self.cursor = cursor as *mut MaybeUninit<u8>;
+        self.cursor = cursor.cast::<MaybeUninit<u8>>();
 
         #[cfg(feature = "profile")]
         {
@@ -1267,7 +1267,7 @@ impl Write for Writer<'_, '_> {
 
         unsafe {
             s.as_ptr()
-                .copy_to_nonoverlapping(self.source.cursor as *mut u8, s.len());
+                .copy_to_nonoverlapping(self.source.cursor.cast::<u8>(), s.len());
         }
 
         self.source.cursor = unsafe { self.source.cursor.add(s.len()) };
@@ -1291,7 +1291,7 @@ impl Write for Writer<'_, '_> {
 impl<'buf> From<Writer<'_, 'buf>> for Box<'buf, str> {
     fn from(writer: Writer<'_, 'buf>) -> Self {
         unsafe {
-            let ptr = writer.source.cursor.sub(writer.len) as *mut u8;
+            let ptr = writer.source.cursor.sub(writer.len).cast::<u8>();
             let slice = from_raw_parts_mut(ptr, writer.len);
             let str_ptr = NonNull::new_unchecked(slice).as_ptr() as *mut str;
 

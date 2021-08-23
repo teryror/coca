@@ -115,11 +115,11 @@ mod private {
     impl<T, const N: usize> Compound for [T; N] {
         #[inline(always)]
         fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
-            (this.as_ptr() as *const T).wrapping_add(idx) as _
+            (this.as_ptr().cast::<T>()).wrapping_add(idx).cast()
         }
         #[inline(always)]
         fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
-            (this.as_mut_ptr() as *mut T).wrapping_add(idx) as _
+            (this.as_mut_ptr().cast::<T>()).wrapping_add(idx).cast()
         }
         #[inline(always)]
         unsafe fn drop_all_in_place(this: &mut MaybeUninit<Self>, flags: u64) {

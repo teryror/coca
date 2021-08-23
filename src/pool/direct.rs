@@ -85,7 +85,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
 
     #[inline]
     fn slots(&self) -> *const Slot<T, H::Index> {
-        self.buf.get_ptr() as _
+        self.buf.get_ptr().cast()
     }
 
     #[inline]
@@ -94,12 +94,12 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
         let item_array = Layout::array::<Slot<T, H::Index>>(cap).unwrap();
         let gen_count_array = Layout::array::<u32>(cap).unwrap();
         let (_, offset) = item_array.extend(gen_count_array).unwrap();
-        unsafe { self.buf.get_ptr().add(offset) as _ }
+        unsafe { self.buf.get_ptr().add(offset).cast() }
     }
 
     #[inline]
     fn slots_mut(&mut self) -> *mut Slot<T, H::Index> {
-        self.buf.get_mut_ptr() as _
+        self.buf.get_mut_ptr().cast()
     }
 
     #[inline]
@@ -108,7 +108,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
         let item_array = Layout::array::<Slot<T, H::Index>>(cap).unwrap();
         let gen_count_array = Layout::array::<u32>(cap).unwrap();
         let (_, offset) = item_array.extend(gen_count_array).unwrap();
-        unsafe { self.buf.get_mut_ptr().add(offset) as _ }
+        unsafe { self.buf.get_mut_ptr().add(offset).cast() }
     }
 
     /// Returns the number of elements the pool can hold.
@@ -169,7 +169,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
         if current_gen_count != input_gen_count || input_gen_count % 2 == 0 {
             return None;
         }
-        unsafe { (self.slots().add(index) as *const T).as_ref() }
+        unsafe { (self.slots().add(index).cast::<T>()).as_ref() }
     }
 
     /// Returns a mutable reference to the value corresponding to the handle.
@@ -184,7 +184,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
         if current_gen_count != input_gen_count || input_gen_count % 2 == 0 {
             return None;
         }
-        unsafe { (self.slots_mut().add(index) as *mut T).as_mut() }
+        unsafe { (self.slots_mut().add(index).cast::<T>()).as_mut() }
     }
 
     /// Returns mutable references to the values corresponding to the specified
@@ -221,8 +221,8 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
         let gen_count_ptr = self.gen_counts();
         let slot_ptr = self.slots_mut();
 
-        let mut result = MaybeUninit::uninit();
-        let result_ptr = result.as_mut_ptr() as *mut &mut T;
+        let mut result: MaybeUninit<[&mut T; N]> = MaybeUninit::uninit();
+        let result_ptr = result.as_mut_ptr().cast::<&mut T>();
 
         for i in 0..N {
             let (index, input_gen_count) = handles[i].into_raw_parts();
@@ -236,7 +236,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
             }
 
             unsafe {
-                let item = (slot_ptr.add(index) as *mut T).as_mut().unwrap();
+                let item = (slot_ptr.add(index).cast::<T>()).as_mut().unwrap();
                 result_ptr.add(i).write(item);
             }
         }
@@ -705,7 +705,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Drop for DirectPool<T, S,
         for i in 0..self.capacity() {
             unsafe {
                 if gen_ptr.add(i).read() % 2 == 1 {
-                    ManuallyDrop::drop((item_ptr.add(i) as *mut ManuallyDrop<T>).as_mut().unwrap());
+                    ManuallyDrop::drop((item_ptr.add(i).cast::<ManuallyDrop<T>>()).as_mut().unwrap());
                     num_to_drop -= 1;
                 }
             }
@@ -746,7 +746,7 @@ impl<T: Debug, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Debug for DebugSlo
                             next_free_slot,
                         }
                     } else {
-                        let value = (slot_ptr.add(i) as *const T).as_ref().unwrap();
+                        let value = (slot_ptr.add(i).cast::<T>()).as_ref().unwrap();
                         DebugEntry::Occupied { generation, value }
                     }
                 }),
@@ -795,7 +795,7 @@ impl<'a, T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Iterator for Iter<'a,
             self.front = H::Index::from_usize(i + 1);
             unsafe {
                 let handle = H::new(i, gen_count);
-                let item = (item_ptr.add(i) as *const T).as_ref().unwrap();
+                let item = (item_ptr.add(i).cast::<T>()).as_ref().unwrap();
                 return Some((handle, item));
             }
         }
@@ -850,7 +850,7 @@ impl<'a, T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Iterator for IterMut<
             self.front = H::Index::from_usize(i + 1);
             unsafe {
                 let handle = H::new(i, gen_count);
-                let item = (item_ptr.add(i) as *mut T).as_mut().unwrap();
+                let item = (item_ptr.add(i).cast::<T>()).as_mut().unwrap();
                 return Some((handle, item));
             }
         }
@@ -970,7 +970,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Iterator for Drain<'_, T,
             unsafe {
                 let handle = H::new(i, gen_count);
                 gen_count_ptr.add(i).write(new_gen_count);
-                let result = (item_ptr.add(i) as *mut T).read();
+                let result = (item_ptr.add(i).cast::<T>()).read();
                 (*item_ptr.add(i)).next_free_slot = self.pool.next_free_slot;
                 self.pool.next_free_slot = H::Index::from_usize(i);
 
@@ -1033,7 +1033,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bo
             }
 
             let handle = unsafe { H::new(i, gen_count) };
-            let item = unsafe { (item_ptr.add(i) as *mut T).as_mut().unwrap() };
+            let item = unsafe { (item_ptr.add(i).cast::<T>()).as_mut().unwrap() };
             if !(self.filter_fn)(handle, item) {
                 self.kept = H::Index::from_usize(self.kept.as_usize() + 1);
                 continue;
@@ -1045,7 +1045,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bo
 
             unsafe {
                 gen_count_ptr.add(i).write(gen_count);
-                let result = (item_ptr.add(i) as *mut T).read();
+                let result = (item_ptr.add(i).cast::<T>()).read();
                 (*item_ptr.add(i)).next_free_slot = self.pool.next_free_slot;
                 self.pool.next_free_slot = H::Index::from_usize(i);
 
@@ -1160,12 +1160,12 @@ unsafe impl<T, H: Handle, const N: usize> Storage<DirectPoolLayout<T, H>>
 {
     #[inline]
     fn get_ptr(&self) -> *const u8 {
-        self as *const Self as _
+        (self as *const Self).cast()
     }
 
     #[inline]
     fn get_mut_ptr(&mut self) -> *mut u8 {
-        self as *mut Self as _
+        (self as *mut Self).cast()
     }
 
     #[inline]
@@ -1259,8 +1259,8 @@ impl<T: Clone, H: Handle, const N: usize> Clone for DirectPool<T, InlineStorage<
             unsafe {
                 let generation = dst_counts.add(i).read();
                 if generation % 2 == 1 {
-                    let item = (src_slots.add(i) as *const T).as_ref().unwrap();
-                    (dst_slots.add(i) as *mut T).write(item.clone());
+                    let item = (src_slots.add(i).cast::<T>()).as_ref().unwrap();
+                    (dst_slots.add(i).cast::<T>()).write(item.clone());
                 } else {
                     let next_free_slot = (*src_slots.add(i)).next_free_slot;
                     (*dst_slots.add(i)).next_free_slot = next_free_slot;

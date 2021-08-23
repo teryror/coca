@@ -202,7 +202,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
 
     fn storage_mut(&mut self) -> &mut [T] {
         unsafe {
-            core::slice::from_raw_parts_mut(self.buf.get_mut_ptr() as *mut T, self.capacity())
+            core::slice::from_raw_parts_mut(self.buf.get_mut_ptr().cast::<T>(), self.capacity())
         }
     }
 
@@ -403,7 +403,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
 
         for i in new_len..old_len {
             let idx = i % self.capacity();
-            let ptr = self.buf.get_mut_ptr() as *mut T;
+            let ptr = self.buf.get_mut_ptr().cast::<T>();
             unsafe {
                 ptr.add(idx).drop_in_place();
             }
@@ -724,12 +724,12 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
                 // Storage is discontiguous, index is in lower half, but also wraps
                 // -> shift all elements before the index to the right, accounting for wrap
                 unsafe {
-                    let src = self.buf.get_ptr() as *const T;
+                    let src = self.buf.get_ptr().cast::<T>();
                     let dst = mut_ptr_at_index(&mut self.buf, 1);
                     core::ptr::copy(src, dst, physical_index);
 
                     let src = ptr_at_index(&self.buf, cap - 1);
-                    let dst = self.buf.get_mut_ptr() as *mut T;
+                    let dst = self.buf.get_mut_ptr().cast::<T>();
                     core::ptr::copy(src, dst, 1);
 
                     let src = ptr_at_index(&self.buf, front);
@@ -747,12 +747,12 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
                     let dst = mut_ptr_at_index(&mut self.buf, physical_index);
                     core::ptr::copy(src, dst, cap - physical_index - 1);
 
-                    let src = self.buf.get_ptr() as *const T;
+                    let src = self.buf.get_ptr().cast::<T>();
                     let dst = mut_ptr_at_index(&mut self.buf, cap - 1);
                     core::ptr::copy(src, dst, 1);
 
                     let src = ptr_at_index(&self.buf, 1);
-                    let dst = self.buf.get_mut_ptr() as *mut T;
+                    let dst = self.buf.get_mut_ptr().cast::<T>();
                     core::ptr::copy(src, dst, back % cap - 1);
                 }
             }
@@ -971,11 +971,11 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
         let front = self.front.as_usize();
         let back = front + self.len();
         if back <= self.capacity() {
-            let ptr = self.buf.get_ptr() as *const T;
+            let ptr = self.buf.get_ptr().cast::<T>();
             let slice = unsafe { core::slice::from_raw_parts(ptr.add(front), self.len()) };
             (slice, &[])
         } else {
-            let ptr = self.buf.get_ptr() as *const T;
+            let ptr = self.buf.get_ptr().cast::<T>();
             let fst =
                 unsafe { core::slice::from_raw_parts(ptr.add(front), self.capacity() - front) };
             let snd =
@@ -1006,7 +1006,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
         let front = self.front.as_usize();
         let back = front + self.len();
         if back <= self.capacity() {
-            let ptr = self.buf.get_mut_ptr() as *mut T;
+            let ptr = self.buf.get_mut_ptr().cast::<T>();
             let slice = unsafe { core::slice::from_raw_parts_mut(ptr.add(front), self.len()) };
             (slice, &mut [])
         } else {
@@ -1018,11 +1018,11 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
             let (snd, _) = rest.split_at_mut(len - (cap - front));
 
             let fst = unsafe {
-                let ptr = fst.as_mut_ptr() as *mut T;
+                let ptr = fst.as_mut_ptr().cast::<T>();
                 core::slice::from_raw_parts_mut(ptr, fst.len())
             };
             let snd = unsafe {
-                let ptr = snd.as_mut_ptr() as *mut T;
+                let ptr = snd.as_mut_ptr().cast::<T>();
                 core::slice::from_raw_parts_mut(ptr, snd.len())
             };
 
@@ -1055,13 +1055,13 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
         let front = self.front.as_usize();
         let back = front + self.len();
         if back <= self.capacity() {
-            let ptr = self.buf.get_mut_ptr() as *mut T;
+            let ptr = self.buf.get_mut_ptr().cast::<T>();
             unsafe { core::slice::from_raw_parts_mut(ptr.add(front), self.len()) }
         } else {
             self.storage_mut().rotate_left(front);
             self.front = I::from_usize(0);
 
-            let ptr = self.buf.get_mut_ptr() as *mut T;
+            let ptr = self.buf.get_mut_ptr().cast::<T>();
             unsafe { core::slice::from_raw_parts_mut(ptr, self.len()) }
         }
     }
