@@ -1,4 +1,4 @@
-//! Groups of [`Option`](std::option::Option) with packed discriminants.
+//! Groups of [`Option`](core::option::Option)s with packed discriminants.
 //! 
 //! This is useful for optimizing the size of structs with multiple optional
 //! fields that would otherwise be larger than the unwrapped equivalents
@@ -53,7 +53,15 @@
 //! assert_eq!(many_options.get(15), Some(&5));
 //! ```
 
+// TODO: Consider reworking this again to cut down on duplication even more!
+//  -> can we make do with a single `struct OptionGroup<T: Compound, F>`
+//     and turn `OptionGroup{8, 16, 32, 64}` into type aliases?
 // TODO: for the array versions, implement iterators
+//  -> it's unclear what these should look like exactly...
+//  -> iterate over just the Some values, or should the Iterator<Item = Option<...>>?
+//  -> if the former, should the Item type include the index? this is kind of a map-like data structure
+//  => for now, just start with methods {first, next, prev, last}_{some, none} that return indices;
+//     those should make a fine basis for any ad-hoc iteration scheme
 // TODO: write more tests to run with miri
 
 use core::mem::MaybeUninit;
@@ -130,115 +138,61 @@ mod private {
 }
 
 macro_rules! define_tuple_trait {
-    ($num:literal : $traitname:ident < $t:ident > : $supertrait:ident) => {
+    ($num:literal, $traitname:ident : $supertrait:ident) => {
         #[doc = core::concat!("Tuples with more than ", $num, " element(s).")]
         pub trait $traitname : $supertrait {
             #[doc = core::concat!("The type of the element at position ", $num, ".")]
-            type $t;
+            type T;
         }
     };
 }
 
-define_tuple_trait!(0 : Tuple0<T>: Compound);
-impl<A, B> Tuple0 for (A, B) { type T = A; }
-impl<A, B, C> Tuple0 for (A, B, C) { type T = A; }
-impl<A, B, C, D> Tuple0 for (A, B, C, D) { type T = A; }
-impl<A, B, C, D, E> Tuple0 for (A, B, C, D, E) { type T = A; }
-impl<A, B, C, D, E, F> Tuple0 for (A, B, C, D, E, F) { type T = A; }
-impl<A, B, C, D, E, F, G> Tuple0 for (A, B, C, D, E, F, G) { type T = A; }
-impl<A, B, C, D, E, F, G, H> Tuple0 for (A, B, C, D, E, F, G, H) { type T = A; }
-impl<A, B, C, D, E, F, G, H, I> Tuple0 for (A, B, C, D, E, F, G, H, I) { type T = A; }
-impl<A, B, C, D, E, F, G, H, I, J> Tuple0 for (A, B, C, D, E, F, G, H, I, J) { type T = A; }
-impl<A, B, C, D, E, F, G, H, I, J, K> Tuple0 for (A, B, C, D, E, F, G, H, I, J, K) { type T = A; }
-impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple0 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = A; }
+define_tuple_trait!(0, Tuple0: Compound);
+define_tuple_trait!(1, Tuple1: Tuple0);
+define_tuple_trait!(2, Tuple2: Tuple1);
+define_tuple_trait!(3, Tuple3: Tuple2);
+define_tuple_trait!(4, Tuple4: Tuple3);
+define_tuple_trait!(5, Tuple5: Tuple4);
+define_tuple_trait!(6, Tuple6: Tuple5);
+define_tuple_trait!(7, Tuple7: Tuple6);
+define_tuple_trait!(8, Tuple8: Tuple7);
+define_tuple_trait!(9, Tuple9: Tuple8);
+define_tuple_trait!(10, Tuple10: Tuple9);
+define_tuple_trait!(11, Tuple11: Tuple10);
 
-define_tuple_trait!(1 : Tuple1<T>: Tuple0);
-impl<A, B> Tuple1 for (A, B) { type T = B; }
-impl<A, B, C> Tuple1 for (A, B, C) { type T = B; }
-impl<A, B, C, D> Tuple1 for (A, B, C, D) { type T = B; }
-impl<A, B, C, D, E> Tuple1 for (A, B, C, D, E) { type T = B; }
-impl<A, B, C, D, E, F> Tuple1 for (A, B, C, D, E, F) { type T = B; }
-impl<A, B, C, D, E, F, G> Tuple1 for (A, B, C, D, E, F, G) { type T = B; }
-impl<A, B, C, D, E, F, G, H> Tuple1 for (A, B, C, D, E, F, G, H) { type T = B; }
-impl<A, B, C, D, E, F, G, H, I> Tuple1 for (A, B, C, D, E, F, G, H, I) { type T = B; }
-impl<A, B, C, D, E, F, G, H, I, J> Tuple1 for (A, B, C, D, E, F, G, H, I, J) { type T = B; }
-impl<A, B, C, D, E, F, G, H, I, J, K> Tuple1 for (A, B, C, D, E, F, G, H, I, J, K) { type T = B; }
-impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple1 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = B; }
+macro_rules! impl_tuple_traits {
+    ( $($typenames:ident),* : $($traitnames:ident),* ) => {
+        impl_tuple_traits_helper_1!(
+            ( $($typenames),* ) : ( $($traitnames),* ) ( $($typenames),* )
+        );
+    }
+}
 
-define_tuple_trait!(2 : Tuple2<T>: Tuple1);
-impl<A, B, C> Tuple2 for (A, B, C) { type T = C; }
-impl<A, B, C, D> Tuple2 for (A, B, C, D) { type T = C; }
-impl<A, B, C, D, E> Tuple2 for (A, B, C, D, E) { type T = C; }
-impl<A, B, C, D, E, F> Tuple2 for (A, B, C, D, E, F) { type T = C; }
-impl<A, B, C, D, E, F, G> Tuple2 for (A, B, C, D, E, F, G) { type T = C; }
-impl<A, B, C, D, E, F, G, H> Tuple2 for (A, B, C, D, E, F, G, H) { type T = C; }
-impl<A, B, C, D, E, F, G, H, I> Tuple2 for (A, B, C, D, E, F, G, H, I) { type T = C; }
-impl<A, B, C, D, E, F, G, H, I, J> Tuple2 for (A, B, C, D, E, F, G, H, I, J) { type T = C; }
-impl<A, B, C, D, E, F, G, H, I, J, K> Tuple2 for (A, B, C, D, E, F, G, H, I, J, K) { type T = C; }
-impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple2 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = C; }
+macro_rules! impl_tuple_traits_helper_1 {
+    ( $ts:tt : ( $($traitname:ident),* ) ( $($t:ident),* ) ) => {
+        impl_tuple_traits_helper_2!(
+            $( [ $ts : $traitname $t ] )*
+        );
+    }
+}
 
-define_tuple_trait!(3 : Tuple3<T>: Tuple2);
-impl<A, B, C, D> Tuple3 for (A, B, C, D) { type T = D; }
-impl<A, B, C, D, E> Tuple3 for (A, B, C, D, E) { type T = D; }
-impl<A, B, C, D, E, F> Tuple3 for (A, B, C, D, E, F) { type T = D; }
-impl<A, B, C, D, E, F, G> Tuple3 for (A, B, C, D, E, F, G) { type T = D; }
-impl<A, B, C, D, E, F, G, H> Tuple3 for (A, B, C, D, E, F, G, H) { type T = D; }
-impl<A, B, C, D, E, F, G, H, I> Tuple3 for (A, B, C, D, E, F, G, H, I) { type T = D; }
-impl<A, B, C, D, E, F, G, H, I, J> Tuple3 for (A, B, C, D, E, F, G, H, I, J) { type T = D; }
-impl<A, B, C, D, E, F, G, H, I, J, K> Tuple3 for (A, B, C, D, E, F, G, H, I, J, K) { type T = D; }
-impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple3 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = D; }
+macro_rules! impl_tuple_traits_helper_2 {
+    ( $( [ ( $($ts:ident),* ) : $traitname:ident $t:ident ] )* ) => {
+        $(impl<$($ts),*> $traitname for ( $($ts),* ) { type T = $t; } )*
+    }
+}
 
-define_tuple_trait!(4 : Tuple4<T>: Tuple3);
-impl<A, B, C, D, E> Tuple4 for (A, B, C, D, E) { type T = E; }
-impl<A, B, C, D, E, F> Tuple4 for (A, B, C, D, E, F) { type T = E; }
-impl<A, B, C, D, E, F, G> Tuple4 for (A, B, C, D, E, F, G) { type T = E; }
-impl<A, B, C, D, E, F, G, H> Tuple4 for (A, B, C, D, E, F, G, H) { type T = E; }
-impl<A, B, C, D, E, F, G, H, I> Tuple4 for (A, B, C, D, E, F, G, H, I) { type T = E; }
-impl<A, B, C, D, E, F, G, H, I, J> Tuple4 for (A, B, C, D, E, F, G, H, I, J) { type T = E; }
-impl<A, B, C, D, E, F, G, H, I, J, K> Tuple4 for (A, B, C, D, E, F, G, H, I, J, K) { type T = E; }
-impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple4 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = E; }
-
-define_tuple_trait!(5 : Tuple5<T>: Tuple4);
-impl<A, B, C, D, E, F> Tuple5 for (A, B, C, D, E, F) { type T = F; }
-impl<A, B, C, D, E, F, G> Tuple5 for (A, B, C, D, E, F, G) { type T = F; }
-impl<A, B, C, D, E, F, G, H> Tuple5 for (A, B, C, D, E, F, G, H) { type T = F; }
-impl<A, B, C, D, E, F, G, H, I> Tuple5 for (A, B, C, D, E, F, G, H, I) { type T = F; }
-impl<A, B, C, D, E, F, G, H, I, J> Tuple5 for (A, B, C, D, E, F, G, H, I, J) { type T = F; }
-impl<A, B, C, D, E, F, G, H, I, J, K> Tuple5 for (A, B, C, D, E, F, G, H, I, J, K) { type T = F; }
-impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple5 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = F; }
-
-define_tuple_trait!(6 : Tuple6<T>: Tuple5);
-impl<A, B, C, D, E, F, G> Tuple6 for (A, B, C, D, E, F, G) { type T = G; }
-impl<A, B, C, D, E, F, G, H> Tuple6 for (A, B, C, D, E, F, G, H) { type T = G; }
-impl<A, B, C, D, E, F, G, H, I> Tuple6 for (A, B, C, D, E, F, G, H, I) { type T = G; }
-impl<A, B, C, D, E, F, G, H, I, J> Tuple6 for (A, B, C, D, E, F, G, H, I, J) { type T = G; }
-impl<A, B, C, D, E, F, G, H, I, J, K> Tuple6 for (A, B, C, D, E, F, G, H, I, J, K) { type T = G; }
-impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple6 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = G; }
-
-define_tuple_trait!(7 : Tuple7<T>: Tuple6);
-impl<A, B, C, D, E, F, G, H> Tuple7 for (A, B, C, D, E, F, G, H) { type T = H; }
-impl<A, B, C, D, E, F, G, H, I> Tuple7 for (A, B, C, D, E, F, G, H, I) { type T = H; }
-impl<A, B, C, D, E, F, G, H, I, J> Tuple7 for (A, B, C, D, E, F, G, H, I, J) { type T = H; }
-impl<A, B, C, D, E, F, G, H, I, J, K> Tuple7 for (A, B, C, D, E, F, G, H, I, J, K) { type T = H; }
-impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple7 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = H; }
-
-define_tuple_trait!(8 : Tuple8<T>: Tuple7);
-impl<A, B, C, D, E, F, G, H, I> Tuple8 for (A, B, C, D, E, F, G, H, I) { type T = I; }
-impl<A, B, C, D, E, F, G, H, I, J> Tuple8 for (A, B, C, D, E, F, G, H, I, J) { type T = I; }
-impl<A, B, C, D, E, F, G, H, I, J, K> Tuple8 for (A, B, C, D, E, F, G, H, I, J, K) { type T = I; }
-impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple8 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = I; }
-
-define_tuple_trait!(9 : Tuple9<T>: Tuple8);
-impl<A, B, C, D, E, F, G, H, I, J> Tuple9 for (A, B, C, D, E, F, G, H, I, J) { type T = J; }
-impl<A, B, C, D, E, F, G, H, I, J, K> Tuple9 for (A, B, C, D, E, F, G, H, I, J, K) { type T = J; }
-impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple9 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = J; }
-
-define_tuple_trait!(10 : Tuple10<T>: Tuple9);
-impl<A, B, C, D, E, F, G, H, I, J, K> Tuple10 for (A, B, C, D, E, F, G, H, I, J, K) { type T = K; }
-impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple10 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = K; }
-
-define_tuple_trait!(11 : Tuple11<T>: Tuple10);
-impl<A, B, C, D, E, F, G, H, I, J, K, L> Tuple11 for (A, B, C, D, E, F, G, H, I, J, K, L) { type T = L; }
+impl_tuple_traits!(A, B : Tuple0, Tuple1);
+impl_tuple_traits!(A, B, C : Tuple0, Tuple1, Tuple2);
+impl_tuple_traits!(A, B, C, D : Tuple0, Tuple1, Tuple2, Tuple3);
+impl_tuple_traits!(A, B, C, D, E : Tuple0, Tuple1, Tuple2, Tuple3, Tuple4);
+impl_tuple_traits!(A, B, C, D, E, F : Tuple0, Tuple1, Tuple2, Tuple3, Tuple4, Tuple5);
+impl_tuple_traits!(A, B, C, D, E, F, G : Tuple0, Tuple1, Tuple2, Tuple3, Tuple4, Tuple5, Tuple6);
+impl_tuple_traits!(A, B, C, D, E, F, G, H : Tuple0, Tuple1, Tuple2, Tuple3, Tuple4, Tuple5, Tuple6, Tuple7);
+impl_tuple_traits!(A, B, C, D, E, F, G, H, I : Tuple0, Tuple1, Tuple2, Tuple3, Tuple4, Tuple5, Tuple6, Tuple7, Tuple8);
+impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J : Tuple0, Tuple1, Tuple2, Tuple3, Tuple4, Tuple5, Tuple6, Tuple7, Tuple8, Tuple9);
+impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J, K : Tuple0, Tuple1, Tuple2, Tuple3, Tuple4, Tuple5, Tuple6, Tuple7, Tuple8, Tuple9, Tuple10);
+impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J, K, L : Tuple0, Tuple1, Tuple2, Tuple3, Tuple4, Tuple5, Tuple6, Tuple7, Tuple8, Tuple9, Tuple10, Tuple11);
 
 /// Groups of up to eight values. Can be packed into an [`OptionGroup8`] or larger.
 pub trait Compound8: Compound {}
