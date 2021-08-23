@@ -224,8 +224,8 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
         let mut result: MaybeUninit<[&mut T; N]> = MaybeUninit::uninit();
         let result_ptr = result.as_mut_ptr().cast::<&mut T>();
 
-        for i in 0..N {
-            let (index, input_gen_count) = handles[i].into_raw_parts();
+        for (i, handle) in handles.iter().enumerate() {
+            let (index, input_gen_count) = handle.into_raw_parts();
             if index > self.capacity() {
                 return None;
             }
@@ -950,7 +950,7 @@ pub struct Drain<'a, T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> {
 impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Iterator for Drain<'_, T, S, H> {
     type Item = (H, T);
     fn next(&mut self) -> Option<Self::Item> {
-        if self.pool.len() == 0 {
+        if self.pool.is_empty() {
             return None;
         }
 
