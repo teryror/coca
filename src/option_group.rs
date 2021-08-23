@@ -14,7 +14,8 @@
 //! 
 //! # Examples
 //! 
-//! Tuples with 2 to 12 components may be used to define groups of values with mixed types:
+//! Tuples with 2 to 12 components may be used to define groups of values with
+//! mixed types:
 //! 
 //! ```
 //! # use coca::option_group::OptionGroup8;
@@ -36,18 +37,24 @@
 //! assert_eq!(four_options.get_1(), Some(&1234));
 //! ```
 //! 
-//! Arrays can be used to define homogeneous groups. A more ergonomic API is provided in this case:
+//! Arrays can be used to define homogeneous groups. A smaller, more flexible
+//! API is provided for these:
 //! 
 //! ```
-//! # use coca::option_group::OptionGroup8;
-//! // todo!();
+//! # use coca::option_group::OptionGroup32;
+//! let mut many_options: OptionGroup32<[usize; 20]> = OptionGroup32::empty();
+//! for i in 0..20 {
+//!     if i % 7 < 3 { many_options.replace(i, 20 - i); }
+//! }
+//! 
+//! assert_eq!(many_options.get(0), Some(&20));
+//! assert!(many_options.get(5).is_none());
+//! assert!(many_options.get(10).is_none());
+//! assert_eq!(many_options.get(15), Some(&5));
 //! ```
 
 // TODO: get rid of clippy warnings
-// TODO: restructure this file, use more macros to cut down on redundant code
-// TODO: for the array versions, implement IntoIter and Index
-// TODO: Add {Compound32, Compound64} traits, and {OptionGroup32, OptionGroup64} types
-// TODO: finish writing documentation
+// TODO: for the array versions, implement iterators
 // TODO: write more tests to run with miri
 
 use core::mem::MaybeUninit;
@@ -108,11 +115,11 @@ mod private {
     impl<T, const N: usize> Compound for [T; N] {
         #[inline(always)]
         fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
-            this.as_ptr().wrapping_add(idx) as _
+            (this.as_ptr() as *const T).wrapping_add(idx) as _
         }
         #[inline(always)]
         fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
-            this.as_mut_ptr().wrapping_add(idx) as _
+            (this.as_mut_ptr() as *mut T).wrapping_add(idx) as _
         }
         #[inline(always)]
         unsafe fn drop_all_in_place(this: &mut MaybeUninit<Self>, flags: u64) {
@@ -253,9 +260,7 @@ macro_rules! impl_marker_trait_for_arrays {
 impl_marker_trait_for_arrays!(Compound8 for [2, 3, 4, 5, 6, 7, 8]);
 
 /// Groups of up to sixteen values. Can be packed into an [`OptionGroup16`] or larger.
-#[allow(missing_docs)]
 pub trait Compound16: Compound {}
-
 impl<C> Compound16 for C where C: Compound8 {}
 
 impl<A, B, C, D, E, F, G, H, I> Compound16 for (A, B, C, D, E, F, G, H, I) {}
@@ -264,6 +269,19 @@ impl<A, B, C, D, E, F, G, H, I, J, K> Compound16 for (A, B, C, D, E, F, G, H, I,
 impl<A, B, C, D, E, F, G, H, I, J, K, L> Compound16 for (A, B, C, D, E, F, G, H, I, J, K, L) {}
 
 impl_marker_trait_for_arrays!(Compound16 for [9, 10, 11, 12, 13, 14, 15, 16]);
+
+/// Groups of up to 32 values. Can be packed into an [`OptionGroup32`] or larger.
+pub trait Compound32: Compound {}
+impl<C> Compound32 for C where C: Compound16 {}
+impl_marker_trait_for_arrays!(Compound32 for [17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
+
+/// Groups of up to 64 values. Can be packed into an [`OptionGroup64`] or larger.
+pub trait Compound64: Compound {}
+impl<C> Compound64 for C where C: Compound32 {}
+impl_marker_trait_for_arrays!(Compound64 for [
+    33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+    49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64
+]);
 
 /// A group of up to eight [`Option`](core::option::Option)s, with the
 /// discriminants packed into a single `u8`.
@@ -274,65 +292,62 @@ pub struct OptionGroup8<T: Compound8> {
     flags: u8,
 }
 
-impl<T> OptionGroup8<T>
-where
-    T: Compound8,
-{
-    /// Creates a new group with all options set to `None`.
-    #[inline(always)]
-    pub fn empty() -> Self {
-        OptionGroup8 {
-            value: MaybeUninit::uninit(),
-            flags: 0,
+macro_rules! impl_option_group {
+    ($typename:ident, $traitname:ident) => {
+        impl<T> $typename<T> where T: $traitname {
+            /// Creates a new group with all options set to `None`.
+            #[inline(always)]
+            pub fn empty() -> Self {
+                Self {
+                    value: MaybeUninit::uninit(),
+                    flags: 0,
+                }
+            }
+
+            #[inline(always)]
+            fn set_flag(&mut self, n: u32) {
+                self.flags |= 1 << n;
+            }
+
+            #[inline(always)]
+            fn clear_flag(&mut self, n: u32) {
+                self.flags &= !(1 << n);
+            }
+
+            /// Returns `true` if all options in the group are `None` values.
+            #[inline(always)]
+            pub fn is_empty(&self) -> bool {
+                self.flags == 0
+            }
+
+            /// Returns `true` if the *n*th option in the group is a `Some` value.
+            #[inline(always)]
+            pub fn is_some(&self, n: u32) -> bool {
+                self.flags & (1 << n) != 0
+            }
+
+            /// Returns `true` if the *n*th option in the group is a `None` value.
+            #[inline(always)]
+            pub fn is_none(&self, n: u32) -> bool {
+                self.flags & (1 << n) == 0
+            }
         }
-    }
 
-    #[inline(always)]
-    fn set_flag(&mut self, n: u32) {
-        self.flags |= 1 << n;
-    }
+        impl<T> Default for $typename<T> where T: $traitname {
+            fn default() -> Self {
+                Self::empty()
+            }
+        }
 
-    #[inline(always)]
-    fn clear_flag(&mut self, n: u32) {
-        self.flags &= !(1 << n);
-    }
-
-    /// Returns `true` if all options in the group are `None` values.
-    #[inline(always)]
-    pub fn is_empty(&self) -> bool {
-        self.flags == 0
-    }
-
-    /// Returns `true` if the *n*th option in the group is a `Some` value.
-    #[inline(always)]
-    pub fn is_some(&self, n: u32) -> bool {
-        self.flags & (1 << n) != 0
-    }
-
-    /// Returns `true` if the *n*th option in the group is a `None` value.
-    #[inline(always)]
-    pub fn is_none(&self, n: u32) -> bool {
-        self.flags & (1 << n) == 0
-    }
+        impl<T> Drop for $typename<T> where T: $traitname {
+            fn drop(&mut self) {
+                unsafe { T::drop_all_in_place(&mut self.value, self.flags as u64); }
+            }
+        }
+    };
 }
 
-impl<T> Default for OptionGroup8<T>
-where
-    T: Compound8,
-{
-    fn default() -> Self {
-        Self::empty()
-    }
-}
-
-impl<T> Drop for OptionGroup8<T>
-where
-    T: Compound8,
-{
-    fn drop(&mut self) {
-        unsafe { T::drop_all_in_place(&mut self.value, self.flags as u64); }
-    }
-}
+impl_option_group!(OptionGroup8, Compound8);
 
 macro_rules! impl_tuple_accessors {
     ($ogtype:ident < $compoundtrait:ident + $tupletrait:ident , $idx:literal > $get:ident, $get_mut:ident, $take:ident, $replace:ident) => {
@@ -392,17 +407,19 @@ impl_tuple_accessors!(OptionGroup8<Compound8 + Tuple7, 7> get_7, get_mut_7, take
 macro_rules! impl_array_methods {
     ($typename:ident, $traitname:ident) => {
         impl<T, const N: usize> $typename<[T; N]> where [T; N]: $traitname {
+            #[doc = concat!("Creates a new `", stringify!($typename), "<", stringify!([T; N]), ">` initialized with the provided values.")]
             pub fn new(values: [Option<T>; N]) -> Self {
                 let mut result = Self::empty();
                 for (idx, v) in core::array::IntoIter::new(values).enumerate() {
                     if let Some(value) = v {
-                        result.set(idx, value);
+                        result.replace(idx, value);
                     }
                 }
 
                 result
             }
 
+            /// Equivalent to [`array_of_options[idx].as_ref()`](core::option::Option::as_ref).
             pub fn get(&self, idx: usize) -> Option<&T> {
                 if idx >= N {
                     panic!("Index out of bounds!");
@@ -417,24 +434,36 @@ macro_rules! impl_array_methods {
                 }
             }
 
-            pub fn set(&mut self, idx: usize, value: T) {
-                if self.is_some(idx as u32) {
-                    unsafe {
-                        (<[T; N] as Compound>::get_mut_ptr(&mut self.value, idx) as *mut T).drop_in_place();
-                        self.set_flag(idx as u32);
-                    }
+            /// Equivalent to [`array_of_options[idx].take()`](core::option::Option::take).
+            pub fn take(&mut self, idx: usize) -> Option<T> {
+                if idx >= N {
+                    panic!("Index out of bounds!");
                 }
 
+                if self.is_some(idx as u32) {
+                    self.clear_flag(idx as u32);
+                    Some(unsafe {
+                        (<[T; N] as Compound>::get_ptr(&mut self.value, idx) as *const T).read()
+                    })
+                } else {
+                    None
+                }
+            }
+
+            /// Equivalent to [`array_of_options[idx].replace(value)`](core::option::Option::replace).
+            pub fn replace(&mut self, idx: usize, value: T) -> Option<T> {
+                let result = self.take(idx);
+                self.set_flag(idx as u32);
                 unsafe {
                     (<[T; N] as Compound>::get_mut_ptr(&mut self.value, idx) as *mut T).write(value);
                 }
+                result
             }
         }
     }
 }
 
 impl_array_methods!(OptionGroup8, Compound8);
-impl_array_methods!(OptionGroup16, Compound16);
 
 /// A group of up to sixteen [`Option`](core::option::Option)s, with the
 /// discriminants packed into a single `u16`.
@@ -445,62 +474,7 @@ pub struct OptionGroup16<T: Compound16> {
     flags: u16,
 }
 
-impl<T> OptionGroup16<T>
-where
-    T: Compound16,
-{
-    #[inline(always)]
-    pub fn empty() -> Self {
-        OptionGroup16 {
-            value: MaybeUninit::uninit(),
-            flags: 0,
-        }
-    }
-
-    #[inline(always)]
-    fn set_flag(&mut self, n: u32) {
-        self.flags |= 1 << n;
-    }
-
-    #[inline(always)]
-    fn clear_flag(&mut self, n: u32) {
-        self.flags &= !(1 << n);
-    }
-
-    #[inline(always)]
-    pub fn is_empty(&self) -> bool {
-        self.flags == 0
-    }
-
-    #[inline(always)]
-    pub fn is_some(&self, n: u32) -> bool {
-        self.flags & (1 << n) != 0
-    }
-
-    #[inline(always)]
-    pub fn is_none(&self, n: u32) -> bool {
-        self.flags & (1 << n) == 0
-    }
-}
-
-impl<T> Default for OptionGroup16<T>
-where
-    T: Compound16,
-{
-    fn default() -> Self {
-        Self::empty()
-    }
-}
-
-impl<T> Drop for OptionGroup16<T>
-where
-    T: Compound16,
-{
-    fn drop(&mut self) {
-        unsafe { T::drop_all_in_place(&mut self.value, self.flags as u64); }
-    }
-}
-
+impl_option_group!(OptionGroup16, Compound16);
 impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple0, 0> get_0, get_mut_0, take_0, replace_0);
 impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple1, 1> get_1, get_mut_1, take_1, replace_1);
 impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple2, 2> get_2, get_mut_2, take_2, replace_2);
@@ -513,3 +487,54 @@ impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple8, 8> get_8, get_mut_8, ta
 impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple9, 9> get_9, get_mut_9, take_9, replace_9);
 impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple10, 10> get_10, get_mut_10, take_10, replace_10);
 impl_tuple_accessors!(OptionGroup16<Compound16 + Tuple11, 11> get_11, get_mut_11, take_11, replace_11);
+impl_array_methods!(OptionGroup16, Compound16);
+
+
+/// A group of up to 32 [`Option`](core::option::Option)s, with the
+/// discriminants packed into a single `u32`.
+/// 
+/// See the [module-level documentation](crate::option_group) for more.
+pub struct OptionGroup32<T: Compound32> {
+    value: MaybeUninit<T>,
+    flags: u32,
+}
+
+impl_option_group!(OptionGroup32, Compound32);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple0, 0> get_0, get_mut_0, take_0, replace_0);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple1, 1> get_1, get_mut_1, take_1, replace_1);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple2, 2> get_2, get_mut_2, take_2, replace_2);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple3, 3> get_3, get_mut_3, take_3, replace_3);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple4, 4> get_4, get_mut_4, take_4, replace_4);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple5, 5> get_5, get_mut_5, take_5, replace_5);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple6, 6> get_6, get_mut_6, take_6, replace_6);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple7, 7> get_7, get_mut_7, take_7, replace_7);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple8, 8> get_8, get_mut_8, take_8, replace_8);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple9, 9> get_9, get_mut_9, take_9, replace_9);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple10, 10> get_10, get_mut_10, take_10, replace_10);
+impl_tuple_accessors!(OptionGroup32<Compound32 + Tuple11, 11> get_11, get_mut_11, take_11, replace_11);
+impl_array_methods!(OptionGroup32, Compound32);
+
+/// A group of up to 64 [`Option`](core::option::Option)s, with the
+/// discriminants packed into a single `u32`.
+/// 
+/// See the [module-level documentation](crate::option_group) for more.
+pub struct OptionGroup64<T: Compound64> {
+    value: MaybeUninit<T>,
+    flags: u64,
+}
+
+impl_option_group!(OptionGroup64, Compound64);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple0, 0> get_0, get_mut_0, take_0, replace_0);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple1, 1> get_1, get_mut_1, take_1, replace_1);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple2, 2> get_2, get_mut_2, take_2, replace_2);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple3, 3> get_3, get_mut_3, take_3, replace_3);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple4, 4> get_4, get_mut_4, take_4, replace_4);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple5, 5> get_5, get_mut_5, take_5, replace_5);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple6, 6> get_6, get_mut_6, take_6, replace_6);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple7, 7> get_7, get_mut_7, take_7, replace_7);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple8, 8> get_8, get_mut_8, take_8, replace_8);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple9, 9> get_9, get_mut_9, take_9, replace_9);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple10, 10> get_10, get_mut_10, take_10, replace_10);
+impl_tuple_accessors!(OptionGroup64<Compound64 + Tuple11, 11> get_11, get_mut_11, take_11, replace_11);
+impl_array_methods!(OptionGroup64, Compound64);
+
