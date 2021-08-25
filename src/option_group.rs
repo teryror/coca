@@ -240,6 +240,18 @@ impl<F, T> OptionGroup<F, T> where F: Flags, T: SubsetRepresentable<F> {
     }
 }
 
+impl<F, T> Default for OptionGroup<F, T> where F: Flags, T: SubsetRepresentable<F> {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
+impl<F, T> Drop for OptionGroup<F, T> where F: Flags, T: SubsetRepresentable<F> {
+    fn drop(&mut self) {
+        unsafe { T::drop_all_in_place(&mut self.value, self.flags.into()); }
+    }
+}
+
 #[cold]
 #[inline(never)]
 fn index_out_of_bounds(index: usize, len: usize) -> ! {
