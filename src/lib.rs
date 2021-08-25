@@ -47,16 +47,10 @@ pub mod object;
 
 pub use crate::{
     arena::{Arena, Box},
-    binary_heap::{ArenaHeap, SliceHeap},
-    deque::{ArenaDeque, SliceDeque},
-    option_group::{OptionGroup8, OptionGroup16},
-    vec::{ArenaVec, SliceVec},
-};
-
-pub use crate::{
-    binary_heap::{InlineHeap, TiInlineHeap},
-    deque::{InlineDeque, TiInlineDeque},
-    vec::{InlineVec, TiInlineVec},
+    binary_heap::{ArenaHeap, InlineHeap, SliceHeap, TiInlineHeap},
+    deque::{ArenaDeque, InlineDeque, SliceDeque, TiInlineDeque},
+    option_group::{OptionGroup8, OptionGroup16, OptionGroup32, OptionGroup64},
+    vec::{ArenaVec, InlineVec, SliceVec, TiInlineVec},
 };
 
 #[cfg(feature = "alloc")]
