@@ -59,9 +59,8 @@
 //! Such groups can also be iterated over in various ways, see [`iter`](OptionGroup::iter),
 //! [`some_values`](OptionGroup::some_values), [`some_values_mut`](OptionGroup::some_values_mut).
 //! Note, however, that it is not currently possible to insert or remove values
-//! during iteration, as a genuine array of options would allow. When this is
-//! desired, iterate over a range of `usize` instead, and use the normal indexing
-//! functions.
+//! during iteration, as a `[Option<T>; N]` would allow. When this is desired,
+//! iterate over a range of `usize` instead, and use the normal indexing functions.
 
 // TODO: implement by-value iterators (drain, into_iter)
 // TODO: implement Debug
@@ -580,7 +579,7 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Repres
     /// assert_eq!(iter.next(), None);
     /// ```
     #[inline(always)]
-    pub fn iter<'a>(&'a self) -> Iter<'a, F, T, N> {
+    pub fn iter(&self) -> Iter<'_, F, T, N> {
         Iter { group: self, next_index: 0, last_index: N }
     }
 
@@ -600,7 +599,7 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Repres
     /// assert!(iter.next().is_none());
     /// ```
     #[inline(always)]
-    pub fn some_values<'a>(&'a self) -> SomeValuesIter<'a, F, T, N> {
+    pub fn some_values(&self) -> SomeValuesIter<'_, F, T, N> {
         SomeValuesIter { group: self, some_values: self.flags }
     }
 
@@ -619,15 +618,15 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Repres
     /// assert_eq!(group.take(1), Some(14));
     /// assert_eq!(group.take(3), Some(76));
     /// ```
-    pub fn some_values_mut<'a>(&'a mut self) -> SomeValuesIterMut<'a, F, T, N> {
+    pub fn some_values_mut(&mut self) -> SomeValuesIterMut<'_, F, T, N> {
         let some_values = self.flags;
         SomeValuesIterMut { group: self, some_values }
     }
 }
 
-/// Immutable option group iterator.
+/// Immutable option array iterator.
 /// 
-/// This struct is created by the [`iter`](OptionGroup::iter) method on array-based [`OptionGroup`]s.
+/// This struct is created by the [`iter`](OptionGroup::iter) method on [`OptionGroup`].
 pub struct Iter<'a, F, T, const N: usize> where F: Flags, [T; N]: Representable<F> {
     group: &'a OptionGroup<F, [T; N]>,
     next_index: usize,
@@ -676,10 +675,10 @@ impl<'a, F, T, const N: usize> IntoIterator for &'a OptionGroup<F, [T; N]> where
     }
 }
 
-/// Immutable iterator over all `Some` values in an option group.
+/// Immutable iterator over all `Some` values in an option array.
 /// 
 /// This struct is created by the [`some_values`](OptionGroup::some_values)
-/// method on array-based [`OptionGroup`]s.
+/// method on [`OptionGroup`].
 pub struct SomeValuesIter<'a, F, T, const N: usize> where F: Flags, [T; N]: Representable<F> {
     group: &'a OptionGroup<F, [T; N]>,
     some_values: F,
@@ -722,10 +721,10 @@ impl<'a, F, T, const N: usize> DoubleEndedIterator for SomeValuesIter<'a, F, T, 
 impl<'a, F, T, const N: usize> FusedIterator for SomeValuesIter<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
 impl<'a, F, T, const N: usize> ExactSizeIterator for SomeValuesIter<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
 
-/// Mutable iterator over all `Some` values in an option group.
+/// Mutable iterator over all `Some` values in an option array.
 /// 
 /// This struct is created by the [`some_values_mut`](OptionGroup::some_values)
-/// method on array-based [`OptionGroup`]s.
+/// method on [`OptionGroup`].
 pub struct SomeValuesIterMut<'a, F, T, const N: usize> where F: Flags, [T; N]: Representable<F> {
     group: &'a mut OptionGroup<F, [T; N]>,
     some_values: F,
