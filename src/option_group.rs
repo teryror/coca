@@ -426,79 +426,62 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Repres
     }
 }
 
-macro_rules! define_tuple_trait {
-    ($num:literal, $traitname:ident : $supertrait:ident) => {
-        #[doc = core::concat!("Tuples with more than ", $num, " element(s).")]
-        pub trait $traitname : $supertrait {
-            #[doc = core::concat!("The type of the element at position ", $num, ".")]
-            type T;
-        }
-    };
+/// Tuple types with a field of type `TX` at position `X`.
+pub trait Tuple<const X: usize> : Compound {
+    /// The type of the field at position `X`.
+    type TX;
 }
 
-define_tuple_trait!(0, Tuple0: Compound);
-define_tuple_trait!(1, Tuple1: Tuple0);
-define_tuple_trait!(2, Tuple2: Tuple1);
-define_tuple_trait!(3, Tuple3: Tuple2);
-define_tuple_trait!(4, Tuple4: Tuple3);
-define_tuple_trait!(5, Tuple5: Tuple4);
-define_tuple_trait!(6, Tuple6: Tuple5);
-define_tuple_trait!(7, Tuple7: Tuple6);
-define_tuple_trait!(8, Tuple8: Tuple7);
-define_tuple_trait!(9, Tuple9: Tuple8);
-define_tuple_trait!(10, Tuple10: Tuple9);
-define_tuple_trait!(11, Tuple11: Tuple10);
-
 macro_rules! impl_tuple_traits {
-    ( $($typenames:ident),* : $($traitnames:ident),* ) => {
+    ( $($typenames:ident),* : $($traitparams:literal),* ) => {
         impl_tuple_traits_helper_1!(
-            ( $($typenames),* ) : ( $($traitnames),* ) ( $($typenames),* )
+            ( $($typenames),* ) : ( $($traitparams),* ) ( $($typenames),* )
         );
     }
 }
 
 macro_rules! impl_tuple_traits_helper_1 {
-    ( $ts:tt : ( $($traitname:ident),* ) ( $($t:ident),* ) ) => {
+    ( $ts:tt : ( $($traitparam:literal),* ) ( $($t:ident),* ) ) => {
         impl_tuple_traits_helper_2!(
-            $( [ $ts : $traitname $t ] )*
+            $( [ $ts : $traitparam $t ] )*
         );
     }
 }
 
 macro_rules! impl_tuple_traits_helper_2 {
-    ( $( [ ( $($ts:ident),* ) : $traitname:ident $t:ident ] )* ) => {
-        $(impl<$($ts),*> $traitname for ( $($ts),* ) { type T = $t; } )*
+    ( $( [ ( $($ts:ident),* ) : $traitparam:literal $t:ident ] )* ) => {
+        $(impl<$($ts),*> Tuple<$traitparam> for ( $($ts),* ) { type TX = $t; } )*
     }
 }
 
-impl_tuple_traits!(A, B : Tuple0, Tuple1);
-impl_tuple_traits!(A, B, C : Tuple0, Tuple1, Tuple2);
-impl_tuple_traits!(A, B, C, D : Tuple0, Tuple1, Tuple2, Tuple3);
-impl_tuple_traits!(A, B, C, D, E : Tuple0, Tuple1, Tuple2, Tuple3, Tuple4);
-impl_tuple_traits!(A, B, C, D, E, F : Tuple0, Tuple1, Tuple2, Tuple3, Tuple4, Tuple5);
-impl_tuple_traits!(A, B, C, D, E, F, G : Tuple0, Tuple1, Tuple2, Tuple3, Tuple4, Tuple5, Tuple6);
-impl_tuple_traits!(A, B, C, D, E, F, G, H : Tuple0, Tuple1, Tuple2, Tuple3, Tuple4, Tuple5, Tuple6, Tuple7);
-impl_tuple_traits!(A, B, C, D, E, F, G, H, I : Tuple0, Tuple1, Tuple2, Tuple3, Tuple4, Tuple5, Tuple6, Tuple7, Tuple8);
-impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J : Tuple0, Tuple1, Tuple2, Tuple3, Tuple4, Tuple5, Tuple6, Tuple7, Tuple8, Tuple9);
-impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J, K : Tuple0, Tuple1, Tuple2, Tuple3, Tuple4, Tuple5, Tuple6, Tuple7, Tuple8, Tuple9, Tuple10);
-impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J, K, L : Tuple0, Tuple1, Tuple2, Tuple3, Tuple4, Tuple5, Tuple6, Tuple7, Tuple8, Tuple9, Tuple10, Tuple11);
+impl_tuple_traits!(A, B : 0, 1);
+impl_tuple_traits!(A, B, C : 0, 1, 2);
+impl_tuple_traits!(A, B, C, D : 0, 1, 2, 3);
+impl_tuple_traits!(A, B, C, D, E : 0, 1, 2, 3, 4);
+impl_tuple_traits!(A, B, C, D, E, F : 0, 1, 2, 3, 4, 5);
+impl_tuple_traits!(A, B, C, D, E, F, G : 0, 1, 2, 3, 4, 5, 6);
+impl_tuple_traits!(A, B, C, D, E, F, G, H : 0, 1, 2, 3, 4, 5, 6, 7);
+impl_tuple_traits!(A, B, C, D, E, F, G, H, I : 0, 1, 2, 3, 4, 5, 6, 7, 8);
+impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J : 0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
+impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J, K : 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J, K, L : 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11);
 
 macro_rules! impl_tuple_accessors {
-    ($tupletrait:ident, $idx:literal, $get:ident, $get_mut:ident, $get_mut_unchecked:ident, $insert:ident, $get_or_insert:ident, $get_or_insert_with:ident, $take:ident, $replace:ident) => {
-        impl<F, T> OptionGroup<F, T> where F: Flags, T: Representable<F> + $tupletrait {
+    ($idx:literal, $get:ident, $get_mut:ident, $get_mut_unchecked:ident, $insert:ident, $get_or_insert:ident, $get_or_insert_with:ident, $take:ident, $replace:ident) => {
+        impl<F, T> OptionGroup<F, T> where F: Flags, T: Representable<F> + Tuple<$idx> {
             #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_ref()`](core::option::Option::as_ref).")]
             #[inline(always)]
-            pub fn $get(&self) -> Option<& <T as $tupletrait>::T> {
+            pub fn $get(&self) -> Option<& <T as Tuple<$idx>>::TX> {
                 if self.is_none($idx) {
                     None
                 } else {
-                    unsafe { (<T as Compound>::get_ptr(&self.value, $idx) as *const <T as $tupletrait>::T).as_ref() }
+                    unsafe { (<T as Compound>::get_ptr(&self.value, $idx) as *const <T as Tuple<$idx>>::TX).as_ref() }
                 }
             }
 
             #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_mut()`](core::option::Option::as_mut).")]
             #[inline(always)]
-            pub fn $get_mut(&mut self) -> Option<&mut <T as $tupletrait>::T> {
+            pub fn $get_mut(&mut self) -> Option<&mut <T as Tuple<$idx>>::TX> {
                 if self.is_none($idx) {
                     None
                 } else {
@@ -510,20 +493,20 @@ macro_rules! impl_tuple_accessors {
             #[doc = " # Safety"]
             #[doc = " Calling this method on `None` is undefined behavior."]
             #[inline(always)]
-            pub unsafe fn $get_mut_unchecked(&mut self) -> &mut <T as $tupletrait>::T {
-                &mut *(<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as $tupletrait>::T)
+            pub unsafe fn $get_mut_unchecked(&mut self) -> &mut <T as Tuple<$idx>>::TX {
+                &mut *(<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as Tuple<$idx>>::TX)
             }
 
             #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".insert(value)`](core::option::Option::insert).")]
             #[inline(always)]
-            pub fn $insert(&mut self, value: <T as $tupletrait>::T) -> &mut <T as $tupletrait>::T {
+            pub fn $insert(&mut self, value: <T as Tuple<$idx>>::TX) -> &mut <T as Tuple<$idx>>::TX {
                 self.$replace(value);
                 unsafe { self.$get_mut_unchecked() }
             }
 
             #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".get_or_insert(value)`](core::option::Option::get_or_insert).")]
             #[inline(always)]
-            pub fn $get_or_insert(&mut self, value: <T as $tupletrait>::T) -> &mut <T as $tupletrait>::T {
+            pub fn $get_or_insert(&mut self, value: <T as Tuple<$idx>>::TX) -> &mut <T as Tuple<$idx>>::TX {
                 if self.is_none($idx) {
                     self.$replace(value);
                 }
@@ -532,7 +515,7 @@ macro_rules! impl_tuple_accessors {
 
             #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".get_or_insert_with(f)`](core::option::Option::get_or_insert_with).")]
             #[inline(always)]
-            pub fn $get_or_insert_with<FN: FnOnce() -> <T as $tupletrait>::T>(&mut self, f: FN) -> &mut <T as $tupletrait>::T {
+            pub fn $get_or_insert_with<FN: FnOnce() -> <T as Tuple<$idx>>::TX>(&mut self, f: FN) -> &mut <T as Tuple<$idx>>::TX {
                 if self.is_none($idx) {
                     self.$replace(f());
                 }
@@ -541,20 +524,20 @@ macro_rules! impl_tuple_accessors {
 
             #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".take()`](core::option::Option::take).")]
             #[inline(always)]
-            pub fn $take(&mut self) -> Option<<T as $tupletrait>::T> {
+            pub fn $take(&mut self) -> Option<<T as Tuple<$idx>>::TX> {
                 if self.is_none($idx) {
                     None
                 } else {
                     self.flags.clear($idx);
-                    unsafe { Some((<T as Compound>::get_ptr(&self.value, $idx) as *const <T as $tupletrait>::T).read()) }
+                    unsafe { Some((<T as Compound>::get_ptr(&self.value, $idx) as *const <T as Tuple<$idx>>::TX).read()) }
                 }
             }
 
             #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".replace(value)`](core::option::Option::replace).")]
             #[inline(always)]
-            pub fn $replace(&mut self, value: <T as $tupletrait>::T) -> Option<<T as $tupletrait>::T> {
+            pub fn $replace(&mut self, value: <T as Tuple<$idx>>::TX) -> Option<<T as Tuple<$idx>>::TX> {
                 let result = self.$take();
-                unsafe { (<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as $tupletrait>::T ).write(value) };
+                unsafe { (<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as Tuple<$idx>>::TX ).write(value) };
                 self.flags.set($idx);
                 result
             }
@@ -562,11 +545,15 @@ macro_rules! impl_tuple_accessors {
     };
 }
 
-impl_tuple_accessors!(Tuple0, 0, get_0, get_mut_0, get_mut_unchecked_0, insert_0, get_or_insert_0, get_or_insert_with_0, take_0, replace_0);
-impl_tuple_accessors!(Tuple1, 1, get_1, get_mut_1, get_mut_unchecked_1, insert_1, get_or_insert_1, get_or_insert_with_1, take_1, replace_1);
-impl_tuple_accessors!(Tuple2, 2, get_2, get_mut_2, get_mut_unchecked_2, insert_2, get_or_insert_2, get_or_insert_with_2, take_2, replace_2);
-impl_tuple_accessors!(Tuple3, 3, get_3, get_mut_3, get_mut_unchecked_3, insert_3, get_or_insert_3, get_or_insert_with_3, take_3, replace_3);
-impl_tuple_accessors!(Tuple4, 4, get_4, get_mut_4, get_mut_unchecked_4, insert_4, get_or_insert_4, get_or_insert_with_4, take_4, replace_4);
-impl_tuple_accessors!(Tuple5, 5, get_5, get_mut_5, get_mut_unchecked_5, insert_5, get_or_insert_5, get_or_insert_with_5, take_5, replace_5);
-impl_tuple_accessors!(Tuple6, 6, get_6, get_mut_6, get_mut_unchecked_6, insert_6, get_or_insert_6, get_or_insert_with_6, take_6, replace_6);
-impl_tuple_accessors!(Tuple7, 7, get_7, get_mut_7, get_mut_unchecked_7, insert_7, get_or_insert_7, get_or_insert_with_7, take_7, replace_7);
+impl_tuple_accessors!(0, get_0, get_mut_0, get_mut_unchecked_0, insert_0, get_or_insert_0, get_or_insert_with_0, take_0, replace_0);
+impl_tuple_accessors!(1, get_1, get_mut_1, get_mut_unchecked_1, insert_1, get_or_insert_1, get_or_insert_with_1, take_1, replace_1);
+impl_tuple_accessors!(2, get_2, get_mut_2, get_mut_unchecked_2, insert_2, get_or_insert_2, get_or_insert_with_2, take_2, replace_2);
+impl_tuple_accessors!(3, get_3, get_mut_3, get_mut_unchecked_3, insert_3, get_or_insert_3, get_or_insert_with_3, take_3, replace_3);
+impl_tuple_accessors!(4, get_4, get_mut_4, get_mut_unchecked_4, insert_4, get_or_insert_4, get_or_insert_with_4, take_4, replace_4);
+impl_tuple_accessors!(5, get_5, get_mut_5, get_mut_unchecked_5, insert_5, get_or_insert_5, get_or_insert_with_5, take_5, replace_5);
+impl_tuple_accessors!(6, get_6, get_mut_6, get_mut_unchecked_6, insert_6, get_or_insert_6, get_or_insert_with_6, take_6, replace_6);
+impl_tuple_accessors!(7, get_7, get_mut_7, get_mut_unchecked_7, insert_7, get_or_insert_7, get_or_insert_with_7, take_7, replace_7);
+impl_tuple_accessors!(8, get_8, get_mut_8, get_mut_unchecked_8, insert_8, get_or_insert_8, get_or_insert_with_8, take_8, replace_8);
+impl_tuple_accessors!(9, get_9, get_mut_9, get_mut_unchecked_9, insert_9, get_or_insert_9, get_or_insert_with_9, take_9, replace_9);
+impl_tuple_accessors!(10, get_10, get_mut_10, get_mut_unchecked_10, insert_10, get_or_insert_10, get_or_insert_with_10, take_10, replace_10);
+impl_tuple_accessors!(11, get_11, get_mut_11, get_mut_unchecked_11, insert_11, get_or_insert_11, get_or_insert_with_11, take_11, replace_11);
