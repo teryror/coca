@@ -17,6 +17,9 @@
 //! few as 16 bits:
 //!
 //! ```
+//! # // This test is super slow in Miri, but we can't conditionally
+//! # // ignore doc-tests, so just make it always pass:
+//! # #[cfg(not(miri))] {
 //! # use coca::handle_type;
 //! handle_type! { TinyHandle: 16 / 32; }
 //!
@@ -32,6 +35,7 @@
 //! }
 //!
 //! assert_eq!(pool[first], "this is not first");
+//! # }
 //! ```
 
 pub mod direct;
