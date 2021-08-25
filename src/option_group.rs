@@ -55,16 +55,20 @@
 //! assert!(many_options.get(10).is_none());
 //! assert_eq!(many_options.get(15), Some(&5));
 //! ```
+//! 
+//! Such groups can also be iterated over in various ways, see [`iter`](OptionGroup::iter),
+//! [`some_values`](OptionGroup::some_values), [`some_values_mut`](OptionGroup::some_values_mut).
+//! Note, however, that it is not currently possible to insert or remove values
+//! during iteration, as a genuine array of options would allow. When this is
+//! desired, iterate over a range of `usize` instead, and use the normal indexing
+//! functions.
 
-// TODO: for the array versions, implement iterators
-//  -> it's unclear what these should look like exactly...
-//  -> iterate over just the Some values, or should the Iterator<Item = Option<...>>?
-//  -> if the former, should the Item type include the index? this is kind of a map-like data structure
-//  => for now, just start with methods {first, next, prev, last}_{some, none} that return indices;
-//     those should make a fine basis for any ad-hoc iteration scheme
+// TODO: implement by-value iterators (drain, into_iter)
+// TODO: implement Debug
+// -> this isn't so bad for arrays, but will require another macro to implement for tuples of each size, I think
 // TODO: write more tests to run with miri
 
-use core::mem::MaybeUninit;
+use core::{iter::FusedIterator, mem::MaybeUninit};
 use private::Compound;
 
 /// Types that can be used as a flag set.
@@ -269,6 +273,138 @@ impl<F, T> Drop for OptionGroup<F, T> where F: Flags, T: Representable<F> {
     }
 }
 
+/// Tuple types with a field of type `TX` at position `X`.
+pub trait Tuple<const X: usize> : Compound {
+    /// The type of the field at position `X`.
+    type TX;
+}
+
+macro_rules! impl_tuple_traits {
+    ( $($typenames:ident),* : $($traitparams:literal),* ) => {
+        impl_tuple_traits_helper_1!(
+            ( $($typenames),* ) : ( $($traitparams),* ) ( $($typenames),* )
+        );
+    }
+}
+
+macro_rules! impl_tuple_traits_helper_1 {
+    ( $ts:tt : ( $($traitparam:literal),* ) ( $($t:ident),* ) ) => {
+        impl_tuple_traits_helper_2!(
+            $( [ $ts : $traitparam $t ] )*
+        );
+    }
+}
+
+macro_rules! impl_tuple_traits_helper_2 {
+    ( $( [ ( $($ts:ident),* ) : $traitparam:literal $t:ident ] )* ) => {
+        $(impl<$($ts),*> Tuple<$traitparam> for ( $($ts),* ) { type TX = $t; } )*
+    }
+}
+
+impl_tuple_traits!(A, B : 0, 1);
+impl_tuple_traits!(A, B, C : 0, 1, 2);
+impl_tuple_traits!(A, B, C, D : 0, 1, 2, 3);
+impl_tuple_traits!(A, B, C, D, E : 0, 1, 2, 3, 4);
+impl_tuple_traits!(A, B, C, D, E, F : 0, 1, 2, 3, 4, 5);
+impl_tuple_traits!(A, B, C, D, E, F, G : 0, 1, 2, 3, 4, 5, 6);
+impl_tuple_traits!(A, B, C, D, E, F, G, H : 0, 1, 2, 3, 4, 5, 6, 7);
+impl_tuple_traits!(A, B, C, D, E, F, G, H, I : 0, 1, 2, 3, 4, 5, 6, 7, 8);
+impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J : 0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
+impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J, K : 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J, K, L : 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11);
+
+macro_rules! impl_tuple_accessors {
+    ($idx:literal, $get:ident, $get_mut:ident, $get_mut_unchecked:ident, $insert:ident, $get_or_insert:ident, $get_or_insert_with:ident, $take:ident, $replace:ident) => {
+        impl<F, T> OptionGroup<F, T> where F: Flags, T: Representable<F> + Tuple<$idx> {
+            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_ref()`](core::option::Option::as_ref).")]
+            #[inline(always)]
+            pub fn $get(&self) -> Option<& <T as Tuple<$idx>>::TX> {
+                if self.is_none($idx) {
+                    None
+                } else {
+                    unsafe { (<T as Compound>::get_ptr(&self.value, $idx) as *const <T as Tuple<$idx>>::TX).as_ref() }
+                }
+            }
+
+            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_mut()`](core::option::Option::as_mut).")]
+            #[inline(always)]
+            pub fn $get_mut(&mut self) -> Option<&mut <T as Tuple<$idx>>::TX> {
+                if self.is_none($idx) {
+                    None
+                } else {
+                    unsafe { Some(self.$get_mut_unchecked()) }
+                }
+            }
+
+            #[doc = concat!(" Returns a mutable reference to the `Some` value at position ", $idx, ", without checking that the value is not `None`.")]
+            #[doc = " # Safety"]
+            #[doc = " Calling this method on `None` is undefined behavior."]
+            #[inline(always)]
+            pub unsafe fn $get_mut_unchecked(&mut self) -> &mut <T as Tuple<$idx>>::TX {
+                &mut *(<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as Tuple<$idx>>::TX)
+            }
+
+            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".insert(value)`](core::option::Option::insert).")]
+            #[inline(always)]
+            pub fn $insert(&mut self, value: <T as Tuple<$idx>>::TX) -> &mut <T as Tuple<$idx>>::TX {
+                self.$replace(value);
+                unsafe { self.$get_mut_unchecked() }
+            }
+
+            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".get_or_insert(value)`](core::option::Option::get_or_insert).")]
+            #[inline(always)]
+            pub fn $get_or_insert(&mut self, value: <T as Tuple<$idx>>::TX) -> &mut <T as Tuple<$idx>>::TX {
+                if self.is_none($idx) {
+                    self.$replace(value);
+                }
+                unsafe { self.$get_mut_unchecked() }
+            }
+
+            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".get_or_insert_with(f)`](core::option::Option::get_or_insert_with).")]
+            #[inline(always)]
+            pub fn $get_or_insert_with<FN: FnOnce() -> <T as Tuple<$idx>>::TX>(&mut self, f: FN) -> &mut <T as Tuple<$idx>>::TX {
+                if self.is_none($idx) {
+                    self.$replace(f());
+                }
+                unsafe { self.$get_mut_unchecked() }
+            }
+
+            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".take()`](core::option::Option::take).")]
+            #[inline(always)]
+            pub fn $take(&mut self) -> Option<<T as Tuple<$idx>>::TX> {
+                if self.is_none($idx) {
+                    None
+                } else {
+                    self.flags.clear($idx);
+                    unsafe { Some((<T as Compound>::get_ptr(&self.value, $idx) as *const <T as Tuple<$idx>>::TX).read()) }
+                }
+            }
+
+            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".replace(value)`](core::option::Option::replace).")]
+            #[inline(always)]
+            pub fn $replace(&mut self, value: <T as Tuple<$idx>>::TX) -> Option<<T as Tuple<$idx>>::TX> {
+                let result = self.$take();
+                unsafe { (<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as Tuple<$idx>>::TX ).write(value) };
+                self.flags.set($idx);
+                result
+            }
+        }
+    };
+}
+
+impl_tuple_accessors!(0, get_0, get_mut_0, get_mut_unchecked_0, insert_0, get_or_insert_0, get_or_insert_with_0, take_0, replace_0);
+impl_tuple_accessors!(1, get_1, get_mut_1, get_mut_unchecked_1, insert_1, get_or_insert_1, get_or_insert_with_1, take_1, replace_1);
+impl_tuple_accessors!(2, get_2, get_mut_2, get_mut_unchecked_2, insert_2, get_or_insert_2, get_or_insert_with_2, take_2, replace_2);
+impl_tuple_accessors!(3, get_3, get_mut_3, get_mut_unchecked_3, insert_3, get_or_insert_3, get_or_insert_with_3, take_3, replace_3);
+impl_tuple_accessors!(4, get_4, get_mut_4, get_mut_unchecked_4, insert_4, get_or_insert_4, get_or_insert_with_4, take_4, replace_4);
+impl_tuple_accessors!(5, get_5, get_mut_5, get_mut_unchecked_5, insert_5, get_or_insert_5, get_or_insert_with_5, take_5, replace_5);
+impl_tuple_accessors!(6, get_6, get_mut_6, get_mut_unchecked_6, insert_6, get_or_insert_6, get_or_insert_with_6, take_6, replace_6);
+impl_tuple_accessors!(7, get_7, get_mut_7, get_mut_unchecked_7, insert_7, get_or_insert_7, get_or_insert_with_7, take_7, replace_7);
+impl_tuple_accessors!(8, get_8, get_mut_8, get_mut_unchecked_8, insert_8, get_or_insert_8, get_or_insert_with_8, take_8, replace_8);
+impl_tuple_accessors!(9, get_9, get_mut_9, get_mut_unchecked_9, insert_9, get_or_insert_9, get_or_insert_with_9, take_9, replace_9);
+impl_tuple_accessors!(10, get_10, get_mut_10, get_mut_unchecked_10, insert_10, get_or_insert_10, get_or_insert_with_10, take_10, replace_10);
+impl_tuple_accessors!(11, get_11, get_mut_11, get_mut_unchecked_11, insert_11, get_or_insert_11, get_or_insert_with_11, take_11, replace_11);
+
 #[cold]
 #[inline(never)]
 fn index_out_of_bounds(index: usize, len: usize) -> ! {
@@ -424,136 +560,214 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Repres
         }
         result
     }
-}
 
-/// Tuple types with a field of type `TX` at position `X`.
-pub trait Tuple<const X: usize> : Compound {
-    /// The type of the field at position `X`.
-    type TX;
-}
+    /// Returns an iterator over all values in the group, including any `None` values.
+    /// 
+    /// This is intended to replace `array_of_options.iter()`, though do note
+    /// the returned iterator yields `Option<&T>`, rather than `&Option<T>`.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// # use coca::OptionGroup8;
+    /// let group = OptionGroup8::new([None, Some(1), None, Some(2)]);
+    /// let mut iter = group.iter();
+    /// 
+    /// assert_eq!(iter.next(), Some(None));
+    /// assert_eq!(iter.next(), Some(Some(&1)));
+    /// assert_eq!(iter.next_back(), Some(Some(&2)));
+    /// assert_eq!(iter.next_back(), Some(None));
+    /// assert_eq!(iter.next(), None);
+    /// ```
+    #[inline(always)]
+    pub fn iter<'a>(&'a self) -> Iter<'a, F, T, N> {
+        Iter { group: self, next_index: 0, last_index: N }
+    }
 
-macro_rules! impl_tuple_traits {
-    ( $($typenames:ident),* : $($traitparams:literal),* ) => {
-        impl_tuple_traits_helper_1!(
-            ( $($typenames),* ) : ( $($traitparams),* ) ( $($typenames),* )
-        );
+    /// Returns an iterator over all `Some` values and their position in the group.
+    /// 
+    /// This is equivalent to `group.iter().enumerate().filter_map(|(i, maybe_x)| maybe_x.map(|x| (i, x)))`,
+    /// but more efficient and concise.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// # use coca::OptionGroup8;
+    /// let group = OptionGroup8::new([None, Some(7), None, Some(19)]);
+    /// let mut iter = group.some_values();
+    /// assert_eq!(iter.next(), Some((1, &7)));
+    /// assert_eq!(iter.next(), Some((3, &19)));
+    /// assert!(iter.next().is_none());
+    /// ```
+    #[inline(always)]
+    pub fn some_values<'a>(&'a self) -> SomeValuesIter<'a, F, T, N> {
+        SomeValuesIter { group: self, some_values: self.flags }
+    }
+
+    /// Returns a iterator over all `Some` values and their position in the group,
+    /// allowing modification of each value.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// # use coca::OptionGroup8;
+    /// let mut group = OptionGroup8::new([None, Some(7), None, Some(19)]);
+    /// for (i, value) in group.some_values_mut() {
+    ///     *value *= i + 1;
+    /// }
+    /// 
+    /// assert_eq!(group.take(1), Some(14));
+    /// assert_eq!(group.take(3), Some(76));
+    /// ```
+    pub fn some_values_mut<'a>(&'a mut self) -> SomeValuesIterMut<'a, F, T, N> {
+        let some_values = self.flags;
+        SomeValuesIterMut { group: self, some_values }
     }
 }
 
-macro_rules! impl_tuple_traits_helper_1 {
-    ( $ts:tt : ( $($traitparam:literal),* ) ( $($t:ident),* ) ) => {
-        impl_tuple_traits_helper_2!(
-            $( [ $ts : $traitparam $t ] )*
-        );
-    }
+/// Immutable option group iterator.
+/// 
+/// This struct is created by the [`iter`](OptionGroup::iter) method on array-based [`OptionGroup`]s.
+pub struct Iter<'a, F, T, const N: usize> where F: Flags, [T; N]: Representable<F> {
+    group: &'a OptionGroup<F, [T; N]>,
+    next_index: usize,
+    last_index: usize,
 }
 
-macro_rules! impl_tuple_traits_helper_2 {
-    ( $( [ ( $($ts:ident),* ) : $traitparam:literal $t:ident ] )* ) => {
-        $(impl<$($ts),*> Tuple<$traitparam> for ( $($ts),* ) { type TX = $t; } )*
-    }
-}
+impl<'a, F, T, const N: usize> Iterator for Iter<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
+    type Item = Option<&'a T>;
 
-impl_tuple_traits!(A, B : 0, 1);
-impl_tuple_traits!(A, B, C : 0, 1, 2);
-impl_tuple_traits!(A, B, C, D : 0, 1, 2, 3);
-impl_tuple_traits!(A, B, C, D, E : 0, 1, 2, 3, 4);
-impl_tuple_traits!(A, B, C, D, E, F : 0, 1, 2, 3, 4, 5);
-impl_tuple_traits!(A, B, C, D, E, F, G : 0, 1, 2, 3, 4, 5, 6);
-impl_tuple_traits!(A, B, C, D, E, F, G, H : 0, 1, 2, 3, 4, 5, 6, 7);
-impl_tuple_traits!(A, B, C, D, E, F, G, H, I : 0, 1, 2, 3, 4, 5, 6, 7, 8);
-impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J : 0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
-impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J, K : 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
-impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J, K, L : 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11);
-
-macro_rules! impl_tuple_accessors {
-    ($idx:literal, $get:ident, $get_mut:ident, $get_mut_unchecked:ident, $insert:ident, $get_or_insert:ident, $get_or_insert_with:ident, $take:ident, $replace:ident) => {
-        impl<F, T> OptionGroup<F, T> where F: Flags, T: Representable<F> + Tuple<$idx> {
-            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_ref()`](core::option::Option::as_ref).")]
-            #[inline(always)]
-            pub fn $get(&self) -> Option<& <T as Tuple<$idx>>::TX> {
-                if self.is_none($idx) {
-                    None
-                } else {
-                    unsafe { (<T as Compound>::get_ptr(&self.value, $idx) as *const <T as Tuple<$idx>>::TX).as_ref() }
-                }
-            }
-
-            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_mut()`](core::option::Option::as_mut).")]
-            #[inline(always)]
-            pub fn $get_mut(&mut self) -> Option<&mut <T as Tuple<$idx>>::TX> {
-                if self.is_none($idx) {
-                    None
-                } else {
-                    unsafe { Some(self.$get_mut_unchecked()) }
-                }
-            }
-
-            #[doc = concat!(" Returns a mutable reference to the `Some` value at position ", $idx, ", without checking that the value is not `None`.")]
-            #[doc = " # Safety"]
-            #[doc = " Calling this method on `None` is undefined behavior."]
-            #[inline(always)]
-            pub unsafe fn $get_mut_unchecked(&mut self) -> &mut <T as Tuple<$idx>>::TX {
-                &mut *(<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as Tuple<$idx>>::TX)
-            }
-
-            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".insert(value)`](core::option::Option::insert).")]
-            #[inline(always)]
-            pub fn $insert(&mut self, value: <T as Tuple<$idx>>::TX) -> &mut <T as Tuple<$idx>>::TX {
-                self.$replace(value);
-                unsafe { self.$get_mut_unchecked() }
-            }
-
-            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".get_or_insert(value)`](core::option::Option::get_or_insert).")]
-            #[inline(always)]
-            pub fn $get_or_insert(&mut self, value: <T as Tuple<$idx>>::TX) -> &mut <T as Tuple<$idx>>::TX {
-                if self.is_none($idx) {
-                    self.$replace(value);
-                }
-                unsafe { self.$get_mut_unchecked() }
-            }
-
-            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".get_or_insert_with(f)`](core::option::Option::get_or_insert_with).")]
-            #[inline(always)]
-            pub fn $get_or_insert_with<FN: FnOnce() -> <T as Tuple<$idx>>::TX>(&mut self, f: FN) -> &mut <T as Tuple<$idx>>::TX {
-                if self.is_none($idx) {
-                    self.$replace(f());
-                }
-                unsafe { self.$get_mut_unchecked() }
-            }
-
-            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".take()`](core::option::Option::take).")]
-            #[inline(always)]
-            pub fn $take(&mut self) -> Option<<T as Tuple<$idx>>::TX> {
-                if self.is_none($idx) {
-                    None
-                } else {
-                    self.flags.clear($idx);
-                    unsafe { Some((<T as Compound>::get_ptr(&self.value, $idx) as *const <T as Tuple<$idx>>::TX).read()) }
-                }
-            }
-
-            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".replace(value)`](core::option::Option::replace).")]
-            #[inline(always)]
-            pub fn $replace(&mut self, value: <T as Tuple<$idx>>::TX) -> Option<<T as Tuple<$idx>>::TX> {
-                let result = self.$take();
-                unsafe { (<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as Tuple<$idx>>::TX ).write(value) };
-                self.flags.set($idx);
-                result
-            }
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next_index == self.last_index {
+            None
+        } else {
+            let next_item = self.group.get(self.next_index);
+            self.next_index += 1;
+            Some(next_item)
         }
-    };
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = self.last_index - self.next_index;
+        (size, Some(size))
+    }
 }
 
-impl_tuple_accessors!(0, get_0, get_mut_0, get_mut_unchecked_0, insert_0, get_or_insert_0, get_or_insert_with_0, take_0, replace_0);
-impl_tuple_accessors!(1, get_1, get_mut_1, get_mut_unchecked_1, insert_1, get_or_insert_1, get_or_insert_with_1, take_1, replace_1);
-impl_tuple_accessors!(2, get_2, get_mut_2, get_mut_unchecked_2, insert_2, get_or_insert_2, get_or_insert_with_2, take_2, replace_2);
-impl_tuple_accessors!(3, get_3, get_mut_3, get_mut_unchecked_3, insert_3, get_or_insert_3, get_or_insert_with_3, take_3, replace_3);
-impl_tuple_accessors!(4, get_4, get_mut_4, get_mut_unchecked_4, insert_4, get_or_insert_4, get_or_insert_with_4, take_4, replace_4);
-impl_tuple_accessors!(5, get_5, get_mut_5, get_mut_unchecked_5, insert_5, get_or_insert_5, get_or_insert_with_5, take_5, replace_5);
-impl_tuple_accessors!(6, get_6, get_mut_6, get_mut_unchecked_6, insert_6, get_or_insert_6, get_or_insert_with_6, take_6, replace_6);
-impl_tuple_accessors!(7, get_7, get_mut_7, get_mut_unchecked_7, insert_7, get_or_insert_7, get_or_insert_with_7, take_7, replace_7);
-impl_tuple_accessors!(8, get_8, get_mut_8, get_mut_unchecked_8, insert_8, get_or_insert_8, get_or_insert_with_8, take_8, replace_8);
-impl_tuple_accessors!(9, get_9, get_mut_9, get_mut_unchecked_9, insert_9, get_or_insert_9, get_or_insert_with_9, take_9, replace_9);
-impl_tuple_accessors!(10, get_10, get_mut_10, get_mut_unchecked_10, insert_10, get_or_insert_10, get_or_insert_with_10, take_10, replace_10);
-impl_tuple_accessors!(11, get_11, get_mut_11, get_mut_unchecked_11, insert_11, get_or_insert_11, get_or_insert_with_11, take_11, replace_11);
+impl<'a, F, T, const N: usize> DoubleEndedIterator for Iter<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.next_index == self.last_index {
+            None
+        } else {
+            self.last_index -= 1;
+            Some(self.group.get(self.last_index))
+        }
+    }
+}
+
+impl<'a, F, T, const N: usize> FusedIterator for Iter<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
+impl<'a, F, T, const N: usize> ExactSizeIterator for Iter<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
+
+impl<'a, F, T, const N: usize> IntoIterator for &'a OptionGroup<F, [T; N]> where F: Flags, [T; N]: Representable<F> {
+    type Item = Option<&'a T>;
+    type IntoIter = Iter<'a, F, T, N>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// Immutable iterator over all `Some` values in an option group.
+/// 
+/// This struct is created by the [`some_values`](OptionGroup::some_values)
+/// method on array-based [`OptionGroup`]s.
+pub struct SomeValuesIter<'a, F, T, const N: usize> where F: Flags, [T; N]: Representable<F> {
+    group: &'a OptionGroup<F, [T; N]>,
+    some_values: F,
+}
+
+
+impl<'a, F, T, const N: usize> Iterator for SomeValuesIter<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
+    type Item = (usize, &'a T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let some_values = self.some_values.into();
+        if some_values == 0 {
+            None
+        } else {
+            let idx = some_values.trailing_zeros();
+            self.some_values.clear(idx);
+            self.group.get(idx as usize).map(|x| (idx as usize, x))
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = self.some_values.into().count_ones() as usize;
+        (size, Some(size))
+    }
+}
+
+impl<'a, F, T, const N: usize> DoubleEndedIterator for SomeValuesIter<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let some_values = self.some_values.into();
+        if some_values == 0 {
+            None
+        } else {
+            let idx = 63 - some_values.leading_zeros();
+            self.some_values.clear(idx);
+            self.group.get(idx as usize).map(|x| (idx as usize, x))
+        }
+    }
+}
+
+impl<'a, F, T, const N: usize> FusedIterator for SomeValuesIter<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
+impl<'a, F, T, const N: usize> ExactSizeIterator for SomeValuesIter<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
+
+/// Mutable iterator over all `Some` values in an option group.
+/// 
+/// This struct is created by the [`some_values_mut`](OptionGroup::some_values)
+/// method on array-based [`OptionGroup`]s.
+pub struct SomeValuesIterMut<'a, F, T, const N: usize> where F: Flags, [T; N]: Representable<F> {
+    group: &'a mut OptionGroup<F, [T; N]>,
+    some_values: F,
+}
+
+
+impl<'a, F, T, const N: usize> Iterator for SomeValuesIterMut<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
+    type Item = (usize, &'a mut T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let some_values = self.some_values.into();
+        if some_values == 0 {
+            None
+        } else {
+            let idx = some_values.trailing_zeros();
+            self.some_values.clear(idx);
+            Some((idx as usize, unsafe {
+                &mut *(<[T; N] as Compound>::get_mut_ptr(&mut self.group.value, idx as usize).cast::<T>())
+            }))
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = self.some_values.into().count_ones() as usize;
+        (size, Some(size))
+    }
+}
+
+impl<'a, F, T, const N: usize> DoubleEndedIterator for SomeValuesIterMut<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let some_values = self.some_values.into();
+        if some_values == 0 {
+            None
+        } else {
+            let idx = 63 - some_values.leading_zeros();
+            self.some_values.clear(idx);
+            Some((idx as usize, unsafe {
+                &mut *(<[T; N] as Compound>::get_mut_ptr(&mut self.group.value, idx as usize).cast::<T>())
+            }))
+        }
+    }
+}
+
+impl<'a, F, T, const N: usize> FusedIterator for SomeValuesIterMut<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
+impl<'a, F, T, const N: usize> ExactSizeIterator for SomeValuesIterMut<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
