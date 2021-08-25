@@ -1,16 +1,19 @@
-//! Groups of [`Option`](core::option::Option)s with packed discriminants.
+//! Groups of [`Option`](core::option::Option)s with bit-packed discriminants.
 //! 
 //! This is useful for optimizing the size of structs with multiple optional
 //! fields that would otherwise be larger than the unwrapped equivalents
 //! (see [the `core` module documentation](https://doc.rust-lang.org/core/option/#representation)
 //! for more on this).
 //! 
-//! This module exports multiple such types: [`OptionGroup8`], [`OptionGroup16`],
-//! [`OptionGroup32`], and [`OptionGroup64`]. The only difference between these
-//! is the size of the flag field, and thus their capacity.
+//! The [`OptionGroup`] struct is generic over two types:
 //! 
-//! For each group size, different associated functions are implemented depending
-//! on the way in which the component types are specified.
+//! * The flag set type `F` determines the maximum size of the group.
+//!   Type aliases are provided for all common choices: [`OptionGroup8`],
+//!   [`OptionGroup16`], [`OptionGroup32`] and [`OptionGroup64`].
+//! * The compound type `T` must be either an array type or a tuple type.
+//!   This is used to specify the types of the grouped values, and different
+//!   associated functions are available depending on which of these modes
+//!   is chosen.
 //! 
 //! # Examples
 //! 
@@ -53,7 +56,6 @@
 //! assert_eq!(many_options.get(15), Some(&5));
 //! ```
 
-// TODO: fix up documentation
 // TODO: for the array versions, implement iterators
 //  -> it's unclear what these should look like exactly...
 //  -> iterate over just the Some values, or should the Iterator<Item = Option<...>>?
@@ -65,15 +67,20 @@
 use core::mem::MaybeUninit;
 use private::Compound;
 
+/// Types that can be used as a flag set.
 pub trait Flags: Copy + Into<u64> {
+    /// The default value with no flags set.
     const ZERO: Self;
-    const MAX_ARITY: u32;
+    /// Returns true if the *n*th flag is set.
     fn is_set(&self, n: u32) -> bool;
+    /// Returns true if the *n*th flag is **not** set.
     #[inline(always)]
     fn is_clear(&self, n: u32) -> bool {
         !self.is_set(n)
     }
+    /// Sets the *n*th flag.
     fn set(&mut self, n: u32);
+    /// Clears the *n*th flag.
     fn clear(&mut self, n: u32);
 }
 
@@ -81,7 +88,6 @@ macro_rules! impl_flags_trait {
     ($($t:ty),*) => {
         $(impl Flags for $t {
             const ZERO: Self = 0;
-            const MAX_ARITY: u32 = (core::mem::size_of::<$t>() * 8) as u32;
             #[inline(always)]
             fn is_set(&self, n: u32) -> bool {
                 *self & (1 << n) != 0
@@ -170,19 +176,20 @@ mod private {
     }
 }
 
-pub trait SubsetRepresentable<F: Flags> : Compound {}
+/// Types that can be represented as an `OptionGroup` with flag type `F`.
+pub trait Representable<F: Flags> : Compound {}
 
-impl<A, B> SubsetRepresentable<u8> for (A, B) {}
-impl<A, B, C> SubsetRepresentable<u8> for (A, B, C) {}
-impl<A, B, C, D> SubsetRepresentable<u8> for (A, B, C, D) {}
-impl<A, B, C, D, E> SubsetRepresentable<u8> for (A, B, C, D, E) {}
-impl<A, B, C, D, E, F> SubsetRepresentable<u8> for (A, B, C, D, E, F) {}
-impl<A, B, C, D, E, F, G> SubsetRepresentable<u8> for (A, B, C, D, E, F, G) {}
-impl<A, B, C, D, E, F, G, H> SubsetRepresentable<u8> for (A, B, C, D, E, F, G, H) {}
-impl<A, B, C, D, E, F, G, H, I> SubsetRepresentable<u16> for (A, B, C, D, E, F, G, H, I) {}
-impl<A, B, C, D, E, F, G, H, I, J> SubsetRepresentable<u16> for (A, B, C, D, E, F, G, H, I, J) {}
-impl<A, B, C, D, E, F, G, H, I, J, K> SubsetRepresentable<u16> for (A, B, C, D, E, F, G, H, I, J, K) {}
-impl<A, B, C, D, E, F, G, H, I, J, K, L> SubsetRepresentable<u16> for (A, B, C, D, E, F, G, H, I, J, K, L) {}
+impl<A, B> Representable<u8> for (A, B) {}
+impl<A, B, C> Representable<u8> for (A, B, C) {}
+impl<A, B, C, D> Representable<u8> for (A, B, C, D) {}
+impl<A, B, C, D, E> Representable<u8> for (A, B, C, D, E) {}
+impl<A, B, C, D, E, F> Representable<u8> for (A, B, C, D, E, F) {}
+impl<A, B, C, D, E, F, G> Representable<u8> for (A, B, C, D, E, F, G) {}
+impl<A, B, C, D, E, F, G, H> Representable<u8> for (A, B, C, D, E, F, G, H) {}
+impl<A, B, C, D, E, F, G, H, I> Representable<u16> for (A, B, C, D, E, F, G, H, I) {}
+impl<A, B, C, D, E, F, G, H, I, J> Representable<u16> for (A, B, C, D, E, F, G, H, I, J) {}
+impl<A, B, C, D, E, F, G, H, I, J, K> Representable<u16> for (A, B, C, D, E, F, G, H, I, J, K) {}
+impl<A, B, C, D, E, F, G, H, I, J, K, L> Representable<u16> for (A, B, C, D, E, F, G, H, I, J, K, L) {}
 
 macro_rules! impl_marker_trait_for_arrays {
     ($traitname:ident < $param:ident > for [$($cap:literal),*]) => {
@@ -190,29 +197,39 @@ macro_rules! impl_marker_trait_for_arrays {
     }
 }
 
-impl_marker_trait_for_arrays!(SubsetRepresentable<u8> for [2, 3, 4, 5, 6, 7, 8]);
-impl_marker_trait_for_arrays!(SubsetRepresentable<u16> for [9, 10, 11, 12, 13, 14, 15, 16]);
-impl_marker_trait_for_arrays!(SubsetRepresentable<u32> for [17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
-impl_marker_trait_for_arrays!(SubsetRepresentable<u64> for [
+impl_marker_trait_for_arrays!(Representable<u8> for [2, 3, 4, 5, 6, 7, 8]);
+impl_marker_trait_for_arrays!(Representable<u16> for [9, 10, 11, 12, 13, 14, 15, 16]);
+impl_marker_trait_for_arrays!(Representable<u32> for [17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
+impl_marker_trait_for_arrays!(Representable<u64> for [
     33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
     49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64
 ]);
 
-impl<S> SubsetRepresentable<u16> for S where S: SubsetRepresentable<u8> {}
-impl<S> SubsetRepresentable<u32> for S where S: SubsetRepresentable<u16> {}
-impl<S> SubsetRepresentable<u64> for S where S: SubsetRepresentable<u32> {}
+impl<S> Representable<u16> for S where S: Representable<u8> {}
+impl<S> Representable<u32> for S where S: Representable<u16> {}
+impl<S> Representable<u64> for S where S: Representable<u32> {}
 
-pub struct OptionGroup<F, T> where F: Flags, T: SubsetRepresentable<F> {
+/// A group of multiple [`Option`]s with bit-packed discriminants.
+/// 
+/// Generic over the compound type `T` and the flags type `F`.
+/// 
+/// See the [module-level documentation](crate::option_group) for more.
+pub struct OptionGroup<F, T> where F: Flags, T: Representable<F> {
     value: MaybeUninit<T>,
     flags: F,
 }
 
+/// A group of up to eight [`Option`]s with the discriminants packed into a single `u8`.
 pub type OptionGroup8<T> = OptionGroup<u8, T>;
+/// A group of up to sixteen [`Option`]s with the discriminants packed into a single `u16`.
 pub type OptionGroup16<T> = OptionGroup<u16, T>;
+/// A group of up to 32 [`Option`]s with the discriminants packed into a single `u32`.
 pub type OptionGroup32<T> = OptionGroup<u32, T>;
+/// A group of up to 64 [`Option`]s with the discriminants packed into a single `u64`.
 pub type OptionGroup64<T> = OptionGroup<u64, T>;
 
-impl<F, T> OptionGroup<F, T> where F: Flags, T: SubsetRepresentable<F> {
+impl<F, T> OptionGroup<F, T> where F: Flags, T: Representable<F> {
+    /// Creates a new group with all options set to `None`.
     #[inline(always)]
     pub fn empty() -> Self {
         Self {
@@ -240,13 +257,13 @@ impl<F, T> OptionGroup<F, T> where F: Flags, T: SubsetRepresentable<F> {
     }
 }
 
-impl<F, T> Default for OptionGroup<F, T> where F: Flags, T: SubsetRepresentable<F> {
+impl<F, T> Default for OptionGroup<F, T> where F: Flags, T: Representable<F> {
     fn default() -> Self {
         Self::empty()
     }
 }
 
-impl<F, T> Drop for OptionGroup<F, T> where F: Flags, T: SubsetRepresentable<F> {
+impl<F, T> Drop for OptionGroup<F, T> where F: Flags, T: Representable<F> {
     fn drop(&mut self) {
         unsafe { T::drop_all_in_place(&mut self.value, self.flags.into()); }
     }
@@ -261,7 +278,7 @@ fn index_out_of_bounds(index: usize, len: usize) -> ! {
     );
 }
 
-impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: SubsetRepresentable<F> {
+impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Representable<F> {
     /// Creates a new `OptionGroup` initialized with the provided values.
     pub fn new(values: [Option<T>; N]) -> Self {
         let mut result = Self::empty();
@@ -468,7 +485,7 @@ impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J, K, L : Tuple0, Tuple1, Tuple2, 
 
 macro_rules! impl_tuple_accessors {
     ($tupletrait:ident, $idx:literal, $get:ident, $get_mut:ident, $get_mut_unchecked:ident, $insert:ident, $get_or_insert:ident, $get_or_insert_with:ident, $take:ident, $replace:ident) => {
-        impl<F, T> OptionGroup<F, T> where F: Flags, T: SubsetRepresentable<F> + $tupletrait {
+        impl<F, T> OptionGroup<F, T> where F: Flags, T: Representable<F> + $tupletrait {
             #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_ref()`](core::option::Option::as_ref).")]
             #[inline(always)]
             pub fn $get(&self) -> Option<& <T as $tupletrait>::T> {
