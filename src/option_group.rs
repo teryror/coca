@@ -284,12 +284,13 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Subset
             index_out_of_bounds(idx, N);
         }
 
+        #[allow(clippy::cast_possible_truncation)]
         if self.flags.is_clear(idx as u32) {
             return None;
         }
 
         unsafe {
-            (<[T; N] as Compound>::get_ptr(&self.value, idx) as *const T).as_ref()
+            (<[T; N] as Compound>::get_ptr(&self.value, idx).cast::<T>()).as_ref()
         }
     }
 
@@ -303,6 +304,7 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Subset
             index_out_of_bounds(idx, N);
         }
 
+        #[allow(clippy::cast_possible_truncation)]
         if self.flags.is_clear(idx as u32) {
             return None;
         }
@@ -319,7 +321,7 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Subset
     /// position is `None` is undefined behavior.
     #[inline(always)]
     pub unsafe fn get_mut_unchecked(&mut self, idx: usize) -> &mut T {
-        &mut *(<[T; N] as Compound>::get_mut_ptr(&mut self.value, idx) as *mut T)
+        &mut *(<[T; N] as Compound>::get_mut_ptr(&mut self.value, idx).cast::<T>())
     }
 
     /// Equivalent to [`array_of_options[idx].insert(value)`](core::option::Option::insert).
@@ -341,9 +343,12 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Subset
         if idx >= N {
             index_out_of_bounds(idx, N);
         }
+
+        #[allow(clippy::cast_possible_truncation)]
         if self.is_none(idx as u32) {
             self.replace(idx, value);
         }
+
         unsafe { self.get_mut_unchecked(idx) }
     }
 
@@ -356,9 +361,12 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Subset
         if idx >= N {
             index_out_of_bounds(idx, N);
         }
+
+        #[allow(clippy::cast_possible_truncation)]
         if self.is_none(idx as u32) {
             self.replace(idx, f());
         }
+
         unsafe { self.get_mut_unchecked(idx) }
     }
 
@@ -372,10 +380,11 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Subset
             index_out_of_bounds(idx, N);
         }
 
+        #[allow(clippy::cast_possible_truncation)]
         if self.is_some(idx as u32) {
             self.flags.clear(idx as u32);
             Some(unsafe {
-                (<[T; N] as Compound>::get_ptr(&self.value, idx) as *const T).read()
+                (<[T; N] as Compound>::get_ptr(&self.value, idx).cast::<T>()).read()
             })
         } else {
             None
@@ -389,9 +398,12 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Subset
     #[inline(always)]
     pub fn replace(&mut self, idx: usize, value: T) -> Option<T> {
         let result = self.take(idx);
+
+        #[allow(clippy::cast_possible_truncation)]
         self.flags.set(idx as u32);
+
         unsafe {
-            (<[T; N] as Compound>::get_mut_ptr(&mut self.value, idx) as *mut T).write(value);
+            (<[T; N] as Compound>::get_mut_ptr(&mut self.value, idx).cast::<T>()).write(value);
         }
         result
     }
