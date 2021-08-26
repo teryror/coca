@@ -169,7 +169,7 @@ fn generate_icosphere<'a>(arena: &mut Arena<'a>, subdivision_frequency: u32) -> 
 fn main() {
     let mut backing = vec![MaybeUninit::<u8>::uninit(); 8 * 1024 * 1024];
     let mut arena = Arena::from(&mut backing[..]);
-    let icosphere = generate_icosphere(&mut arena, 128);
+    let icosphere = generate_icosphere(&mut arena, 16);
 
     // Verify the generated mesh is indeed an icosphere:
 
