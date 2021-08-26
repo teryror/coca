@@ -85,11 +85,9 @@
 //! iterate over a range of `usize` instead, and use the normal indexing functions.
 
 // TODO: implement by-value iterators (drain, into_iter)
-// TODO: implement Debug
-// -> this isn't so bad for arrays, but will require another macro to implement for tuples of each size, I think
 // TODO: write more tests to run with miri
 
-use core::{iter::FusedIterator, mem::MaybeUninit};
+use core::{iter::FusedIterator, fmt::Debug, mem::MaybeUninit};
 use private::Compound;
 
 /// Types that can be used as a flag set.
@@ -417,6 +415,30 @@ impl_tuple_accessors!(9, get_9, get_mut_9, get_mut_unchecked_9, insert_9, get_or
 impl_tuple_accessors!(10, get_10, get_mut_10, get_mut_unchecked_10, insert_10, get_or_insert_10, get_or_insert_with_10, take_10, replace_10);
 impl_tuple_accessors!(11, get_11, get_mut_11, get_mut_unchecked_11, insert_11, get_or_insert_11, get_or_insert_with_11, take_11, replace_11);
 
+macro_rules! impl_debug_for_option_tuple {
+    ($($get:ident : $t:ident),*) => {
+        impl<F, $($t),*> Debug for OptionGroup<F, ($($t),*)> where F: Flags, ($($t),*): Representable<F>, $($t: Debug),* {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                let mut debug_tuple = f.debug_tuple("OptionGroup");
+                $(debug_tuple.field(&self.$get());)*
+                debug_tuple.finish()
+            }
+        }
+    }
+}
+
+impl_debug_for_option_tuple!(get_0: T0, get_1: T1);
+impl_debug_for_option_tuple!(get_0: T0, get_1: T1, get_2: T2);
+impl_debug_for_option_tuple!(get_0: T0, get_1: T1, get_2: T2, get_3: T3);
+impl_debug_for_option_tuple!(get_0: T0, get_1: T1, get_2: T2, get_3: T3, get_4: T4);
+impl_debug_for_option_tuple!(get_0: T0, get_1: T1, get_2: T2, get_3: T3, get_4: T4, get_5: T5);
+impl_debug_for_option_tuple!(get_0: T0, get_1: T1, get_2: T2, get_3: T3, get_4: T4, get_5: T5, get_6: T6);
+impl_debug_for_option_tuple!(get_0: T0, get_1: T1, get_2: T2, get_3: T3, get_4: T4, get_5: T5, get_6: T6, get_7: T7);
+impl_debug_for_option_tuple!(get_0: T0, get_1: T1, get_2: T2, get_3: T3, get_4: T4, get_5: T5, get_6: T6, get_7: T7, get_8: T8);
+impl_debug_for_option_tuple!(get_0: T0, get_1: T1, get_2: T2, get_3: T3, get_4: T4, get_5: T5, get_6: T6, get_7: T7, get_8: T8, get_9: T9);
+impl_debug_for_option_tuple!(get_0: T0, get_1: T1, get_2: T2, get_3: T3, get_4: T4, get_5: T5, get_6: T6, get_7: T7, get_8: T8, get_9: T9, get_10: T10);
+impl_debug_for_option_tuple!(get_0: T0, get_1: T1, get_2: T2, get_3: T3, get_4: T4, get_5: T5, get_6: T6, get_7: T7, get_8: T8, get_9: T9, get_10: T10, get_11: T11);
+
 #[cold]
 #[inline(never)]
 fn index_out_of_bounds(index: usize, len: usize) -> ! {
@@ -637,6 +659,12 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Repres
     }
 }
 
+impl<F, T, const N: usize> Debug for OptionGroup<F, [T; N]> where F: Flags, [T; N]: Representable<F>, T: Debug {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
+}
+
 /// Immutable option array iterator.
 /// 
 /// This struct is created by the [`iter`](OptionGroup::iter) method on [`OptionGroup`].
@@ -783,3 +811,26 @@ impl<'a, F, T, const N: usize> DoubleEndedIterator for SomeValuesIterMut<'a, F, 
 
 impl<'a, F, T, const N: usize> FusedIterator for SomeValuesIterMut<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
 impl<'a, F, T, const N: usize> ExactSizeIterator for SomeValuesIterMut<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::Arena;
+
+    #[test]
+    fn debug_impl() {
+        use crate::fmt;
+
+        let mut storage = [MaybeUninit::uninit(); 2048];
+        let mut arena = Arena::from(&mut storage[..]);
+
+        let option_array = OptionGroup8::new([None, Some(0usize), None, Some(1), None, Some(1234)]);
+        let array_output = fmt!(&mut arena, "{:?}", option_array).unwrap();
+        assert_eq!(array_output.as_ref(), "[None, Some(0), None, Some(1), None, Some(1234)]");
+
+        let mut option_tuple: OptionGroup8<(i32, i32, i32)> = OptionGroup8::empty();
+        option_tuple.insert_1(123);
+        let tuple_output = fmt!(&mut arena, "{:?}", option_tuple).unwrap();
+        assert_eq!(tuple_output.as_ref(), "OptionGroup(None, Some(123), None)");
+    }
+}
