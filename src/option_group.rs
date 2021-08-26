@@ -1,3 +1,5 @@
+#![cfg_attr(not(docs_rs), allow(missing_docs))]
+
 //! Groups of [`Option`](core::option::Option)s with bit-packed discriminants.
 //! 
 //! This is useful for optimizing the size of structs with multiple optional
@@ -315,7 +317,7 @@ impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J, K, L : 0, 1, 2, 3, 4, 5, 6, 7, 
 macro_rules! impl_tuple_accessors {
     ($idx:literal, $get:ident, $get_mut:ident, $get_mut_unchecked:ident, $insert:ident, $get_or_insert:ident, $get_or_insert_with:ident, $take:ident, $replace:ident) => {
         impl<F, T> OptionGroup<F, T> where F: Flags, T: Representable<F> + Tuple<$idx> {
-            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_ref()`](core::option::Option::as_ref).")]
+            #[cfg_attr(docs_rs, doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_ref()`](core::option::Option::as_ref)."))]
             #[inline(always)]
             pub fn $get(&self) -> Option<& <T as Tuple<$idx>>::TX> {
                 if self.is_none($idx) {
@@ -325,7 +327,7 @@ macro_rules! impl_tuple_accessors {
                 }
             }
 
-            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_mut()`](core::option::Option::as_mut).")]
+            #[cfg_attr(docs_rs, doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_mut()`](core::option::Option::as_mut)."))]
             #[inline(always)]
             pub fn $get_mut(&mut self) -> Option<&mut <T as Tuple<$idx>>::TX> {
                 if self.is_none($idx) {
@@ -335,22 +337,22 @@ macro_rules! impl_tuple_accessors {
                 }
             }
 
-            #[doc = concat!(" Returns a mutable reference to the `Some` value at position ", $idx, ", without checking that the value is not `None`.")]
-            #[doc = " # Safety"]
-            #[doc = " Calling this method on `None` is undefined behavior."]
+            #[cfg_attr(docs_rs, doc = concat!(" Returns a mutable reference to the `Some` value at position ", $idx, ", without checking that the value is not `None`."))]
+            #[cfg_attr(docs_rs, doc = " # Safety")]
+            #[cfg_attr(docs_rs, doc = " Calling this method on `None` is undefined behavior.")]
             #[inline(always)]
             pub unsafe fn $get_mut_unchecked(&mut self) -> &mut <T as Tuple<$idx>>::TX {
                 &mut *(<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as Tuple<$idx>>::TX)
             }
 
-            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".insert(value)`](core::option::Option::insert).")]
+            #[cfg_attr(docs_rs, doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".insert(value)`](core::option::Option::insert)."))]
             #[inline(always)]
             pub fn $insert(&mut self, value: <T as Tuple<$idx>>::TX) -> &mut <T as Tuple<$idx>>::TX {
                 self.$replace(value);
                 unsafe { self.$get_mut_unchecked() }
             }
 
-            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".get_or_insert(value)`](core::option::Option::get_or_insert).")]
+            #[cfg_attr(docs_rs, doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".get_or_insert(value)`](core::option::Option::get_or_insert)."))]
             #[inline(always)]
             pub fn $get_or_insert(&mut self, value: <T as Tuple<$idx>>::TX) -> &mut <T as Tuple<$idx>>::TX {
                 if self.is_none($idx) {
@@ -359,7 +361,7 @@ macro_rules! impl_tuple_accessors {
                 unsafe { self.$get_mut_unchecked() }
             }
 
-            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".get_or_insert_with(f)`](core::option::Option::get_or_insert_with).")]
+            #[cfg_attr(docs_rs, doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".get_or_insert_with(f)`](core::option::Option::get_or_insert_with)."))]
             #[inline(always)]
             pub fn $get_or_insert_with<FN: FnOnce() -> <T as Tuple<$idx>>::TX>(&mut self, f: FN) -> &mut <T as Tuple<$idx>>::TX {
                 if self.is_none($idx) {
@@ -368,7 +370,7 @@ macro_rules! impl_tuple_accessors {
                 unsafe { self.$get_mut_unchecked() }
             }
 
-            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".take()`](core::option::Option::take).")]
+            #[cfg_attr(docs_rs, doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".take()`](core::option::Option::take)."))]
             #[inline(always)]
             pub fn $take(&mut self) -> Option<<T as Tuple<$idx>>::TX> {
                 if self.is_none($idx) {
@@ -379,7 +381,7 @@ macro_rules! impl_tuple_accessors {
                 }
             }
 
-            #[doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".replace(value)`](core::option::Option::replace).")]
+            #[cfg_attr(docs_rs, doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".replace(value)`](core::option::Option::replace)."))]
             #[inline(always)]
             pub fn $replace(&mut self, value: <T as Tuple<$idx>>::TX) -> Option<<T as Tuple<$idx>>::TX> {
                 let result = self.$take();
