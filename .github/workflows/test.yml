@@ -1,0 +1,84 @@
+name: Rust
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ${{matrix.os}}
+    strategy:
+      matrix:
+        include:
+        - os: ubuntu-latest
+          target: x86_64-unknown-linux-gnu
+          toolchain: stable
+        - os: macos-latest
+          target: x86_64-apple-darwin
+          toolchain: stable
+        - os: windows-latest
+          target: x86_64-pc-windows-msvc
+          toolchain: stable
+        - os: windows-latest
+          target: x86_64-pc-windows-gnu
+          toolchain: stable
+        - os: ubuntu-latest
+          target: x86_64-unknown-linux-gnu
+          toolchain: 1.51.0 # MSRV
+        - os: ubuntu-latest
+          target: x86_64-unknown-linux-gnu
+          toolchain: nightly
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          target: ${{ matrix.target }}
+          toolchain: ${{ matrix.toolchain }}
+          override: true
+      - run: ${{ matrix.deps }}
+      - name: Test unstable feature on nightly
+        if: ${{ matrix.toolchain == 'nightly' }}
+        run: |
+          cargo test --target ${{ matrix.target }} --features=unstable
+          cargo test --target ${{ matrix.target }} --features=unstable,alloc
+          cargo test --target ${{ matrix.target }} --features=unstable,profile
+          cargo test --target ${{ matrix.target }} --all-features
+      - name: Test stable features
+        run: |
+          cargo test --target ${{ matrix.target }} --no-default-features
+          cargo test --target ${{ matrix.target }} --features=alloc
+          cargo test --target ${{ matrix.target }} --features=profile
+          cargo test --target ${{ matrix.target }} --features=alloc,profile
+
+  test-miri:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install toolchain
+        run: |
+          MIRI_NIGHTLY=nightly-$(curl -s https://rust-lang.github.io/rustup-components-history/x86_64-unknown-linux-gnu/miri)
+          rustup default "$MIRI_NIGHTLY"
+          rustup component add miri
+      - name: Test all features
+        run: |
+          cargo miri test --no-default-features
+          cargo miri test --features=alloc
+          cargo miri test --features=profile
+          cargo miri test --features=unstable
+          cargo miri test --features=alloc,profile
+          cargo miri test --features=alloc,unstable
+          cargo miri test --features=profile,unstable
+          cargo miri test --all-features
+      - name: Run example programs
+        run: |
+          cargo miri run --example huffman
+          cargo miri run --example icosphere
+  
