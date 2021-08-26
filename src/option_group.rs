@@ -1,5 +1,3 @@
-#![cfg_attr(not(docs_rs), allow(missing_docs))]
-
 //! Groups of [`Option`](core::option::Option)s with bit-packed discriminants.
 //! 
 //! This is useful for optimizing the size of structs with multiple optional
@@ -17,10 +15,28 @@
 //!   associated functions are available depending on which of these modes
 //!   is chosen.
 //! 
+//! In either case, equivalents to
+//! `Option::{`[`is_some`][0]`, `[`is_none`][1]`, `[`as_ref`][2]`, `[`as_mut`][3]`, `[`insert`][4]`, `[`get_or_insert`][5]`, `[`get_or_insert_with`][6]`, `[`take`][7]`, `[`replace`][8]`}`
+//! are provided. Note the absence of equivalents to consuming functions such
+//! as [`Option::map`]. Use the applicable `take` replacement and operate on
+//! the returned `Option` instead.
+//! 
+//! [0]: core::option::Option::is_some
+//! [1]: core::option::Option::is_none
+//! [2]: core::option::Option::as_ref
+//! [3]: core::option::Option::as_mut
+//! [4]: core::option::Option::insert
+//! [5]: core::option::Option::get_or_insert
+//! [6]: core::option::Option::get_or_insert_with
+//! [7]: core::option::Option::take
+//! [8]: core::option::Option::replace
+//! 
 //! # Examples
 //! 
 //! Tuples with 2 to 12 components may be used to define groups of values with
-//! mixed types:
+//! mixed types. Because the component types may differ, separate accessor
+//! functions are provided for each field, with the field index suffixed to the
+//! function name:
 //! 
 //! ```
 //! # use coca::option_group::OptionGroup8;
@@ -28,34 +44,38 @@
 //! assert!(four_options.is_empty());
 //! 
 //! assert_eq!(four_options.replace_0(0xC0FFE), None);
-//! assert_eq!(four_options.replace_1(-1337), None);
+//! assert_eq!(four_options.insert_1(-1337), &mut -1337);
+//! assert_eq!(four_options.get_or_insert_2(0xFF), &mut 0xFF);
+//! assert_eq!(four_options.get_or_insert_with_3(|| -1), &mut -1);
+//! assert_eq!(four_options.take_3(), Some(-1));
 //! 
-//! assert_eq!(four_options.get_0(), Some(&0xC0FFE));
-//! assert_eq!(four_options.get_1(), Some(&-1337));
-//! assert!(four_options.get_2().is_none());
-//! assert!(four_options.get_3().is_none());
+//! // `is_some` and `is_none` are an exception in that they don't have
+//! // multiple suffixed versions, taking an index as an argument instead:
+//! assert!(four_options.is_some(0));
+//! assert!(four_options.is_none(3));
 //! 
+//! // Note that the equivalents to `as_ref` and `as_mut`
+//! // here are named `get_*` and `get_mut_*`, respectively:
 //! if let Some(snd) = four_options.get_mut_1() {
 //!     *snd = 1234;
 //! }
-//! 
 //! assert_eq!(four_options.get_1(), Some(&1234));
 //! ```
 //! 
-//! Arrays can be used to define homogeneous groups. A smaller, more flexible
-//! API is provided for these:
+//! Arrays can be used to define homogeneous groups. Here, there is just one set
+//! of accessor functions, each taking the field index as an argument:
 //! 
 //! ```
 //! # use coca::option_group::OptionGroup32;
 //! let mut many_options: OptionGroup32<[usize; 20]> = OptionGroup32::empty();
-//! for i in 0..20 {
-//!     if i % 7 < 3 { many_options.replace(i, 20 - i); }
-//! }
+//! assert_eq!(many_options.replace(0, 100), None);
+//! assert_eq!(many_options.insert(1, 200), &mut 200);
+//! assert_eq!(many_options.get_or_insert(1, 250), &mut 200);
+//! assert_eq!(many_options.get_or_insert_with(2, || 300), &mut 300);
 //! 
-//! assert_eq!(many_options.get(0), Some(&20));
-//! assert!(many_options.get(5).is_none());
-//! assert!(many_options.get(10).is_none());
-//! assert_eq!(many_options.get(15), Some(&5));
+//! assert!(many_options.is_some(1));
+//! assert_eq!(many_options.take(1), Some(200));
+//! assert!(many_options.is_none(1));
 //! ```
 //! 
 //! Such groups can also be iterated over in various ways, see [`iter`](OptionGroup::iter),
@@ -316,8 +336,8 @@ impl_tuple_traits!(A, B, C, D, E, F, G, H, I, J, K, L : 0, 1, 2, 3, 4, 5, 6, 7, 
 
 macro_rules! impl_tuple_accessors {
     ($idx:literal, $get:ident, $get_mut:ident, $get_mut_unchecked:ident, $insert:ident, $get_or_insert:ident, $get_or_insert_with:ident, $take:ident, $replace:ident) => {
+        #[allow(missing_docs)]
         impl<F, T> OptionGroup<F, T> where F: Flags, T: Representable<F> + Tuple<$idx> {
-            #[cfg_attr(docs_rs, doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_ref()`](core::option::Option::as_ref)."))]
             #[inline(always)]
             pub fn $get(&self) -> Option<& <T as Tuple<$idx>>::TX> {
                 if self.is_none($idx) {
@@ -327,7 +347,6 @@ macro_rules! impl_tuple_accessors {
                 }
             }
 
-            #[cfg_attr(docs_rs, doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".as_mut()`](core::option::Option::as_mut)."))]
             #[inline(always)]
             pub fn $get_mut(&mut self) -> Option<&mut <T as Tuple<$idx>>::TX> {
                 if self.is_none($idx) {
@@ -337,22 +356,17 @@ macro_rules! impl_tuple_accessors {
                 }
             }
 
-            #[cfg_attr(docs_rs, doc = concat!(" Returns a mutable reference to the `Some` value at position ", $idx, ", without checking that the value is not `None`."))]
-            #[cfg_attr(docs_rs, doc = " # Safety")]
-            #[cfg_attr(docs_rs, doc = " Calling this method on `None` is undefined behavior.")]
             #[inline(always)]
             pub unsafe fn $get_mut_unchecked(&mut self) -> &mut <T as Tuple<$idx>>::TX {
                 &mut *(<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as Tuple<$idx>>::TX)
             }
 
-            #[cfg_attr(docs_rs, doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".insert(value)`](core::option::Option::insert)."))]
             #[inline(always)]
             pub fn $insert(&mut self, value: <T as Tuple<$idx>>::TX) -> &mut <T as Tuple<$idx>>::TX {
                 self.$replace(value);
                 unsafe { self.$get_mut_unchecked() }
             }
 
-            #[cfg_attr(docs_rs, doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".get_or_insert(value)`](core::option::Option::get_or_insert)."))]
             #[inline(always)]
             pub fn $get_or_insert(&mut self, value: <T as Tuple<$idx>>::TX) -> &mut <T as Tuple<$idx>>::TX {
                 if self.is_none($idx) {
@@ -361,7 +375,6 @@ macro_rules! impl_tuple_accessors {
                 unsafe { self.$get_mut_unchecked() }
             }
 
-            #[cfg_attr(docs_rs, doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".get_or_insert_with(f)`](core::option::Option::get_or_insert_with)."))]
             #[inline(always)]
             pub fn $get_or_insert_with<FN: FnOnce() -> <T as Tuple<$idx>>::TX>(&mut self, f: FN) -> &mut <T as Tuple<$idx>>::TX {
                 if self.is_none($idx) {
@@ -370,7 +383,6 @@ macro_rules! impl_tuple_accessors {
                 unsafe { self.$get_mut_unchecked() }
             }
 
-            #[cfg_attr(docs_rs, doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".take()`](core::option::Option::take)."))]
             #[inline(always)]
             pub fn $take(&mut self) -> Option<<T as Tuple<$idx>>::TX> {
                 if self.is_none($idx) {
@@ -381,7 +393,6 @@ macro_rules! impl_tuple_accessors {
                 }
             }
 
-            #[cfg_attr(docs_rs, doc = concat!(" Equivalent to [`tuple_of_options.", $idx, ".replace(value)`](core::option::Option::replace)."))]
             #[inline(always)]
             pub fn $replace(&mut self, value: <T as Tuple<$idx>>::TX) -> Option<<T as Tuple<$idx>>::TX> {
                 let result = self.$take();
