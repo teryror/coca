@@ -18,6 +18,7 @@ panics
 prepends
 reallocations
 representable
+rustc
 struct
 structs
 toolchain
