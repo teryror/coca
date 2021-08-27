@@ -79,13 +79,11 @@
 //! ```
 //! 
 //! Such groups can also be iterated over in various ways, see [`iter`](OptionGroup::iter),
-//! [`some_values`](OptionGroup::some_values), [`some_values_mut`](OptionGroup::some_values_mut).
-//! Note, however, that it is not currently possible to insert or remove values
-//! during iteration, as a `[Option<T>; N]` would allow. When this is desired,
-//! iterate over a range of `usize` instead, and use the normal indexing functions.
-
-// TODO: implement by-value iterators (drain, into_iter)
-// TODO: write more tests to run with miri
+//! [`some_values`](OptionGroup::some_values), [`some_values_mut`](OptionGroup::some_values_mut),
+//! [`take_all`](OptionGroup::take_all). Note, however, that it is not currently
+//! possible to insert or conditionally remove values during iteration, as a
+//! `[Option<T>; N]` would allow. When this is desired, iterate over a range
+//! of `usize` instead, and use the normal indexing functions.
 
 use core::{iter::FusedIterator, fmt::Debug, mem::MaybeUninit};
 use private::Compound;
@@ -277,6 +275,12 @@ impl<F, T> OptionGroup<F, T> where F: Flags, T: Representable<F> {
     #[inline(always)]
     pub fn is_none(&self, n: u32) -> bool {
         self.flags.is_clear(n)
+    }
+
+    /// Sets all `Some` values in the group to `None`.
+    pub fn clear(&mut self) {
+        unsafe { T::drop_all_in_place(&mut self.value, self.flags.into()); }
+        self.flags = F::ZERO;
     }
 }
 
@@ -634,11 +638,11 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Repres
     /// assert!(iter.next().is_none());
     /// ```
     #[inline(always)]
-    pub fn some_values(&self) -> SomeValuesIter<'_, F, T, N> {
-        SomeValuesIter { group: self, some_values: self.flags }
+    pub fn some_values(&self) -> SomeValues<'_, F, T, N> {
+        SomeValues { group: self, some_values: self.flags }
     }
 
-    /// Returns a iterator over all `Some` values and their position in the group,
+    /// Returns an iterator over all `Some` values and their position in the group,
     /// allowing modification of each value.
     /// 
     /// # Examples
@@ -653,9 +657,32 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Repres
     /// assert_eq!(group.take(1), Some(14));
     /// assert_eq!(group.take(3), Some(76));
     /// ```
-    pub fn some_values_mut(&mut self) -> SomeValuesIterMut<'_, F, T, N> {
+    pub fn some_values_mut(&mut self) -> SomeValuesMut<'_, F, T, N> {
         let some_values = self.flags;
-        SomeValuesIterMut { group: self, some_values }
+        SomeValuesMut { group: self, some_values }
+    }
+
+    /// Returns a draining iterator that replaces all `Some` values in the
+    /// group with `None` and yields the removed items and their positions.
+    /// 
+    /// When the iterator **is** dropped, all remaining values in the group are
+    /// removed. If the iterator **is not** dropped (e.g. with [`mem::forget`](core::mem::forget)),
+    /// it is unspecified how many elements are removed.
+    /// 
+    /// # Examples
+    /// ```
+    /// # use coca::OptionGroup8;
+    /// let mut group = OptionGroup8::new([None, Some(7), None, Some(19)]);
+    /// let mut sum = 0;
+    /// for (_, value) in group.take_all() {
+    ///     sum += value;
+    /// }
+    /// 
+    /// assert_eq!(sum, 26);
+    /// assert!(group.is_empty());
+    /// ```
+    pub fn take_all(&mut self) -> TakeAll<'_, F, T, N> {
+        TakeAll { group: self }
     }
 }
 
@@ -720,13 +747,13 @@ impl<'a, F, T, const N: usize> IntoIterator for &'a OptionGroup<F, [T; N]> where
 /// 
 /// This struct is created by the [`some_values`](OptionGroup::some_values)
 /// method on [`OptionGroup`].
-pub struct SomeValuesIter<'a, F, T, const N: usize> where F: Flags, [T; N]: Representable<F> {
+pub struct SomeValues<'a, F, T, const N: usize> where F: Flags, [T; N]: Representable<F> {
     group: &'a OptionGroup<F, [T; N]>,
     some_values: F,
 }
 
 
-impl<'a, F, T, const N: usize> Iterator for SomeValuesIter<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
+impl<'a, F, T, const N: usize> Iterator for SomeValues<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
     type Item = (usize, &'a T);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -746,7 +773,7 @@ impl<'a, F, T, const N: usize> Iterator for SomeValuesIter<'a, F, T, N> where F:
     }
 }
 
-impl<'a, F, T, const N: usize> DoubleEndedIterator for SomeValuesIter<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
+impl<'a, F, T, const N: usize> DoubleEndedIterator for SomeValues<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let some_values = self.some_values.into();
         if some_values == 0 {
@@ -759,20 +786,20 @@ impl<'a, F, T, const N: usize> DoubleEndedIterator for SomeValuesIter<'a, F, T, 
     }
 }
 
-impl<'a, F, T, const N: usize> FusedIterator for SomeValuesIter<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
-impl<'a, F, T, const N: usize> ExactSizeIterator for SomeValuesIter<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
+impl<'a, F, T, const N: usize> FusedIterator for SomeValues<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
+impl<'a, F, T, const N: usize> ExactSizeIterator for SomeValues<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
 
 /// Mutable iterator over all `Some` values in an option array.
 /// 
 /// This struct is created by the [`some_values_mut`](OptionGroup::some_values)
 /// method on [`OptionGroup`].
-pub struct SomeValuesIterMut<'a, F, T, const N: usize> where F: Flags, [T; N]: Representable<F> {
+pub struct SomeValuesMut<'a, F, T, const N: usize> where F: Flags, [T; N]: Representable<F> {
     group: &'a mut OptionGroup<F, [T; N]>,
     some_values: F,
 }
 
 
-impl<'a, F, T, const N: usize> Iterator for SomeValuesIterMut<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
+impl<'a, F, T, const N: usize> Iterator for SomeValuesMut<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
     type Item = (usize, &'a mut T);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -794,7 +821,7 @@ impl<'a, F, T, const N: usize> Iterator for SomeValuesIterMut<'a, F, T, N> where
     }
 }
 
-impl<'a, F, T, const N: usize> DoubleEndedIterator for SomeValuesIterMut<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
+impl<'a, F, T, const N: usize> DoubleEndedIterator for SomeValuesMut<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
     fn next_back(&mut self) -> Option<Self::Item> {
         let some_values = self.some_values.into();
         if some_values == 0 {
@@ -809,8 +836,114 @@ impl<'a, F, T, const N: usize> DoubleEndedIterator for SomeValuesIterMut<'a, F, 
     }
 }
 
-impl<'a, F, T, const N: usize> FusedIterator for SomeValuesIterMut<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
-impl<'a, F, T, const N: usize> ExactSizeIterator for SomeValuesIterMut<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
+impl<'a, F, T, const N: usize> FusedIterator for SomeValuesMut<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
+impl<'a, F, T, const N: usize> ExactSizeIterator for SomeValuesMut<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
+
+/// A by-value option array iterator.
+pub struct IntoIter<F, T, const N: usize> where F: Flags, [T; N]: Representable<F> {
+    group: OptionGroup<F, [T; N]>,
+    next_index: usize,
+    last_index: usize,
+}
+
+impl<F, T, const N: usize> Iterator for IntoIter<F, T, N> where F: Flags, [T; N]: Representable<F> {
+    type Item = Option<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next_index == self.last_index {
+            None
+        } else {
+            let next_item = self.group.take(self.next_index);
+            self.next_index += 1;
+            Some(next_item)
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = self.last_index - self.next_index;
+        (size, Some(size))
+    }
+}
+
+impl<F, T, const N: usize> DoubleEndedIterator for IntoIter<F, T, N> where F: Flags, [T; N]: Representable<F> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.next_index == self.last_index {
+            None
+        } else {
+            self.last_index -= 1;
+            Some(self.group.take(self.last_index))
+        }
+    }
+}
+
+impl<F, T, const N: usize> FusedIterator for IntoIter<F, T, N> where F: Flags, [T; N]: Representable<F> {}
+impl<F, T, const N: usize> ExactSizeIterator for IntoIter<F, T, N> where F: Flags, [T; N]: Representable<F> {}
+
+impl<F, T, const N: usize> IntoIterator for OptionGroup<F, [T; N]> where F: Flags, [T; N]: Representable<F> {
+    type Item = Option<T>;
+    type IntoIter = IntoIter<F, T, N>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter {
+            group: self,
+            next_index: 0,
+            last_index: N,
+        }
+    }
+}
+
+/// A draining iterator for option arrays.
+/// 
+/// This struct is created by [`OptionGroup::take_all`]. See its documentation for more.
+pub struct TakeAll<'a, F, T, const N: usize> where F: Flags, [T; N]: Representable<F> {
+    group: &'a mut OptionGroup<F, [T; N]>,
+}
+
+impl<'a, F, T, const N: usize> Iterator for TakeAll<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
+    type Item = (usize, T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let flags = self.group.flags.into();
+        if flags == 0 {
+            None
+        } else {
+            let idx = flags.trailing_zeros();
+            self.group.flags.clear(idx);
+            Some((idx as usize, unsafe {
+                <[T; N] as Compound>::get_mut_ptr(&mut self.group.value, idx as usize).cast::<T>().read()
+            }))
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = self.group.flags.into().count_ones() as usize;
+        (size, Some(size))
+    }
+}
+
+impl<'a, F, T, const N: usize> DoubleEndedIterator for TakeAll<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let flags = self.group.flags.into();
+        if flags == 0 {
+            None
+        } else {
+            let idx = 63 - flags.leading_zeros();
+            self.group.flags.clear(idx);
+            Some((idx as usize, unsafe {
+                <[T; N] as Compound>::get_mut_ptr(&mut self.group.value, idx as usize).cast::<T>().read()
+            }))
+        }
+    }
+}
+
+impl<'a, F, T, const N: usize> FusedIterator for TakeAll<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
+impl<'a, F, T, const N: usize> ExactSizeIterator for TakeAll<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {}
+
+impl<'a, F, T, const N: usize> Drop for TakeAll<'a, F, T, N> where F: Flags, [T; N]: Representable<F> {
+    fn drop(&mut self) {
+        self.group.clear();
+    }
+}
 
 #[cfg(test)]
 mod test {
