@@ -1353,67 +1353,48 @@ mod tests {
 
     #[test]
     fn iterators_take_and_drop_correctly() {
-        use core::cell::Cell;
+        use crate::test_utils::*;
 
-        #[derive(Clone)]
-        struct Droppable<'a> {
-            value: usize,
-            counter: &'a Cell<usize>,
-        }
-
-        impl Drop for Droppable<'_> {
-            fn drop(&mut self) {
-                let count = self.counter.get();
-                self.counter.set(count + 1);
-            }
-        }
-
-        let drop_count = Cell::new(0usize);
+        let drop_count = DropCounter::new();
 
         let mut backing_region = [
-            core::mem::MaybeUninit::<Droppable>::uninit(),
-            core::mem::MaybeUninit::<Droppable>::uninit(),
-            core::mem::MaybeUninit::<Droppable>::uninit(),
-            core::mem::MaybeUninit::<Droppable>::uninit(),
-            core::mem::MaybeUninit::<Droppable>::uninit(),
-            core::mem::MaybeUninit::<Droppable>::uninit(),
-            core::mem::MaybeUninit::<Droppable>::uninit(),
-            core::mem::MaybeUninit::<Droppable>::uninit(),
+            core::mem::MaybeUninit::<Droppable<usize>>::uninit(),
+            core::mem::MaybeUninit::<Droppable<usize>>::uninit(),
+            core::mem::MaybeUninit::<Droppable<usize>>::uninit(),
+            core::mem::MaybeUninit::<Droppable<usize>>::uninit(),
+            core::mem::MaybeUninit::<Droppable<usize>>::uninit(),
+            core::mem::MaybeUninit::<Droppable<usize>>::uninit(),
+            core::mem::MaybeUninit::<Droppable<usize>>::uninit(),
+            core::mem::MaybeUninit::<Droppable<usize>>::uninit(),
         ];
 
-        let mut vec = SliceVec::<Droppable>::from(&mut backing_region[..]);
+        let mut vec = SliceVec::<Droppable<usize>>::from(&mut backing_region[..]);
         for i in 1..=8 {
-            vec.push(Droppable {
-                value: i,
-                counter: &drop_count,
-            });
+            vec.push(drop_count.new_droppable(i));
         }
 
         let mut drain_iter = vec.drain(2..=5);
         assert_eq!(drain_iter.next_back().unwrap().value, 6);
-        assert_eq!(drop_count.get(), 1);
+        assert_eq!(drop_count.dropped(), 1);
 
         drop(drain_iter);
-        assert_eq!(drop_count.get(), 4);
+        assert_eq!(drop_count.dropped(), 4);
 
         let mut into_iter = vec.into_iter();
         assert_eq!(into_iter.next().unwrap().value, 1);
         assert_eq!(into_iter.next().unwrap().value, 2);
         assert_eq!(into_iter.next().unwrap().value, 7);
-        assert_eq!(drop_count.get(), 7);
+        assert_eq!(drop_count.dropped(), 7);
 
         drop(into_iter);
-        assert_eq!(drop_count.get(), 8);
+        assert_eq!(drop_count.dropped(), 8);
 
-        let mut vec = SliceVec::<Droppable>::from(&mut backing_region[..]);
+        let mut vec = SliceVec::<Droppable<usize>>::from(&mut backing_region[..]);
         for i in 1..=8 {
-            vec.push(Droppable {
-                value: i,
-                counter: &drop_count,
-            });
+            vec.push(drop_count.new_droppable(i));
         }
         drop(vec);
-        assert_eq!(drop_count.get(), 16);
+        assert_eq!(drop_count.dropped(), 16);
     }
 
     #[test]

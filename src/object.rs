@@ -258,31 +258,14 @@ mod tests {
 
     #[test]
     fn drops_correctly() {
-        use core::cell::Cell;
+        use crate::test_utils::*;
 
-        #[derive(Debug)]
-        struct Droppable<'a> {
-            drop_count: &'a Cell<u32>,
-        }
-
-        impl Drop for Droppable<'_> {
-            fn drop(&mut self) {
-                let c = self.drop_count.get();
-                self.drop_count.set(c + 1);
-            }
-        }
-
-        let drop_count = Cell::new(0);
+        let drop_count = DropCounter::new();
         {
-            let mut obj: InlineObject<dyn Debug, 8> = InlineObject::new(Droppable {
-                drop_count: &drop_count,
-            });
-
-            obj.set(Droppable {
-                drop_count: &drop_count,
-            });
-            assert_eq!(drop_count.get(), 1);
+            let mut obj: InlineObject<dyn Debug, 8> = InlineObject::new(drop_count.new_droppable(()));
+            obj.set(drop_count.new_droppable(()));
+            assert_eq!(drop_count.dropped(), 1);
         }
-        assert_eq!(drop_count.get(), 2);
+        assert_eq!(drop_count.dropped(), 2);
     }
 }

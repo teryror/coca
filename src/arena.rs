@@ -1361,33 +1361,20 @@ mod tests {
 
     #[test]
     fn failed_collect_drops_taken_items() {
-        use core::cell::Cell;
-        struct Droppable<'a> {
-            drop_count: &'a Cell<usize>,
-        }
-
-        impl Drop for Droppable<'_> {
-            fn drop(&mut self) {
-                let count = self.drop_count.get();
-                self.drop_count.set(count + 1);
-            }
-        }
+        use crate::test_utils::*;
 
         const ARENA_SIZE: usize = 321;
         let mut backing_region = [MaybeUninit::uninit(); ARENA_SIZE];
         let mut arena = Arena::from(&mut backing_region[..]);
-
+        
+        let drop_count = DropCounter::new();
         let mut taken_count = 0;
-        let drop_count = Cell::new(0);
         let result = arena.try_collect((0..100).map(|_| {
             taken_count += 1;
-            Droppable {
-                drop_count: &drop_count,
-            }
+            drop_count.new_droppable(())
         }));
-
         assert!(result.is_none());
-        assert_eq!(taken_count, drop_count.get());
+        assert_eq!(taken_count, drop_count.dropped());
 
         let alloc_for_arena_size = arena.try_array_default::<u8>(ARENA_SIZE);
         if cfg!(feature = "profile") {

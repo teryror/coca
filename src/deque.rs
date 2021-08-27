@@ -2006,26 +2006,13 @@ mod tests {
 
     #[test]
     fn all_drain_cases() {
-        use core::cell::Cell;
-
-        #[derive(Clone)]
-        struct Droppable<'a> {
-            value: usize,
-            counter: &'a Cell<usize>,
-        }
-
-        impl Drop for Droppable<'_> {
-            fn drop(&mut self) {
-                let count = self.counter.get();
-                self.counter.set(count + 1);
-            }
-        }
+        use crate::test_utils::*;
 
         for len in 1..=8 {
             for offset in 0..=len {
                 for end in 1..=len {
                     for start in 0..end {
-                        let drop_count = Cell::new(0);
+                        let drop_count = DropCounter::new();
                         let mut backing_region = [
                             core::mem::MaybeUninit::<Droppable>::uninit(),
                             core::mem::MaybeUninit::<Droppable>::uninit(),
@@ -2038,25 +2025,19 @@ mod tests {
                         ];
                         let mut deque = SliceDeque::<Droppable>::from(&mut backing_region[..]);
 
-                        for x in 0..offset {
-                            deque.push_front(Droppable {
-                                value: offset - x,
-                                counter: &drop_count,
-                            });
+                        for _ in 0..offset {
+                            deque.push_front(drop_count.new_droppable(()));
                         }
-                        for x in offset..len {
-                            deque.push_back(Droppable {
-                                value: x,
-                                counter: &drop_count,
-                            });
+                        for _ in offset..len {
+                            deque.push_back(drop_count.new_droppable(()));
                         }
 
                         deque.drain(start..end);
                         assert_eq!(deque.len(), len - (end - start));
-                        assert_eq!(drop_count.get(), end - start);
+                        assert_eq!(drop_count.dropped(), end - start);
 
                         drop(deque);
-                        assert_eq!(drop_count.get(), len);
+                        assert_eq!(drop_count.dropped(), len);
                     }
                 }
             }

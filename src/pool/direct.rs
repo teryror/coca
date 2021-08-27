@@ -1347,7 +1347,7 @@ mod tests {
 
     #[test]
     fn randomized_drain_filter() {
-        use core::cell::Cell;
+        use crate::test_utils::{DropCounter, Droppable};
         use rand::{rngs::SmallRng, RngCore, SeedableRng};
         let mut rng = SmallRng::from_seed([
             0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc,
@@ -1355,19 +1355,7 @@ mod tests {
             0x9a, 0xbc, 0xde, 0xf0,
         ]);
 
-        #[derive(Clone)]
-        struct Droppable<'a> {
-            counter: &'a Cell<u64>,
-        }
-
-        impl Drop for Droppable<'_> {
-            fn drop(&mut self) {
-                let c = self.counter.get();
-                self.counter.set(c + 1);
-            }
-        }
-
-        let drop_count = Cell::new(0);
+        let drop_count = DropCounter::new();
         let mut inserted = 0;
 
         let mut storage = [MaybeUninit::uninit(); 2048];
@@ -1378,18 +1366,16 @@ mod tests {
             let remaining_slots = pool.capacity() - pool.len();
             let to_be_inserted = (rng.next_u32() as u64 * remaining_slots as u64) >> 32;
             for _ in 0..to_be_inserted {
-                pool.insert(Droppable {
-                    counter: &drop_count,
-                });
+                pool.insert(drop_count.new_droppable(()));
             }
             inserted += to_be_inserted;
 
             let _ = pool.drain_filter(|_, _| rng.next_u32().count_ones() >= 16);
         }
 
-        assert_eq!(drop_count.get(), inserted - pool.len() as u64);
+        assert_eq!(drop_count.dropped() as u64, inserted - pool.len() as u64);
 
         pool.drain();
-        assert_eq!(drop_count.get(), inserted)
+        assert_eq!(drop_count.dropped() as u64, inserted)
     }
 }

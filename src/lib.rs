@@ -60,3 +60,40 @@ pub use crate::{binary_heap::AllocHeap, deque::AllocDeque, vec::AllocVec};
 #[cfg(feature = "unstable")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "unstable")))]
 pub use crate::object::InlineObject;
+
+#[cfg(test)]
+mod test_utils {
+    use core::cell::Cell;
+
+    #[derive(Debug)]
+    pub(crate) struct DropCounter {
+        drop_count: Cell<usize>,
+    }
+
+    impl DropCounter {
+        pub(crate) fn new() -> Self {
+            DropCounter { drop_count: Cell::new(0), }
+        }
+
+        pub(crate) fn new_droppable<T>(&self, value: T) -> Droppable<'_, T> {
+            Droppable { counter: self, value }
+        }
+
+        pub(crate) fn dropped(&self) -> usize {
+            self.drop_count.get()
+        }
+    }
+
+    #[derive(Debug)]
+    pub(crate) struct Droppable<'a, T = ()>{
+        counter: &'a DropCounter,
+        pub value: T,
+    }
+
+    impl<'a, T> Drop for Droppable<'a, T> {
+        fn drop(&mut self) {
+            let new_drop_count = self.counter.drop_count.get() + 1;
+            self.counter.drop_count.set(new_drop_count);
+        }
+    }
+}
