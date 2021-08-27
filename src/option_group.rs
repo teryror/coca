@@ -143,14 +143,14 @@ mod private {
                 #[inline(always)]
                 fn get_ptr(this: &MaybeUninit<Self>, idx: usize) -> *const () {
                     match idx {
-                        $($idx => unsafe { addr_of!((*this.as_ptr()).$idx) as _ }),*
+                        $($idx => unsafe { addr_of!((*this.as_ptr()).$idx).cast() }),*
                         _ => null(),
                     }
                 }
                 #[inline(always)]
                 fn get_mut_ptr(this: &mut MaybeUninit<Self>, idx: usize) -> *mut () {
                     match idx {
-                        $($idx => unsafe { addr_of_mut!((*this.as_mut_ptr()).$idx) as _ }),*
+                        $($idx => unsafe { addr_of_mut!((*this.as_mut_ptr()).$idx).cast() }),*
                         _ => null_mut(),
                     }
                 }
@@ -159,7 +159,7 @@ mod private {
                 unsafe fn drop_all_in_place(this: &mut MaybeUninit<Self>, flags: u64) {
                     let mut mask = 1;
                     $(
-                        if flags & mask != 0 { (Self::get_mut_ptr(this, $idx) as *mut $t).drop_in_place(); }
+                        if flags & mask != 0 { (Self::get_mut_ptr(this, $idx).cast::<$t>()).drop_in_place(); }
                         mask <<= 1;
                     )*
                 }
@@ -191,7 +191,7 @@ mod private {
         #[inline(always)]
         unsafe fn drop_all_in_place(this: &mut MaybeUninit<Self>, flags: u64) {
             for idx in 0..N {
-                if flags & (1 << idx) != 0 { Self::get_mut_ptr(this, idx).drop_in_place(); }
+                if flags & (1 << idx) != 0 { Self::get_mut_ptr(this, idx).cast::<T>().drop_in_place(); }
             }
         }
     }
@@ -359,6 +359,7 @@ macro_rules! impl_tuple_accessors {
             }
 
             #[inline(always)]
+            #[allow(clippy::missing_safety_doc)]
             pub unsafe fn $get_mut_unchecked(&mut self) -> &mut <T as Tuple<$idx>>::TX {
                 &mut *(<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as Tuple<$idx>>::TX)
             }
@@ -951,7 +952,7 @@ mod test {
     use crate::Arena;
 
     #[test]
-    fn debug_impl() {
+    fn debug_implentations() {
         use crate::fmt;
 
         let mut storage = [MaybeUninit::uninit(); 2048];
@@ -965,5 +966,65 @@ mod test {
         option_tuple.insert_1(123);
         let tuple_output = fmt!(&mut arena, "{:?}", option_tuple).unwrap();
         assert_eq!(tuple_output.as_ref(), "OptionGroup(None, Some(123), None)");
+    }
+
+    #[test]
+    fn tuple_drop_implementations() {
+        use crate::test_utils::*;
+
+        let drop_counter = DropCounter::new();
+        let mut option_tuple: OptionGroup8<(Droppable, Droppable)> = OptionGroup8::empty();
+
+        option_tuple.insert_0(drop_counter.new_droppable(()));
+        option_tuple.replace_0(drop_counter.new_droppable(()));
+        assert_eq!(drop_counter.dropped(), 1);
+        
+        option_tuple.replace_1(drop_counter.new_droppable(()));
+        option_tuple.insert_1(drop_counter.new_droppable(()));
+        assert_eq!(drop_counter.dropped(), 2);
+
+        option_tuple.clear();
+        assert_eq!(drop_counter.dropped(), 4);
+        assert!(option_tuple.is_empty());
+
+        option_tuple.get_or_insert_with_0(|| drop_counter.new_droppable(()));
+        option_tuple.get_or_insert_with_1(|| drop_counter.new_droppable(()));
+        
+        drop(option_tuple);
+        assert_eq!(drop_counter.dropped(), 6);
+    }
+
+    #[test]
+    fn array_drop_implementations() {
+        use crate::test_utils::*;
+
+        let drop_counter = DropCounter::new();
+        let mut option_array = OptionGroup8::new(
+            [Some(drop_counter.new_droppable(()) ), None, Some(drop_counter.new_droppable(())), None]
+        );
+
+        option_array.insert(0, drop_counter.new_droppable(()));
+        assert_eq!(drop_counter.dropped(), 1);
+
+        drop(option_array.take(0));
+        assert_eq!(drop_counter.dropped(), 2);
+
+        option_array.replace(0, drop_counter.new_droppable(()));
+        assert_eq!(drop_counter.dropped(), 2);
+
+        let mut iter = option_array.take_all();
+        drop(iter.next_back());
+        assert_eq!(drop_counter.dropped(), 3);
+
+        drop(iter);
+
+        assert!(option_array.is_empty());
+        assert_eq!(drop_counter.dropped(), 4);
+
+        option_array.get_or_insert(1, drop_counter.new_droppable(()));
+        option_array.insert(3, drop_counter.new_droppable(()));
+
+        drop(option_array);
+        assert_eq!(drop_counter.dropped(), 6);
     }
 }
