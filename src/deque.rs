@@ -244,7 +244,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
         self.get(I::from_usize(self.len() - 1))
     }
 
-    /// Returns a mutable reference to the back element, or [`None`] if the `Deque is empty.
+    /// Returns a mutable reference to the back element, or [`None`] if the `Deque` is empty.
     #[inline]
     pub fn back_mut(&mut self) -> Option<&mut T> {
         self.get_mut(I::from_usize(self.len() - 1))
