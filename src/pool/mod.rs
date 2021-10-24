@@ -39,6 +39,7 @@
 //! ```
 
 pub mod direct;
+pub mod packed;
 
 use core::fmt::Debug;
 use core::hash::Hash;
