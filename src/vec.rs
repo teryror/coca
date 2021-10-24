@@ -413,7 +413,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// Inserts an element at position `index` within the vector, shifting all
     /// elements after it to the right.
     ///
-    /// Returns back `Err(element)` if the vector is already at capacity.
+    /// Returns `Err(element)` if the vector is already at capacity.
     ///
     /// # Panics
     /// Panics if `index` is out of bounds.

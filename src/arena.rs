@@ -122,7 +122,7 @@ impl<'src, T: Sized> Box<'src, MaybeUninit<T>> {
 }
 
 impl<'src, T: Sized> Box<'src, [MaybeUninit<T>]> {
-    /// Converts `self` into a pointer to \[T\].
+    /// Converts `self` into a pointer to `[T]`.
     ///
     /// # Safety
     /// It is up to the caller to guarantee that each `MaybeUninit<T>` in the
@@ -145,7 +145,7 @@ impl<'src, T: Sized> Box<'src, [MaybeUninit<T>]> {
     }
 
     /// Calls `f` once with each index into `self`, placing the returned value
-    /// at that position, and then converts `self` into a pointer to \[T\].
+    /// at that position, and then converts `self` into a pointer to `[T]`.
     ///
     /// See [`Arena::try_reserve_array`] for example usage.
     #[inline]
