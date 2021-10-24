@@ -150,7 +150,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// ```
     pub fn contains(&self, handle: H) -> bool {
         let (index, input_gen_count) = handle.into_raw_parts();
-        if index > self.buf.capacity() {
+        if index >= self.buf.capacity() {
             return false;
         }
         let current_gen_count = unsafe { self.gen_counts().add(index).read() };
@@ -162,7 +162,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// Returns [`None`] if the handle is invalid for this pool.
     pub fn get(&self, handle: H) -> Option<&T> {
         let (index, input_gen_count) = handle.into_raw_parts();
-        if index > self.buf.capacity() {
+        if index >= self.buf.capacity() {
             return None;
         }
         let current_gen_count = unsafe { self.gen_counts().add(index).read() };
@@ -177,7 +177,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// Returns [`None`] if the handle is invalid for this pool.
     pub fn get_mut(&mut self, handle: H) -> Option<&mut T> {
         let (index, input_gen_count) = handle.into_raw_parts();
-        if index > self.buf.capacity() {
+        if index >= self.buf.capacity() {
             return None;
         }
         let current_gen_count = unsafe { self.gen_counts().add(index).read() };
@@ -226,7 +226,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
 
         for (i, handle) in handles.iter().enumerate() {
             let (index, input_gen_count) = handle.into_raw_parts();
-            if index > self.capacity() {
+            if index >= self.capacity() {
                 return None;
             }
 
@@ -370,7 +370,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// ```
     pub fn remove(&mut self, handle: H) -> Option<T> {
         let (index, input_gen_count) = handle.into_raw_parts();
-        if index > self.buf.capacity() || input_gen_count % 2 == 0 {
+        if index >= self.buf.capacity() || input_gen_count % 2 == 0 {
             return None;
         }
 
