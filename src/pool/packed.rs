@@ -199,7 +199,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// Returns [`true`] if the specified handle is valid for this pool.
     /// 
     /// # Examples
-    /// ```
+    /// ```ignore
     /// todo!();
     /// ```
     pub fn contains(&self, handle: H) -> bool {
@@ -252,8 +252,65 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
         unsafe { self.values_mut().add(packed_index.as_usize()).as_mut() }
     }
 
+    /// Returns mutable references to the values corresponding to the specified
+    /// handles.
+    /// 
+    /// Returns [`None`] if any of the handles are invalid, or if any two of
+    /// them are equal to each other.
+    /// 
+    /// # Examples
+    /// ```
+    /// # use coca::pool::packed::PackedInlinePool;
+    /// let mut pool = PackedInlinePool::<&'static str, 5>::new();
+    /// let ha = pool.insert("apple");
+    /// let hb = pool.insert("berry");
+    /// let hc = pool.insert("coconut");
+    /// 
+    /// assert!(pool.get_disjoint_mut([ha, ha]).is_none());
+    /// 
+    /// if let Some([a, c]) = pool.get_disjoint_mut([ha, hc]) {
+    ///     core::mem::swap(a, c);
+    /// }
+    /// 
+    /// assert_eq!(pool.get(ha), Some(&"coconut"));
+    /// assert_eq!(pool.get(hb), Some(&"berry"));
+    /// assert_eq!(pool.get(hc), Some(&"apple"));
+    /// ```
     pub fn get_disjoint_mut<const N: usize>(&mut self, handles: [H; N]) -> Option<[&mut T; N]> {
-        todo!()
+        for i in 1..N {
+            for j in 0..i {
+                if handles[i] == handles[j] {
+                    return None;
+                }
+            }
+        }
+
+        let values = self.values_mut();
+        let counters = self.counters();
+        let slots = self.next_free_slot_or_packed_index_array();
+
+        let mut result: core::mem::MaybeUninit<[&mut T; N]> = core::mem::MaybeUninit::uninit();
+        let result_ptr = result.as_mut_ptr().cast::<&mut T>();
+
+        for (i, handle) in handles.iter().enumerate() {
+            let (index, input_gen_count) = handle.into_raw_parts();
+            if index >= self.capacity() {
+                return None;
+            }
+
+            let current_gen_count = unsafe { counters.add(index).read() };
+            if current_gen_count != input_gen_count || input_gen_count % 2 == 0 {
+                return None;
+            }
+
+            let packed_index = unsafe { slots.add(index).read() };
+            unsafe {
+                let item = values.add(packed_index.as_usize()).as_mut().unwrap();
+                result_ptr.add(i).write(item);
+            }
+        }
+
+        Some(unsafe { result.assume_init() })
     }
 
     /// Inserts a value into the pool, returning a unique handle to access it.
@@ -429,7 +486,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// handles.
     /// 
     /// # Examples
-    /// ```
+    /// ```ignore
     /// todo!();
     /// ```
     pub fn retain<F: FnMut(H, &mut T) -> bool>(&mut self, mut f: F) {
@@ -472,6 +529,66 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Drop for PackedPool<T, S,
     }
 }
 
+/// A densely packed pool that stores its contents in globally allocated memory.
+/// 
+/// # Examples
+/// ```ignore
+/// todo!();
+/// ```
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+pub type PackedAllocPool<T, H = DefaultHandle> = PackedPool<T, crate::storage::AllocStorage<PackedPoolLayout<T, H>>, H>;
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+impl<T, H: Handle> PackedAllocPool<T, H> {
+    pub fn with_capacity(capacity: H::Index) -> Self {
+        let cap = capacity.as_usize();
+        if cap >= H::MAX_INDEX {
+            buffer_too_large_for_handle_type::<H>();
+        }
+
+        let storage = crate::storage::AllocStorage::with_capacity(cap);
+        Self::from(storage)
+    }
+}
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+impl<T: Clone, H: Handle> Clone for PackedAllocPool<T, H> {
+    fn clone(&self) -> Self {
+        let storage = crate::storage::AllocStorage::with_capacity(self.capacity());
+        let mut result: Self = PackedPool {
+            buf: storage,
+            len: self.len,
+            next_free_slot: self.next_free_slot,
+            items: PhantomData,
+        };
+
+        for i in 0..self.len() {
+            unsafe {
+                let src = self.values().add(i).as_ref().unwrap();
+                let dst = result.values_mut().add(i);
+                dst.write(src.clone())
+            }
+        }
+
+        let src_handles = self.handles();
+        let dst_handles = result.handles_mut();
+        unsafe { core::ptr::copy(src_handles, dst_handles, self.len()) };
+
+        let src_counters = self.counters();
+        let dst_counters = result.counters_mut();
+        unsafe { core::ptr::copy(src_counters, dst_counters, self.capacity()) };
+
+        let src_slots = self.next_free_slot_or_packed_index_array();
+        let dst_slots = result.next_free_slot_or_packed_index_array_mut();
+        unsafe { core::ptr::copy(src_slots, dst_slots, self.capacity()) };
+
+        result
+    }
+}
+
 /// A statically-sized storage block for a [`PackedPool`].
 #[repr(C)]
 pub struct InlineStorage<T, H: Handle, const N: usize> {
@@ -498,7 +615,7 @@ unsafe impl<T, H: Handle, const N: usize> Storage<PackedPoolLayout<T, H>> for In
 /// A densely packed pool that stores its contents inline, indexed by [`DefaultHandle`].
 /// 
 /// # Examples
-/// ```
+/// ```ignore
 /// todo!();
 /// ```
 pub type PackedInlinePool<T, const N: usize> = PackedPool<T, InlineStorage<T, DefaultHandle, N>, DefaultHandle>;
@@ -506,7 +623,7 @@ pub type PackedInlinePool<T, const N: usize> = PackedPool<T, InlineStorage<T, De
 /// A densely packed pool that stores its contents inline, indexed by the specified custom [`Handle`].
 /// 
 /// # Examples
-/// ```
+/// ```ignore
 /// todo!();
 /// ```
 pub type TiPackedInlinePool<T, H, const N: usize> = PackedPool<T, InlineStorage<T, H, N>, H>;
@@ -536,7 +653,39 @@ impl<T, H: Handle, const N: usize> Default for PackedPool<T, InlineStorage<T, H,
 
 impl<T: Clone, H: Handle, const N: usize> Clone for PackedPool<T, InlineStorage<T, H, N>, H> {
     fn clone(&self) -> Self {
-        todo!()
+        let mut result: Self = PackedPool {
+            buf: InlineStorage {
+                values: core::mem::MaybeUninit::uninit(),
+                handles: core::mem::MaybeUninit::uninit(),
+                counters: core::mem::MaybeUninit::uninit(),
+                next_free_slot_or_packed_index: core::mem::MaybeUninit::uninit(),
+            },
+            len: self.len,
+            next_free_slot: self.next_free_slot,
+            items: PhantomData,
+        };
+
+        for i in 0..self.len() {
+            unsafe {
+                let src = self.values().add(i).as_ref().unwrap();
+                let dst = result.values_mut().add(i);
+                dst.write(src.clone())
+            }
+        }
+
+        let src_handles = self.handles();
+        let dst_handles = result.handles_mut();
+        unsafe { core::ptr::copy(src_handles, dst_handles, self.len()) };
+
+        let src_counters = self.counters();
+        let dst_counters = result.counters_mut();
+        unsafe { core::ptr::copy(src_counters, dst_counters, self.capacity()) };
+
+        let src_slots = self.next_free_slot_or_packed_index_array();
+        let dst_slots = result.next_free_slot_or_packed_index_array_mut();
+        unsafe { core::ptr::copy(src_slots, dst_slots, self.capacity()) };
+
+        result
     }
 }
 
