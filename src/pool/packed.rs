@@ -211,6 +211,265 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
         let current_gen_count = unsafe { self.counters().add(idx).read() };
         current_gen_count == input_gen_count && current_gen_count % 2 == 1
     }
+
+    /// Returns a reference to the value corresponding to the handle.
+    /// 
+    /// Returns [`None`] if the handle is invalid for this pool.
+    pub fn get(&self, handle: H) -> Option<&T> {
+        let (index, input_gen_count) = handle.into_raw_parts();
+        if index >= self.buf.capacity() {
+            return None;
+        }
+
+        let current_gen_count = unsafe { self.counters().add(index).read() };
+        if current_gen_count != input_gen_count || input_gen_count % 2 == 0 {
+            return None;
+        }
+
+        let packed_index = unsafe {
+            self.next_free_slot_or_packed_index_array().add(index).read()
+        };
+        unsafe { self.values().add(packed_index.as_usize()).as_ref() }
+    }
+
+    /// Returns a mutable reference to the value corresponding to the handle.
+    /// 
+    /// Returns [`None`] if the handle is invalid for this pool.
+    pub fn get_mut(&mut self, handle: H) -> Option<&mut T> {
+        let (index, input_gen_count) = handle.into_raw_parts();
+        if index >= self.buf.capacity() {
+            return None;
+        }
+
+        let current_gen_count = unsafe { self.counters().add(index).read() };
+        if current_gen_count != input_gen_count || input_gen_count % 2 == 0 {
+            return None;
+        }
+
+        let packed_index = unsafe {
+            self.next_free_slot_or_packed_index_array().add(index).read()
+        };
+        unsafe { self.values_mut().add(packed_index.as_usize()).as_mut() }
+    }
+
+    pub fn get_disjoint_mut<const N: usize>(&mut self, handles: [H; N]) -> Option<[&mut T; N]> {
+        todo!()
+    }
+
+    /// Inserts a value into the pool, returning a unique handle to access it.
+    /// 
+    /// Returns `Err(value)` if the pool is already at capacity.
+    /// 
+    /// # Examples
+    /// ```
+    /// # use coca::pool::packed::PackedInlinePool;
+    /// let mut pool = PackedInlinePool::<u16, 8>::new();
+    /// let h = pool.try_insert(42).expect("failed to insert into an empty pool?!");
+    /// assert_eq!(pool.get(h), Some(&42));
+    /// ```
+    pub fn try_insert(&mut self, value: T) -> Result<H, T> {
+        let insert_position = self.next_free_slot.as_usize();
+        if insert_position == Self::FREE_LIST_SENTINEL {
+            return Err(value);
+        }
+
+        let packed_insert_position = self.len;
+        self.len = H::Index::from_usize(packed_insert_position.as_usize() + 1);
+
+        unsafe {
+            let gen_count_ptr = self.counters_mut().add(insert_position);
+            let gen_count = gen_count_ptr.read().wrapping_add(1) & H::MAX_GENERATION;
+            debug_assert_eq!(gen_count % 2, 1);
+            gen_count_ptr.write(gen_count);
+
+            let slot_ptr = self.next_free_slot_or_packed_index_array_mut().add(insert_position);
+            self.next_free_slot = slot_ptr.read();
+            slot_ptr.write(packed_insert_position);
+
+            let handle = H::new(insert_position, gen_count);
+            self.handles_mut().add(packed_insert_position.as_usize()).write(handle);
+            self.values_mut().add(packed_insert_position.as_usize()).write(value);
+            
+            Ok(handle)
+        }
+    }
+
+    /// Inserts a value into the pool, returning a unique handle to access it.
+    /// 
+    /// # Panics
+    /// Panics if the pool is already full. See [`try_insert`](PackedPool::try_insert)
+    /// for a checked version.
+    pub fn insert(&mut self, value: T) -> H {
+        #[cold]
+        #[inline(never)]
+        fn assert_failed() -> ! {
+            panic!("pool is already at capacity")
+        }
+
+        let result = self.try_insert(value);
+        match result {
+            Ok(handle) => handle,
+            Err(_) => assert_failed(),
+        }
+    }
+
+    /// Inserts a value given by `f` into the pool. The handle where the value
+    /// will be stored is passed into `f`. This is useful for storing values
+    /// containing their own handle.
+    /// 
+    /// Returns [`None`] if the pool is already full, without calling `f`.
+    /// 
+    /// # Examples
+    /// ```
+    /// # use coca::pool::{DefaultHandle, packed::PackedInlinePool};
+    /// let mut pool = PackedInlinePool::<(DefaultHandle, u16), 8>::new();
+    /// let h = pool.try_insert_with_handle(|h| (h, 42)).expect("failed to insert into an empty pool?!");
+    /// assert_eq!(pool.get(h), Some(&(h, 42)));
+    /// ```
+    pub fn try_insert_with_handle<F: FnOnce(H) -> T>(&mut self, f: F) -> Option<H> {
+        let insert_position = self.next_free_slot.as_usize();
+        if insert_position == Self::FREE_LIST_SENTINEL {
+            return None;
+        }
+
+        let packed_insert_position = self.len;
+        self.len = H::Index::from_usize(packed_insert_position.as_usize() + 1);
+
+        unsafe {
+            let gen_count_ptr = self.counters_mut().add(insert_position);
+            let gen_count = gen_count_ptr.read().wrapping_add(1) & H::MAX_GENERATION;
+            debug_assert_eq!(gen_count % 2, 1);
+            gen_count_ptr.write(gen_count);
+
+            let slot_ptr = self.next_free_slot_or_packed_index_array_mut().add(insert_position);
+            self.next_free_slot = slot_ptr.read();
+            slot_ptr.write(packed_insert_position);
+
+            let handle = H::new(insert_position, gen_count);
+            self.handles_mut().add(packed_insert_position.as_usize()).write(handle);
+            self.values_mut().add(packed_insert_position.as_usize()).write(f(handle));
+            
+            Some(handle)
+        }
+    }
+
+    /// Inserts a value given by `f` into the pool. The handle where the value
+    /// will be stored is passed into `f`. This is useful for storing values
+    /// containing their own handle.
+    ///
+    /// # Panics
+    /// Panics if the pool is already full. See
+    /// [`try_insert_with_handle`](Packed::try_insert_with_handle) for a
+    /// checked version.
+    pub fn insert_with_handle<F: FnOnce(H) -> T>(&mut self, f: F) -> H {
+        self.try_insert_with_handle(f)
+            .expect("pool is already at capacity")
+    }
+
+    /// Removes the value referred to by the specified handle from the pool,
+    /// returning it unless the handle is invalid. This invalidates the handle.
+    /// 
+    /// # Examples
+    /// ```
+    /// # use coca::pool::packed::PackedInlinePool;
+    /// let mut pool = PackedInlinePool::<u16, 8>::new();
+    /// assert_eq!(pool.len(), 0);
+    /// let h = pool.insert(42);
+    /// assert_eq!(pool.len(), 1);
+    /// assert_eq!(pool.remove(h), Some(42));
+    /// assert_eq!(pool.len(), 0);
+    /// assert_eq!(pool.remove(h), None);
+    /// assert_eq!(pool.len(), 0);
+    /// ```
+    pub fn remove(&mut self, handle: H) -> Option<T> {
+        let (index, input_gen_count) = handle.into_raw_parts();
+        if index >= self.buf.capacity() || input_gen_count % 2 == 0 {
+            return None;
+        }
+
+        let gen_count_ptr = unsafe { self.counters_mut().add(index) };
+        let current_gen_count = unsafe { *gen_count_ptr };
+        if current_gen_count != input_gen_count {
+            return None;
+        }
+
+        unsafe {
+            gen_count_ptr.write(current_gen_count.wrapping_add(1));
+            
+            let slot_ptr = self.next_free_slot_or_packed_index_array_mut().add(index);
+            let packed_index = slot_ptr.read();
+            slot_ptr.write(self.next_free_slot);
+            self.next_free_slot = H::Index::from_usize(index);
+
+            let hole = self.values_mut().add(packed_index.as_usize());
+            let result = hole.read();
+
+            let new_len = self.len() - 1;
+            if new_len > 0 {
+                let last = self.values().add(new_len);
+                core::ptr::copy(last, hole, 1);
+
+                let hole = self.handles_mut().add(packed_index.as_usize());
+                let last = self.handles().add(new_len);
+                core::ptr::copy(last, hole, 1);
+
+                let (index, _) = last.read().into_raw_parts();
+                self.next_free_slot_or_packed_index_array_mut().add(index).write(packed_index);
+            }
+            
+            self.len = H::Index::from_usize(new_len);
+            Some(result)
+        }
+    }
+
+    /// Retains only the elements specified by the predicate.
+    /// 
+    /// In other words, remove all handle-value pairs `(h, t)` such that
+    /// `f(h, &mut t)` returns false. This method invalidates any removed
+    /// handles.
+    /// 
+    /// # Examples
+    /// ```
+    /// todo!();
+    /// ```
+    pub fn retain<F: FnMut(H, &mut T) -> bool>(&mut self, mut f: F) {
+        todo!()
+    }
+
+    /// Clears the pool, dropping all values. This invalidates all handles.
+    /// 
+    /// # Examples
+    /// ```
+    /// # use coca::pool::{DefaultHandle, packed::PackedInlinePool};
+    /// let mut pool = PackedInlinePool::<u16, 5>::new();
+    /// for i in 0..5 { pool.insert(i); }
+    /// assert!(pool.is_full());
+    /// 
+    /// pool.clear();
+    /// assert!(pool.is_empty());
+    /// ```
+    pub fn clear(&mut self) {
+        for packed_index in 0..self.len() {
+            unsafe {
+                self.values_mut().add(packed_index).drop_in_place();
+
+                let (index, _) = self.handles().add(packed_index).read().into_raw_parts();
+                *self.counters_mut().add(index) += 1;
+
+                let slot_ptr = self.next_free_slot_or_packed_index_array_mut().add(index);
+                *slot_ptr = self.next_free_slot;
+                self.next_free_slot = H::Index::from_usize(index);
+            }
+        }
+
+        self.len = H::Index::from_usize(0);
+    }
+}
+
+impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Drop for PackedPool<T, S, H> {
+    fn drop(&mut self) {
+        self.clear();
+    }
 }
 
 /// A statically-sized storage block for a [`PackedPool`].
