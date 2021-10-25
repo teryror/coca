@@ -285,7 +285,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     ///     *v *= 10;
     /// }
     /// 
-    /// for h in handles_copy {
+    /// for &h in &handles_copy {
     ///     if h == h0 { assert_eq!(pool.get(h), Some(&0)); }
     ///     else if h == h1 { assert_eq!(pool.get(h), Some(&10)); }
     ///     else { unreachable!(); }
