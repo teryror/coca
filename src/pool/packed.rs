@@ -6,6 +6,7 @@
 
 use core::alloc::{Layout, LayoutError};
 use core::fmt::{Debug, Formatter};
+use core::iter::FusedIterator;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ops::{Index, IndexMut};
@@ -636,6 +637,53 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
 
         self.len = H::Index::from_usize(0);
     }
+
+    /// Creates an iterator visiting all handle-value pairs in arbitrary order,
+    /// yielding `(H, &'a T)`.
+    /// 
+    /// # Examples
+    /// ```
+    /// # use coca::pool::packed::PackedInlinePool;
+    /// let mut pool = PackedInlinePool::<u128, 5>::new();
+    /// let h0 = pool.insert(0);
+    /// let h1 = pool.insert(1);
+    /// let h2 = pool.insert(2);
+    ///
+    /// let mut counts = [0, 0, 0];
+    /// for (h, v) in pool.iter() {
+    ///     if h == h0 && v == &0 { counts[0] += 1; }
+    ///     else if h == h1 && v == &1 { counts[1] += 1; }
+    ///     else if h == h2 && v == &2 { counts[2] += 1; }
+    /// }
+    ///
+    /// assert_eq!(counts, [1, 1, 1]);
+    /// ```
+    pub fn iter(&self) -> Iter<'_, H, T> {
+        Iter { handles: self.handles_ptr(), values: self.values_ptr(), next_index: 0, last_index: self.len(), pool: PhantomData }
+    }
+
+    /// Creates an iterator visiting all handle-value pairs in arbitrary order,
+    /// yielding `(H, &'a mut T)`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use coca::pool::packed::PackedInlinePool;
+    /// let mut pool = PackedInlinePool::<u128, 5>::new();
+    /// let h1 = pool.insert(1);
+    /// let h2 = pool.insert(2);
+    /// let h3 = pool.insert(3);
+    ///
+    /// for (k, v) in pool.iter_mut() {
+    ///     *v *= 2;
+    /// }
+    ///
+    /// assert_eq!(pool[h1], 2);
+    /// assert_eq!(pool[h2], 4);
+    /// assert_eq!(pool[h3], 6);
+    /// ```
+    pub fn iter_mut(&mut self) -> IterMut<'_, H, T> {
+        IterMut { handles: self.handles_ptr(), values: self.values_mut_ptr(), next_index: 0, last_index: self.len(), pool: PhantomData }
+    }
 }
 
 impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Index<H> for PackedPool<T, S, H> {
@@ -694,6 +742,126 @@ impl<T: Debug, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Debug for PackedPo
             .field("next_free_slot", &self.next_free_slot.as_usize())
             .field("slots", &DebugSlots(self))
             .finish()
+    }
+}
+
+/// An iterator visiting all handle-value pairs in a pool in arbitrary order, yielding `(H, &'a T)`.
+///
+/// This `struct` is created by [`PackedPool::iter`], see its documentation for more.
+pub struct Iter<'a, H, T> {
+    handles: *const H,
+    values: *const T,
+    next_index: usize,
+    last_index: usize,
+    pool: PhantomData<&'a ()>,
+}
+
+impl<'a, H, T: 'a> Iterator for Iter<'a, H, T> {
+    type Item = (H, &'a T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next_index >= self.last_index {
+            return None;
+        }
+
+        Some(unsafe {
+            let handle = self.handles.add(self.next_index).read();
+            let value = &*self.values.add(self.next_index);
+            self.next_index += 1;
+            (handle, value)
+        })
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let count = self.last_index - self.next_index;
+        (count, Some(count))
+    }
+}
+
+impl<'a, H, T: 'a> DoubleEndedIterator for Iter<'a, H, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.next_index >= self.last_index {
+            return None;
+        }
+
+        Some(unsafe {
+            self.last_index -= 1;
+            let handle = self.handles.add(self.last_index).read();
+            let value = &*self.values.add(self.last_index);
+            (handle, value)
+        })
+    }
+}
+
+impl<'a, T: 'a, H> ExactSizeIterator for Iter<'a, H, T> {}
+impl<'a, T: 'a, H> FusedIterator for Iter<'a, H, T> {}
+
+impl<'a, T: 'a, S: Storage<PackedPoolLayout<T, H>>, H: Handle> IntoIterator for &'a PackedPool<T, S, H> {
+    type Item = (H, &'a T);
+    type IntoIter = Iter<'a, H, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// An iterator visiting all handle-value pairs in a pool in arbitrary order, yielding `(H, &'a mut T)`.
+///
+/// This `struct` is created by [`PackedPool::iter_mut`], see its documentation for more.
+pub struct IterMut<'a, H, T> {
+    handles: *const H,
+    values: *mut T,
+    next_index: usize,
+    last_index: usize,
+    pool: PhantomData<&'a mut ()>,
+}
+
+impl<'a, H, T: 'a> Iterator for IterMut<'a, H, T> {
+    type Item = (H, &'a mut T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next_index >= self.last_index {
+            return None;
+        }
+
+        Some(unsafe {
+            let handle = self.handles.add(self.next_index).read();
+            let value = &mut *self.values.add(self.next_index);
+            self.next_index += 1;
+            (handle, value)
+        })
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let count = self.last_index - self.next_index;
+        (count, Some(count))
+    }
+}
+
+impl<'a, H, T: 'a> DoubleEndedIterator for IterMut<'a, H, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.next_index >= self.last_index {
+            return None;
+        }
+
+        Some(unsafe {
+            self.last_index -= 1;
+            let handle = self.handles.add(self.last_index).read();
+            let value = &mut *self.values.add(self.last_index);
+            (handle, value)
+        })
+    }
+}
+
+impl<'a, T: 'a, H> ExactSizeIterator for IterMut<'a, H, T> {}
+impl<'a, T: 'a, H> FusedIterator for IterMut<'a, H, T> {}
+
+impl<'a, T: 'a, S: Storage<PackedPoolLayout<T, H>>, H: Handle> IntoIterator for &'a mut PackedPool<T, S, H> {
+    type Item = (H, &'a mut T);
+    type IntoIter = IterMut<'a, H, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
     }
 }
 
