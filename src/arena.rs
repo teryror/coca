@@ -59,6 +59,7 @@
 
 use crate::pool::direct::DirectArenaPool;
 use crate::pool::Handle;
+use crate::pool::packed::PackedArenaPool;
 use crate::storage::{ArenaStorage, Capacity, LayoutSpec};
 use crate::vec::ArenaVec;
 use crate::{binary_heap::ArenaHeap, ArenaDeque};
@@ -1052,6 +1053,42 @@ impl<'src> Arena<'src> {
     ) -> Option<DirectArenaPool<'src, T, H>> {
         let storage = self.try_storage_with_capacity(capacity)?;
         Some(DirectArenaPool::from(storage))
+    }
+
+    /// Constructs a new [`PackedArenaPool`] with the specified capacity.
+    /// 
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient. See
+    /// [`try_packed_pool`](Arena::try_packed_pool) for a checked version.
+    #[track_caller]
+    pub fn packed_pool<T, H: Handle>(&mut self, capacity: usize) -> PackedArenaPool<T, H> {
+        self.try_packed_pool(capacity)
+            .expect("unexpected allocation failure in packed_pool")
+    }
+
+    /// Constructs a new [`PackedArenaPool`] with the specified capacity.
+    /// 
+    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    /// 
+    /// # Examples
+    /// ```
+    /// use coca::{Arena, pool::DefaultHandle};
+    /// use core::mem::MaybeUninit;
+    /// 
+    /// # fn test() -> Option<()> {
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from(&mut backing_region[..]);
+    /// let mut pool = arena.try_packed_pool::<&'static str, DefaultHandle>(20)?;
+    /// 
+    /// let hello = pool.insert("Hello, World!");
+    /// assert_eq!(pool.remove(hello), Some("Hello, World!"));
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
+    /// ```
+    pub fn try_packed_pool<T, H: Handle>(&mut self, capacity: usize) -> Option<PackedArenaPool<'src, T, H>> {
+        let storage = self.try_storage_with_capacity(capacity)?;
+        Some(PackedArenaPool::from(storage))
     }
 
     /// Transforms an iterator into a boxed slice in the arena.
