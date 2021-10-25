@@ -210,38 +210,41 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// assert_eq!(pool[hc], "apple");
     /// ```
     pub fn get_disjoint_mut<const N: usize>(&mut self, handles: [H; N]) -> Option<[&mut T; N]> {
-        for i in 1..N {
-            for j in 0..i {
-                if handles[i] == handles[j] {
-                    return None;
-                }
-            }
-        }
+        let mut result: [MaybeUninit<*mut T>; N] = unsafe { MaybeUninit::uninit().assume_init() };
 
-        let gen_count_ptr = self.gen_counts();
-        let slot_ptr = self.slots_mut();
+        let counters = self.gen_counts_mut();
+        let slots = self.slots_mut();
 
-        let mut result: MaybeUninit<[&mut T; N]> = MaybeUninit::uninit();
-        let result_ptr = result.as_mut_ptr().cast::<&mut T>();
-
-        for (i, handle) in handles.iter().enumerate() {
-            let (index, input_gen_count) = handle.into_raw_parts();
-            if index >= self.capacity() {
-                return None;
+        let mut i = 0;
+        while i < N {
+            let (index, input_gen_count) = handles[i].into_raw_parts();
+            if index >= self.capacity() || input_gen_count % 2 == 0 {
+                break;
             }
 
-            let current_gen_count = unsafe { gen_count_ptr.add(index).read() };
+            let current_gen_count = unsafe { counters.add(index).read() };
             if current_gen_count != input_gen_count {
-                return None;
+                break;
             }
 
             unsafe {
-                let item = &mut *(slot_ptr.add(index).cast::<T>());
-                result_ptr.add(i).write(item);
+                *counters.add(index) ^= 1; // Temporarily mark the slot as unoccupied for linear time disjointness check
+                result[i] = MaybeUninit::new(slots.add(index).cast::<T>());
             }
+
+            i += 1;
         }
 
-        Some(unsafe { result.assume_init() })
+        for h in &handles[..i] {
+            let (index, _) = h.into_raw_parts();
+            unsafe { *self.gen_counts_mut().add(index) ^= 1 };
+        }
+
+        if i == N {
+            Some(unsafe { core::mem::transmute_copy(&result) })
+        } else {
+            None
+        }
     }
 
     /// Inserts a value into the pool, returning a unique handle to access it.
@@ -716,6 +719,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Drop for DirectPool<T, S,
     }
 }
 
+#[allow(dead_code)] // "unused" fields are actually used by the derived Debug impl
 #[derive(Debug)]
 enum DebugEntry<'a, T: Debug, H: Handle> {
     Occupied {

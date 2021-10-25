@@ -6,6 +6,7 @@
 
 use core::alloc::{Layout, LayoutError};
 use core::marker::PhantomData;
+use core::mem::MaybeUninit;
 
 use super::{buffer_too_large_for_handle_type, DefaultHandle, Handle};
 use crate::storage::{ArenaStorage, Capacity, LayoutSpec, Storage};
@@ -277,40 +278,43 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// assert_eq!(pool.get(hc), Some(&"apple"));
     /// ```
     pub fn get_disjoint_mut<const N: usize>(&mut self, handles: [H; N]) -> Option<[&mut T; N]> {
-        for i in 1..N {
-            for j in 0..i {
-                if handles[i] == handles[j] {
-                    return None;
-                }
-            }
-        }
+        let mut result: [MaybeUninit<*mut T>; N] = unsafe { MaybeUninit::uninit().assume_init() };
 
-        let values = self.values_mut();
-        let counters = self.counters();
+        let counters = self.counters_mut();
         let slots = self.next_free_slot_or_packed_index_array();
+        let values = self.values_mut();
 
-        let mut result: core::mem::MaybeUninit<[&mut T; N]> = core::mem::MaybeUninit::uninit();
-        let result_ptr = result.as_mut_ptr().cast::<&mut T>();
-
-        for (i, handle) in handles.iter().enumerate() {
-            let (index, input_gen_count) = handle.into_raw_parts();
-            if index >= self.capacity() {
-                return None;
+        let mut i = 0;
+        while i < N {
+            let (index, input_gen_count) = handles[i].into_raw_parts();
+            if index >= self.capacity() || input_gen_count % 2 == 0 {
+                break;
             }
 
             let current_gen_count = unsafe { counters.add(index).read() };
-            if current_gen_count != input_gen_count || input_gen_count % 2 == 0 {
-                return None;
+            if current_gen_count != input_gen_count {
+                break;
             }
 
-            let packed_index = unsafe { slots.add(index).read() };
             unsafe {
-                let item = values.add(packed_index.as_usize()).as_mut().unwrap();
-                result_ptr.add(i).write(item);
+                *counters.add(index) ^= 1;
+                let packed_index = slots.add(index).read().as_usize();
+                result[i] = MaybeUninit::new(values.add(packed_index));
             }
+
+            i += 1;
         }
 
-        Some(unsafe { result.assume_init() })
+        for h in &handles[..i] {
+            let (index, _) = h.into_raw_parts();
+            unsafe { *counters.add(index) ^= 1 };
+        }
+
+        if i == N {
+            Some(unsafe { core::mem::transmute_copy(&result) })
+        } else {
+            None
+        }
     }
 
     /// Inserts a value into the pool, returning a unique handle to access it.
@@ -593,11 +597,11 @@ impl<T: Clone, H: Handle> Clone for PackedAllocPool<T, H> {
 #[repr(C)]
 pub struct InlineStorage<T, H: Handle, const N: usize> {
     // densely packed arrays:
-    values: core::mem::MaybeUninit<[T; N]>,
-    handles: core::mem::MaybeUninit<[H; N]>,
+    values: [MaybeUninit<T>; N],
+    handles: [MaybeUninit<H>; N],
     // indices for random access:
-    counters: core::mem::MaybeUninit<[u32; N]>,
-    next_free_slot_or_packed_index: core::mem::MaybeUninit<[H::Index; N]>,
+    counters: [MaybeUninit<u32>; N],
+    next_free_slot_or_packed_index: [MaybeUninit<H::Index>; N],
 }
 
 unsafe impl<T, H: Handle, const N: usize> Storage<PackedPoolLayout<T, H>> for InlineStorage<T, H, N> {
@@ -637,10 +641,10 @@ impl<T, H: Handle, const N: usize> PackedPool<T, InlineStorage<T, H, N>, H> {
         }
 
         Self::from(InlineStorage {
-            values: core::mem::MaybeUninit::uninit(),
-            handles: core::mem::MaybeUninit::uninit(),
-            counters: core::mem::MaybeUninit::uninit(),
-            next_free_slot_or_packed_index: core::mem::MaybeUninit::uninit(),
+            values: unsafe { MaybeUninit::<[MaybeUninit<T>; N]>::uninit().assume_init() },
+            handles: [MaybeUninit::uninit(); N],
+            counters: [MaybeUninit::uninit(); N],
+            next_free_slot_or_packed_index: [MaybeUninit::uninit(); N],
         })
     }
 }
@@ -655,10 +659,10 @@ impl<T: Clone, H: Handle, const N: usize> Clone for PackedPool<T, InlineStorage<
     fn clone(&self) -> Self {
         let mut result: Self = PackedPool {
             buf: InlineStorage {
-                values: core::mem::MaybeUninit::uninit(),
-                handles: core::mem::MaybeUninit::uninit(),
-                counters: core::mem::MaybeUninit::uninit(),
-                next_free_slot_or_packed_index: core::mem::MaybeUninit::uninit(),
+                values: unsafe { MaybeUninit::<[MaybeUninit<T>; N]>::uninit().assume_init() },
+                handles: [MaybeUninit::uninit(); N],
+                counters: [MaybeUninit::uninit(); N],
+                next_free_slot_or_packed_index: [MaybeUninit::uninit(); N],
             },
             len: self.len,
             next_free_slot: self.next_free_slot,
@@ -669,7 +673,7 @@ impl<T: Clone, H: Handle, const N: usize> Clone for PackedPool<T, InlineStorage<
             unsafe {
                 let src = self.values().add(i).as_ref().unwrap();
                 let dst = result.values_mut().add(i);
-                dst.write(src.clone())
+                dst.write(src.clone());
             }
         }
 
