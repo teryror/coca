@@ -200,8 +200,13 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// Returns [`true`] if the specified handle is valid for this pool.
     /// 
     /// # Examples
-    /// ```ignore
-    /// todo!();
+    /// ```
+    /// # use coca::pool::packed::PackedInlinePool;
+    /// let mut pool = PackedInlinePool::<u128, 16>::new();
+    /// let h = pool.insert(0xF0E1_D2C3_B4A5_9687);
+    /// assert!(pool.contains(h));
+    /// assert_eq!(pool.remove(h), Some(0xF0E1_D2C3_B4A5_9687));
+    /// assert!(!pool.contains(h));
     /// ```
     pub fn contains(&self, handle: H) -> bool {
         let (idx, input_gen_count) = handle.into_raw_parts();
@@ -619,16 +624,40 @@ unsafe impl<T, H: Handle, const N: usize> Storage<PackedPoolLayout<T, H>> for In
 /// A densely packed pool that stores its contents inline, indexed by [`DefaultHandle`].
 /// 
 /// # Examples
-/// ```ignore
-/// todo!();
+/// ```
+/// # use coca::pool::DefaultHandle;
+/// # use coca::pool::packed::PackedInlinePool;
+/// const A: u128 = 0x0123_4567_89AB_CDEF_0123_4567_89AB_CDEF;
+/// const B: u128 = 0xFEDC_BA98_7654_3210_FEDC_BA98_7654_3210;
+///
+/// let mut pool = PackedInlinePool::<u128, 8>::new();
+/// let a = pool.insert(A);
+/// let b = pool.insert(B);
+/// assert_eq!(pool.len(), 2);
+/// assert_eq!(pool.remove(a), Some(A));
+/// assert_eq!(pool.remove(b), Some(B));
+/// assert!(pool.is_empty());
 /// ```
 pub type PackedInlinePool<T, const N: usize> = PackedPool<T, InlineStorage<T, DefaultHandle, N>, DefaultHandle>;
 
 /// A densely packed pool that stores its contents inline, indexed by the specified custom [`Handle`].
 /// 
 /// # Examples
-/// ```ignore
-/// todo!();
+/// ```
+/// # use coca::handle_type;
+/// # use coca::pool::packed::TiPackedInlinePool;
+/// handle_type! { CustomHandle: 8 / 32; }
+/// 
+/// const A: u128 = 0x0123_4567_89AB_CDEF_0123_4567_89AB_CDEF;
+/// const B: u128 = 0xFEDC_BA98_7654_3210_FEDC_BA98_7654_3210;
+///
+/// let mut pool = TiPackedInlinePool::<u128, CustomHandle, 8>::new();
+/// let a: CustomHandle = pool.insert(A);
+/// let b = pool.insert(B);
+/// assert_eq!(pool.len(), 2);
+/// assert_eq!(pool.remove(a), Some(A));
+/// assert_eq!(pool.remove(b), Some(B));
+/// assert!(pool.is_empty());
 /// ```
 pub type TiPackedInlinePool<T, H, const N: usize> = PackedPool<T, InlineStorage<T, H, N>, H>;
 
