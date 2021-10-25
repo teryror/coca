@@ -1061,7 +1061,7 @@ impl<'src> Arena<'src> {
     /// Panics if the remaining space in the arena is insufficient. See
     /// [`try_packed_pool`](Arena::try_packed_pool) for a checked version.
     #[track_caller]
-    pub fn packed_pool<T, H: Handle>(&mut self, capacity: usize) -> PackedArenaPool<T, H> {
+    pub fn packed_pool<T, H: Handle>(&mut self, capacity: usize) -> PackedArenaPool<'src, T, H> {
         self.try_packed_pool(capacity)
             .expect("unexpected allocation failure in packed_pool")
     }

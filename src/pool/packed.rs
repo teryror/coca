@@ -5,11 +5,12 @@
 //! looked up in a separate, incontiguously populated table.
 
 use core::alloc::{Layout, LayoutError};
+use core::fmt::{Debug, Formatter};
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ops::{Index, IndexMut};
 
-use super::{buffer_too_large_for_handle_type, DefaultHandle, Handle};
+use super::{buffer_too_large_for_handle_type, DebugEntry, DefaultHandle, Handle};
 use crate::storage::{ArenaStorage, Capacity, LayoutSpec, Storage};
 
 /// The [`LayoutSpec`] for a [`PackedPool`].
@@ -576,7 +577,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
             let result = hole.read();
 
             let new_len = self.len() - 1;
-            if new_len > 0 {
+            if new_len != packed_index.as_usize() {
                 let last = self.values_ptr().add(new_len);
                 core::ptr::copy(last, hole, 1);
 
@@ -653,6 +654,46 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> IndexMut<H> for PackedPoo
 impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Drop for PackedPool<T, S, H> {
     fn drop(&mut self) {
         self.clear();
+    }
+}
+
+struct DebugSlots<'a, T: Debug, S: Storage<PackedPoolLayout<T, H>>, H: Handle>(
+    &'a PackedPool<T, S, H>,
+);
+impl<T: Debug, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Debug for DebugSlots<'_, T, S, H> {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> core::fmt::Result {
+        let gen_count_ptr = self.0.counters();
+        let slot_ptr = self.0.next_free_slot_or_packed_index_array();
+        let values_ptr = self.0.values_ptr();
+        fmt.debug_list()
+            .entries(
+                (0..self.0.capacity()).map::<DebugEntry<T, H>, _>(|i| unsafe {
+                    let generation = gen_count_ptr.add(i).read();
+                    if generation % 2 == 0 {
+                        let next_free_slot = slot_ptr.add(i).read();
+                        DebugEntry::Vacant {
+                            generation,
+                            next_free_slot,
+                        }
+                    } else {
+                        let packed_index = slot_ptr.add(i).read().as_usize();
+                        let value = &*values_ptr.add(packed_index);
+                        DebugEntry::Occupied { generation, value }
+                    }
+                }),
+            )
+            .finish()
+    }
+}
+
+impl<T: Debug, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Debug for PackedPool<T, S, H> {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> core::fmt::Result {
+        let mut builder = fmt.debug_struct("PackedPool");
+        builder
+            .field("len", &self.len.as_usize())
+            .field("next_free_slot", &self.next_free_slot.as_usize())
+            .field("slots", &DebugSlots(self))
+            .finish()
     }
 }
 
@@ -848,6 +889,55 @@ mod tests {
     use super::*;
     use crate::pool::{DefaultHandle, Handle};
     use crate::storage::LayoutSpec;
+    use crate::{fmt, Arena};
+
+    #[test]
+    fn debug_impl() {
+        let mut storage = [MaybeUninit::uninit(); 2048];
+        let mut arena = Arena::from(&mut storage[..]);
+        let mut pool = arena.packed_pool::<&'static str, DefaultHandle>(4);
+
+        let empty = fmt!(arena, "{:?}", pool).unwrap();
+        assert_eq!(
+            &*empty,
+            "PackedPool { len: 0, next_free_slot: 0, slots: [\
+                Vacant { generation: 0, next_free_slot: 1 }, \
+                Vacant { generation: 0, next_free_slot: 2 }, \
+                Vacant { generation: 0, next_free_slot: 3 }, \
+                Vacant { generation: 0, next_free_slot: 4294967295 }\
+            ] }"
+        );
+
+        let h1 = pool.insert("First");
+        pool.insert("Second");
+        let h3 = pool.insert("Third");
+        pool.insert("Fourth");
+
+        let full = fmt!(&mut arena, "{:?}", pool).unwrap();
+        assert_eq!(
+            &*full,
+            "PackedPool { len: 4, next_free_slot: 4294967295, slots: [\
+                Occupied { generation: 1, value: \"First\" }, \
+                Occupied { generation: 1, value: \"Second\" }, \
+                Occupied { generation: 1, value: \"Third\" }, \
+                Occupied { generation: 1, value: \"Fourth\" }\
+            ] }"
+        );
+
+        pool.remove(h1);
+        pool.remove(h3);
+
+        let partial = fmt!(&mut arena, "{:?}", pool).unwrap();
+        assert_eq!(
+            &*partial,
+            "PackedPool { len: 2, next_free_slot: 2, slots: [\
+                Vacant { generation: 2, next_free_slot: 4294967295 }, \
+                Occupied { generation: 1, value: \"Second\" }, \
+                Vacant { generation: 2, next_free_slot: 0 }, \
+                Occupied { generation: 1, value: \"Fourth\" }\
+            ] }"
+        );
+    }
 
     #[test]
     fn inline_storage_layout() {

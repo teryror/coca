@@ -92,6 +92,19 @@ pub(crate) fn buffer_too_large_for_handle_type<H: Handle>() {
     );
 }
 
+#[allow(dead_code)] // "unused" fields are actually used by the derived Debug impl
+#[derive(Debug)]
+enum DebugEntry<'a, T: Debug, H: Handle> {
+    Occupied {
+        generation: u32,
+        value: &'a T,
+    },
+    Vacant {
+        generation: u32,
+        next_free_slot: H::Index,
+    },
+}
+
 /// Generates one or more new types implementing [`Handle`].
 ///
 /// This can help in avoiding use of the wrong handle with an object pool.

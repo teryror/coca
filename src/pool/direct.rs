@@ -10,7 +10,7 @@ use core::marker::PhantomData;
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::{Index, IndexMut};
 
-use super::{buffer_too_large_for_handle_type, DefaultHandle, Handle};
+use super::{buffer_too_large_for_handle_type, DebugEntry, DefaultHandle, Handle};
 use crate::storage::{ArenaStorage, Capacity, LayoutSpec, Storage};
 
 union Slot<T, I: Capacity> {
@@ -717,19 +717,6 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Drop for DirectPool<T, S,
             }
         }
     }
-}
-
-#[allow(dead_code)] // "unused" fields are actually used by the derived Debug impl
-#[derive(Debug)]
-enum DebugEntry<'a, T: Debug, H: Handle> {
-    Occupied {
-        generation: u32,
-        value: &'a T,
-    },
-    Vacant {
-        generation: u32,
-        next_free_slot: H::Index,
-    },
 }
 
 struct DebugSlots<'a, T: Debug, S: Storage<DirectPoolLayout<T, H>>, H: Handle>(
