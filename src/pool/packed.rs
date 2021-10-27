@@ -602,11 +602,22 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// handles.
     /// 
     /// # Examples
-    /// ```ignore
-    /// todo!();
+    /// ```
+    /// # use coca::pool::packed::PackedInlinePool;
+    /// let mut pool = PackedInlinePool::<u128, 4>::new();
+    /// let h1 = pool.insert(1);
+    /// let h2 = pool.insert(2);
+    /// let h3 = pool.insert(3);
+    /// pool.retain(|_, val| *val % 2 == 1);
+    ///
+    /// assert!(pool.contains(h1));
+    /// assert!(!pool.contains(h2));
+    /// assert!(pool.contains(h3));
+    /// assert_eq!(pool.len(), 2);
     /// ```
     pub fn retain<F: FnMut(H, &mut T) -> bool>(&mut self, mut f: F) {
-        todo!()
+        self.drain_filter(|handle, item| !f(handle, item))
+            .for_each(drop);
     }
 
     /// Clears the pool, dropping all values. This invalidates all handles.
@@ -683,6 +694,69 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// ```
     pub fn iter_mut(&mut self) -> IterMut<'_, H, T> {
         IterMut { handles: self.handles_ptr(), values: self.values_mut_ptr(), next_index: 0, last_index: self.len(), pool: PhantomData }
+    }
+
+    /// Creates a draining iterator that removes all values from the pool and
+    /// yields them and their handles in an arbitrary order.
+    ///
+    /// When the iterator **is** dropped, all remaining elements are removed
+    /// from the pool, even if the iterator was not fully consumed. If the
+    /// iterator **is not** dropped (with [`core::mem::forget`] for example),
+    /// it is unspecified how many elements are removed.
+    /// 
+    /// # Examples
+    /// ```
+    /// # use coca::pool::packed::PackedInlinePool;
+    /// let mut pool = PackedInlinePool::<u128, 5>::new();
+    /// pool.insert(0);
+    /// let mut it = pool.drain();
+    /// assert!(matches!(it.next(), Some((_, 0))));
+    /// assert!(it.next().is_none());
+    /// drop(it);
+    ///
+    /// assert_eq!(pool.len(), 0);
+    /// ```
+    pub fn drain(&mut self) -> Drain<'_, T, S, H> {
+        Drain { pool: self }
+    }
+
+    /// Creates an iterator which uses a closure to determine if an element
+    /// should be removed.
+    ///
+    /// If the closure returns `true`, the element is removed and yielded with
+    /// its handle. If the closure returns `false`, the element will remain in
+    /// the pool and will not be yielded by the iterator.
+    ///
+    /// When the iterator **is** dropped, all remaining elements matching the
+    /// filter are removed from the pool, even if the iterator was not fully
+    /// consumed. If the iterator **is not** dropped (with [`core::mem::forget`]
+    /// for example), it is unspecified how many such elements are removed.
+    ///
+    /// # Examples
+    /// ```
+    /// # use coca::pool::packed::PackedInlinePool;
+    /// let mut pool = PackedInlinePool::<u128, 10>::new();
+    /// for i in 1..=10 {
+    ///     pool.insert(i);
+    /// }
+    ///
+    /// // filter out the even values:
+    /// let mut it = pool.drain_filter(|_, val| *val % 2 == 0);
+    /// for i in 1..=5 {
+    ///     assert!(matches!(it.next(), Some((_, x)) if x % 2 == 0));
+    /// }
+    /// assert!(it.next().is_none());
+    /// drop(it);
+    ///
+    /// assert_eq!(pool.len(), 5);
+    /// ```
+    pub fn drain_filter<F: FnMut(H, &mut T) -> bool>(&mut self, filter_fn: F) -> DrainFilter<'_, T, S, H, F> {
+        let last_visited = self.len();
+        DrainFilter {
+            pool: self,
+            last_visited,
+            filter_fn
+        }
     }
 }
 
@@ -864,6 +938,114 @@ impl<'a, T: 'a, S: Storage<PackedPoolLayout<T, H>>, H: Handle> IntoIterator for 
         self.iter_mut()
     }
 }
+
+/// A draining iterator over the elements of a [`PackedPool`].
+///
+/// This `struct` is created by [`PackedPool::drain`], see its documentation for more.
+pub struct Drain<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> {
+    pool: &'a mut PackedPool<T, S, H>,
+}
+
+impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Iterator for Drain<'a, T, S, H> {
+    type Item = (H, T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let len = self.pool.len();
+        if len == 0 {
+            return None;
+        }
+
+        let new_len = len - 1;
+        let handle = unsafe { self.pool.handles_ptr().add(new_len).read() };
+        let value = unsafe { self.pool.values_ptr().add(new_len).read() };
+
+        let (index, gen_count) = handle.into_raw_parts();
+        unsafe {
+            self.pool.counters_mut().add(index).write(gen_count.wrapping_add(1));
+            self.pool.next_free_slot_or_packed_index_array_mut().add(index).write(self.pool.next_free_slot);
+        }
+
+        self.pool.next_free_slot = H::Index::from_usize(index);
+        self.pool.len = H::Index::from_usize(new_len);
+        Some((handle, value))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = self.pool.len();
+        (size, Some(size))
+    }
+}
+
+impl <'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Drop for Drain<'a, T, S, H> {
+    fn drop(&mut self) {
+        self.pool.clear()
+    }
+}
+
+impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> ExactSizeIterator for Drain<'a, T, S, H> {}
+impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> FusedIterator for Drain<'a, T, S, H> {}
+
+/// An iterator which uses a closure to determine if an element should be removed.
+///
+/// This `struct` is created by [`PackedPool::drain_filter`], see its documentation for more.
+pub struct DrainFilter<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> {
+    pool: &'a mut PackedPool<T, S, H>,
+    last_visited: usize,
+    filter_fn: F,
+}
+
+impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> Iterator for DrainFilter<'a, T, S, H, F> {
+    type Item = (H, T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.last_visited > 0 {
+            self.last_visited -= 1;
+    
+            let handle = unsafe { self.pool.handles_ptr().add(self.last_visited).read() };
+            let should_remove = unsafe {
+                let value_ref = &mut *self.pool.values_mut_ptr().add(self.last_visited);
+                (self.filter_fn)(handle, value_ref)
+            };
+
+            if !should_remove { continue; }
+            let new_len = self.pool.len() - 1;
+            let value = unsafe { self.pool.values_ptr().add(self.last_visited).read() };
+
+            let (index, gen_count) = handle.into_raw_parts();
+            unsafe {
+                self.pool.counters_mut().add(index).write(gen_count.wrapping_add(1));
+                self.pool.next_free_slot_or_packed_index_array_mut().add(index).write(self.pool.next_free_slot);
+
+                if index != new_len {
+                    let value_src = self.pool.values_ptr().add(new_len);
+                    let value_dst = self.pool.values_mut_ptr().add(self.last_visited);
+                    core::ptr::copy(value_src, value_dst, 1);
+    
+                    let handle_src = self.pool.handles_ptr().add(new_len);
+                    let handle_dst = self.pool.handles_mut_ptr().add(self.last_visited);
+                    core::ptr::copy(handle_src, handle_dst, 1);
+
+                    let (index, _) = handle_src.read().into_raw_parts();
+                    self.pool.next_free_slot_or_packed_index_array_mut().add(index).write(H::Index::from_usize(self.last_visited));
+                }
+            }
+            
+            self.pool.len = H::Index::from_usize(new_len);
+            return Some((handle, value));
+        }
+
+        None
+    }
+}
+
+impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> Drop for DrainFilter<'a, T, S, H, F> {
+    fn drop(&mut self) {
+        self.for_each(drop);
+    }
+}
+
+impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> ExactSizeIterator for DrainFilter<'a, T, S, H, F> {}
+impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> FusedIterator for DrainFilter<'a, T, S, H, F> {}
 
 /// A densely packed pool that stores its contents in globally allocated memory.
 /// 
