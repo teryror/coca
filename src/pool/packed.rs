@@ -670,7 +670,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// assert_eq!(counts, [1, 1, 1]);
     /// ```
     pub fn iter(&self) -> Iter<'_, H, T> {
-        Iter { handles: self.handles_ptr(), values: self.values_ptr(), next_index: 0, last_index: self.len(), pool: PhantomData }
+        Iter { handles: self.handles_ptr(), values: self.values_ptr(), len: self.len(), pool: PhantomData }
     }
 
     /// Creates an iterator visiting all handle-value pairs in arbitrary order,
@@ -693,7 +693,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// assert_eq!(pool[h3], 6);
     /// ```
     pub fn iter_mut(&mut self) -> IterMut<'_, H, T> {
-        IterMut { handles: self.handles_ptr(), values: self.values_mut_ptr(), next_index: 0, last_index: self.len(), pool: PhantomData }
+        IterMut { handles: self.handles_ptr(), values: self.values_mut_ptr(), len: self.len(), pool: PhantomData }
     }
 
     /// Creates a draining iterator that removes all values from the pool and
@@ -825,8 +825,7 @@ impl<T: Debug, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Debug for PackedPo
 pub struct Iter<'a, H, T> {
     handles: *const H,
     values: *const T,
-    next_index: usize,
-    last_index: usize,
+    len: usize,
     pool: PhantomData<&'a ()>,
 }
 
@@ -834,36 +833,20 @@ impl<'a, H, T: 'a> Iterator for Iter<'a, H, T> {
     type Item = (H, &'a T);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.next_index >= self.last_index {
+        if self.len == 0 {
             return None;
         }
 
+        self.len -= 1;
         Some(unsafe {
-            let handle = self.handles.add(self.next_index).read();
-            let value = &*self.values.add(self.next_index);
-            self.next_index += 1;
+            let handle = self.handles.add(self.len).read();
+            let value = &*self.values.add(self.len);
             (handle, value)
         })
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let count = self.last_index - self.next_index;
-        (count, Some(count))
-    }
-}
-
-impl<'a, H, T: 'a> DoubleEndedIterator for Iter<'a, H, T> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        if self.next_index >= self.last_index {
-            return None;
-        }
-
-        Some(unsafe {
-            self.last_index -= 1;
-            let handle = self.handles.add(self.last_index).read();
-            let value = &*self.values.add(self.last_index);
-            (handle, value)
-        })
+        (self.len, Some(self.len))
     }
 }
 
@@ -885,8 +868,7 @@ impl<'a, T: 'a, S: Storage<PackedPoolLayout<T, H>>, H: Handle> IntoIterator for 
 pub struct IterMut<'a, H, T> {
     handles: *const H,
     values: *mut T,
-    next_index: usize,
-    last_index: usize,
+    len: usize,
     pool: PhantomData<&'a mut ()>,
 }
 
@@ -894,36 +876,20 @@ impl<'a, H, T: 'a> Iterator for IterMut<'a, H, T> {
     type Item = (H, &'a mut T);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.next_index >= self.last_index {
+        if self.len == 0 {
             return None;
         }
 
+        self.len -= 1;
         Some(unsafe {
-            let handle = self.handles.add(self.next_index).read();
-            let value = &mut *self.values.add(self.next_index);
-            self.next_index += 1;
+            let handle = self.handles.add(self.len).read();
+            let value = &mut *self.values.add(self.len);
             (handle, value)
         })
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let count = self.last_index - self.next_index;
-        (count, Some(count))
-    }
-}
-
-impl<'a, H, T: 'a> DoubleEndedIterator for IterMut<'a, H, T> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        if self.next_index >= self.last_index {
-            return None;
-        }
-
-        Some(unsafe {
-            self.last_index -= 1;
-            let handle = self.handles.add(self.last_index).read();
-            let value = &mut *self.values.add(self.last_index);
-            (handle, value)
-        })
+        (self.len, Some(self.len))
     }
 }
 
