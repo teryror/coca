@@ -11,7 +11,7 @@ dead-simple to predict - but it also means insertions can easily fail, so you'll
 need proof you can't break the limit, or a graceful recovery path, which is good
 practice in memory-constrained environments anyway.
 
-Currently, four main components are provided:
+Currently, six main components are provided:
 
 - `Arena`, a bump-/stack-allocator, plus `Box<'a, T>` the corresponding smart
   pointer,
@@ -19,19 +19,21 @@ Currently, four main components are provided:
   also the underlying storage type ([as in this recent proposal][generic-vec])
   and the index type (inspired by [`typed-index-collections`][ticollections]),
 - `BinaryHeap`, a priority queue implemented on top of `Vec`,
-- `Deque`, a double-ended queue implemented with a ring buffer.
+- `Deque`, a double-ended queue implemented with a ring buffer,
+- the `pool` module, containing [`slotmap`-style][slotmap] object pools,
+- `OptionGroup`, a tuple or array of optional values with the occupation flags
+  packed into a single bitmap field.
 
   [generic-vec]: https://internals.rust-lang.org/t/is-custom-allocators-the-right-abstraction/13460
   [ticollections]: https://crates.io/crates/typed-index-collections
+  [slotmap]: https://crates.io/crates/slotmap
 
 This crate is still in early development! Currently on the road map (in no
 particular order):
 
-- A [`slotmap`][slotmap]-style pool-allocator, as well as a dense pool optimized
-  for iteration speed, as opposed to random access,
-- ordered and unordered map and set implementations.
+- ordered and unordered map and set implementations,
+- [cache tables](https://fgiesen.wordpress.com/2019/02/11/cache-tables/).
 
-  [slotmap]: https://crates.io/crates/slotmap
 
 ## Constructive Feedback and Contributions Welcome!
 
