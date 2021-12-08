@@ -339,6 +339,26 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
         }
     }
 
+    /// Prepends an element to the front of the `Deque`, replacing and returning
+    /// the back element if the `Deque` is already full.
+    /// 
+    /// # Examples
+    /// ```
+    /// let mut deque = coca::InlineDeque::<&'static str, 2>::new();
+    /// 
+    /// assert!(deque.force_push_front("Alice").is_none());
+    /// assert!(deque.force_push_front("Bob").is_none());
+    /// assert_eq!(deque.force_push_front("Charlie"), Some("Alice"));
+    /// 
+    /// assert_eq!(deque[0], "Charlie");
+    /// assert_eq!(deque[1], "Bob");
+    /// ```
+    pub fn force_push_front(&mut self, value: T) -> Option<T> {
+        let result = self.is_full().then(|| self.pop_back()).flatten();
+        self.push_front(value);
+        result
+    }
+
     /// Appends an element to the back of the `Deque`, returning `Err(value)`
     /// if it is already full.
     ///
@@ -376,6 +396,26 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
         if self.try_push_back(value).is_err() {
             panic!("deque is already at capacity")
         }
+    }
+
+    /// Appends an element to the back of the `Deque`, replacing and returning
+    /// the front element if the `Deque` is already full.
+    /// 
+    /// # Examples
+    /// ```
+    /// let mut deque = coca::InlineDeque::<&'static str, 2>::new();
+    /// 
+    /// assert!(deque.force_push_back("Hello").is_none());
+    /// assert!(deque.force_push_back("World").is_none());
+    /// assert_eq!(deque.force_push_back("Peace"), Some("Hello"));
+    /// 
+    /// assert_eq!(deque[0], "World");
+    /// assert_eq!(deque[1], "Peace");
+    /// ```
+    pub fn force_push_back(&mut self, value: T) -> Option<T> {
+        let result = self.is_full().then(|| self.pop_front()).flatten();
+        self.push_back(value);
+        result
     }
 
     /// Shortens the `Deque`, keeping the first `len` elements and dropping the rest.
