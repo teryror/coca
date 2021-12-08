@@ -130,6 +130,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// than `length` are initialized, and that `length` is less than or equal
     /// to `buf.capacity()`.
     ///
+    /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
     /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
@@ -160,7 +161,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     }
 
     #[inline]
-    fn set_len(&mut self, new_len: I) {
+    pub(crate) unsafe fn set_len(&mut self, new_len: I) {
         debug_assert!(new_len.as_usize() <= self.capacity());
         self.len = new_len;
     }
@@ -691,6 +692,31 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     }
 }
 
+impl<T: Clone, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
+    /// Clones and appends all elements in a slice to the `Vec`.
+    /// 
+    /// # Examples
+    /// ```
+    /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
+    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// vec.try_extend_from_slice(&[1, 2, 3])
+    ///     .expect("must be able to insert 3 elements into an empty vector with capacity 5");
+    /// vec.try_extend_from_slice(&[4, 5, 6])
+    ///     .expect_err("can't insert 3 elements into a 3-element vector with capacity 5");
+    /// vec.try_extend_from_slice(&[4, 5])
+    ///     .expect("must be able to insert 2 elements into a 3-element vector with capacity 5");
+    /// 
+    /// assert_eq!(vec, &[1, 2, 3, 4, 5]);
+    /// ```
+    pub fn try_extend_from_slice(&mut self, other: &[T]) -> Result<(), ()> {
+        let new_len = self.len() + other.len();
+        if new_len > self.capacity() { return Err(()); }
+
+        self.extend(other.iter());
+        Ok(())
+    }
+}
+
 impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::Deref for Vec<T, S, I> {
     type Target = [T];
     fn deref(&self) -> &[T] {
@@ -1045,7 +1071,7 @@ impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Drain<'p, T, S, I> {
 
         let removed = self.target_end - self.target_start;
         let new_len = I::from_usize(self.original_len - removed);
-        self.parent.set_len(new_len);
+        unsafe { self.parent.set_len(new_len); }
     }
 }
 

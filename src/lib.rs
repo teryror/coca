@@ -40,6 +40,7 @@ pub mod deque;
 pub mod option_group;
 pub mod pool;
 pub mod storage;
+pub mod string;
 pub mod vec;
 
 #[cfg(feature = "unstable")]
