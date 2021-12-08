@@ -1470,6 +1470,7 @@ mod tests {
         let mut backing_region = [MaybeUninit::uninit(); 256];
         let mut arena = Arena::from(&mut backing_region[..]);
 
+        #[allow(dead_code)] // false positive: fields are read by derived Default impl!
         #[derive(Debug)]
         struct LinkedList<'a> {
             val: i64,

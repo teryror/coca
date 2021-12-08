@@ -944,7 +944,7 @@ impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Iterator for Drain<'a
 
 impl <'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Drop for Drain<'a, T, S, H> {
     fn drop(&mut self) {
-        self.pool.clear()
+        self.pool.clear();
     }
 }
 

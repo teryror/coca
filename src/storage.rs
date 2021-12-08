@@ -214,6 +214,7 @@ impl<T> LayoutSpec for ArrayLike<T> {
 }
 
 /// An interface to a contiguous memory block for use by data structures.
+#[allow(clippy::missing_safety_doc)] // individual methods _do_ have safety docs!
 pub unsafe trait Storage<R: LayoutSpec>: Sized {
     /// Extracts a pointer to the beginning of the memory block.
     ///
