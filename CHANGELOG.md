@@ -16,10 +16,13 @@
 ## New Features
 
 - `DirectPool`, a direct analogue to `slotmap::SlotMap`
-- Experimental `object` module for owned, allocation-free trait objects
-- Add support for multiple type declarations in a single `index_type!` invocation
-- Implement `Vec::drain_filter` and `Vec::drain_filter_range`
+- `PackedPool`, a direct analogue to `slotmap::DenseSlotMap`
 - New `option_group` module for bit-packing discriminants of multiple optional values
+- New `cache` module for forgetful map data structures
+- Experimental `object` module for owned, allocation-free trait objects
+- Implement `Vec::drain_filter` and `Vec::drain_filter_range`
+- New methods `Deque::force_push_front` and `Deque::force_push_back`
+- Add support for multiple type declarations in a single `index_type!` invocation
 
 ## Bugfixes
 
