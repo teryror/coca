@@ -1016,8 +1016,19 @@ impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -
 /// A densely packed pool that stores its contents in globally allocated memory.
 /// 
 /// # Examples
-/// ```ignore
-/// todo!();
+/// ```
+/// # use coca::pool::DefaultHandle;
+/// # use coca::pool::packed::PackedAllocPool;
+/// const A: u128 = 0x0123_4567_89AB_CDEF_0123_4567_89AB_CDEF;
+/// const B: u128 = 0xFEDC_BA98_7654_3210_FEDC_BA98_7654_3210;
+///
+/// let mut pool = PackedAllocPool::<u128>::with_capacity(8);
+/// let a = pool.insert(A);
+/// let b = pool.insert(B);
+/// assert_eq!(pool.len(), 2);
+/// assert_eq!(pool.remove(a), Some(A));
+/// assert_eq!(pool.remove(b), Some(B));
+/// assert!(pool.is_empty());
 /// ```
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
