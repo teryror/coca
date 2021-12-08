@@ -35,6 +35,7 @@ pub extern crate alloc;
 
 pub mod arena;
 pub mod binary_heap;
+pub mod cache;
 pub mod deque;
 pub mod option_group;
 pub mod pool;

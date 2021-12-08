@@ -57,17 +57,18 @@
 //! your target platform's pointer size and the alignment of the passed buffer).
 //! This does not apply to creating sub-arenas.
 
+use crate::cache::CacheTable;
 use crate::pool::direct::DirectArenaPool;
 use crate::pool::Handle;
 use crate::pool::packed::PackedArenaPool;
-use crate::storage::{ArenaStorage, Capacity, LayoutSpec};
+use crate::storage::{ArenaStorage, ArrayLike, Capacity, LayoutSpec};
 use crate::vec::ArenaVec;
 use crate::{binary_heap::ArenaHeap, ArenaDeque};
 
 use core::alloc::Layout;
 use core::cmp::Ordering;
 use core::fmt::{self, Debug, Display, Formatter, Pointer, Write};
-use core::hash::{Hash, Hasher};
+use core::hash::{BuildHasher, BuildHasherDefault, Hash, Hasher};
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut, Range};
@@ -1089,6 +1090,48 @@ impl<'src> Arena<'src> {
     pub fn try_packed_pool<T, H: Handle>(&mut self, capacity: usize) -> Option<PackedArenaPool<'src, T, H>> {
         let storage = self.try_storage_with_capacity(capacity)?;
         Some(PackedArenaPool::from(storage))
+    }
+
+    /// Constructs a new [`CacheTable`] with a [`BuildHasherDefault`] and the specified capacity, rounded up to the next multiple of `L::CAPACITY`.
+    /// 
+    /// Returns `None` if the remaining space in the arena is insufficient.
+    #[allow(clippy::type_complexity)]
+    pub fn try_cache<K: Eq + Hash, V, L: crate::cache::CacheLine<K, V>, H: core::hash::Hasher + Default>(&mut self, capacity: usize) -> Option<CacheTable<K, V, ArenaStorage<'src, ArrayLike<L>>, L, BuildHasherDefault<H>>> {
+        let capacity = (capacity + L::CAPACITY - 1) / L::CAPACITY;
+        let storage = self.try_storage_with_capacity(capacity)?;
+        Some(CacheTable::from(storage))
+    }
+
+    /// Constructs a new [`CacheTable`] with the specified hash builder and capacity, rounded up to the next multiple of `L::CAPACITY`.
+    /// 
+    /// Returns `None` if the remaining space in the arena is insufficient.
+    #[allow(clippy::type_complexity)]
+    pub fn try_cache_with_hasher<K: Eq + Hash, V, L: crate::cache::CacheLine<K, V>, H: BuildHasher>(&mut self, capacity: usize, hash_builder: H) -> Option<CacheTable<K, V, ArenaStorage<'src, ArrayLike<L>>, L, H>> {
+        let capacity = (capacity + L::CAPACITY - 1) / L::CAPACITY;
+        let storage = self.try_storage_with_capacity(capacity)?;
+        Some(CacheTable::from_storage_and_hasher(storage, hash_builder))
+    }
+
+    /// Constructs a new [`CacheTable`] with a [`BuildHasherDefault`] and the specified capacity, rounded up to the next multiple of `L::CAPACITY`.
+    /// 
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient to exhaust
+    /// the iterator. See [`try_cache`](Arena::try_cache) for a checked
+    /// version that never panics.
+    pub fn cache<K: Eq + Hash, V, L: crate::cache::CacheLine<K, V>, H: core::hash::Hasher + Default>(&mut self, capacity: usize) -> CacheTable<K, V, ArenaStorage<'src, ArrayLike<L>>, L, BuildHasherDefault<H>> {
+        self.try_cache(capacity)
+            .expect("unexpected allocation failure in cache")
+    }
+
+    /// Constructs a new [`CacheTable`] with the specified hash builder and capacity, rounded up to the next multiple of `L::CAPACITY`.
+    /// 
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient to exhaust
+    /// the iterator. See [`try_cache_with_hasher`](Arena::try_cache_with_hasher)
+    /// for a checked version that never panics.
+    pub fn cache_with_hasher<K: Eq + Hash, V, L: crate::cache::CacheLine<K, V>, H: BuildHasher>(&mut self, capacity: usize, hash_builder: H) -> CacheTable<K, V, ArenaStorage<'src, ArrayLike<L>>, L, H> {
+        self.try_cache_with_hasher(capacity, hash_builder)
+            .expect("unexpected allocation failure in cache_with_hasher")
     }
 
     /// Transforms an iterator into a boxed slice in the arena.
