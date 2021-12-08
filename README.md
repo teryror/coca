@@ -11,7 +11,7 @@ dead-simple to predict - but it also means insertions can easily fail, so you'll
 need proof you can't break the limit, or a graceful recovery path, which is good
 practice in memory-constrained environments anyway.
 
-Currently, six main components are provided:
+Currently, seven main components are provided:
 
 - `Arena`, a bump-/stack-allocator, plus `Box<'a, T>` the corresponding smart
   pointer,
@@ -21,7 +21,8 @@ Currently, six main components are provided:
 - `BinaryHeap`, a priority queue implemented on top of `Vec`,
 - `Deque`, a double-ended queue implemented with a ring buffer,
 - the `pool` module, containing [`slotmap`-style][slotmap] object pools,
-- `OptionGroup`, a tuple or array of optional values with the occupation flags
+- `CacheTable`, a fixed-size hash map with configurable per-bucket eviction policy,
+- `OptionGroup`, a tuple or array of optional values with the occupancy flags
   packed into a single bitmap field.
 
   [generic-vec]: https://internals.rust-lang.org/t/is-custom-allocators-the-right-abstraction/13460
@@ -32,7 +33,7 @@ This crate is still in early development! Currently on the road map (in no
 particular order):
 
 - ordered and unordered map and set implementations,
-- [cache tables](https://fgiesen.wordpress.com/2019/02/11/cache-tables/).
+- a `String` replacement.
 
 
 ## Constructive Feedback and Contributions Welcome!
