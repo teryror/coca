@@ -1,9 +1,10 @@
 //! UTF-8 encoded, growable string types with constant capacity.
 
 use core::fmt::{self, Display};
+use core::ops::{RangeBounds, Range};
 use core::str::{self, Utf8Error};
 
-use crate::storage::{ArrayLike, Storage, Capacity, InlineStorage, ArenaStorage};
+use crate::storage::{ArrayLike, Storage, Capacity, InlineStorage, ArenaStorage, normalize_range};
 use crate::vec::Vec;
 
 /// A possible error value when converting a UTF-8 byte vector into a [`String`].
@@ -92,8 +93,6 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
             Err(e) => Err(FromUtf8Error { bytes: vec, error: e }),
         }
     }
-
-    // TODO: from_utf8_lossy, from_utf16
 
     /// Decomposes a `String` into its raw parts.
     /// 
@@ -202,7 +201,38 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
         }
     }
 
-    // TODO: extend_from_within
+    /// Copies characters from the `src` range to the end of the string.
+    /// 
+    /// Returns [`Err`] if the remaining space is insufficient.
+    /// 
+    /// # Panics
+    /// Panics if the starting point is greater than the end point, if the end
+    /// point is greater than the length of the `String`, or if either one does
+    /// not lie on a [`char`] boundary.
+    /// 
+    /// # Examples
+    /// ```
+    /// todo!()
+    /// ```
+    pub fn try_extend_from_within<R: RangeBounds<usize>>(&mut self, src: R) -> Result<(), ()> {
+        let Range { start, end } = normalize_range(src, self.len());
+
+        assert!(self.is_char_boundary(start));
+        assert!(self.is_char_boundary(end));
+
+        let src = I::from_usize(start)..I::from_usize(end);
+        self.vec.try_extend_from_within(src)
+    }
+
+    /// Copies the characters from the `src` range to the end of the string.
+    /// 
+    /// # Panics
+    /// Panics if the starting point is greater than the end point, if the end
+    /// point is greater than the length of the `String`, if either one does
+    /// not lie on a [`char`] boundary, or if the remaining space is insufficient.
+    pub fn extend_from_within<R: RangeBounds<usize>>(&mut self, src: R) {
+        self.try_extend_from_within(src).expect("space remaining in string is insufficient");
+    }
 
     /// Returns the `String`'s capacity, in bytes.
     #[inline]
@@ -344,11 +374,98 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
         result
     }
 
-    // TODO:
-    // pub fn retain<F: FnMut(char) -> bool>(&mut self, mut f: F) {}
-    // pub fn insert(&mut self, idx: usize, ch: char) {}
-    // pub fn insert_str(&mut self, idx: usize, string: &str) {}
+    /// Retains only the characters specified by the predicate.
+    /// 
+    /// In other words, removes all characters `c` such that `f(c)` returns `false`.
+    /// This method operates in place, visiting each character exactly once in the
+    /// original order, and preserves the order of the retained characters.
+    /// 
+    /// # Examples
+    /// ```
+    /// todo!()
+    /// ```
+    pub fn retain<F: FnMut(char) -> bool>(&mut self, mut f: F) {
+        let len = self.len();
+        let mut idx = 0;
+        let mut deleted_bytes = 0;
+        
+        while idx < len {
+            let ch = unsafe { self.get_unchecked(idx..len).chars().next().unwrap() };
+            let ch_len = ch.len_utf8();
+
+            if !f(ch) {
+                deleted_bytes += ch_len;
+            } else if deleted_bytes > 0 {
+                unsafe {
+                    let src_ptr = self.vec.as_ptr().add(idx);
+                    let dst_ptr = self.vec.as_mut_ptr().add(idx - deleted_bytes);
+                    core::ptr::copy(src_ptr, dst_ptr, ch_len);
+                }
+            }
+
+            idx += ch_len;
+        }
+
+        unsafe { self.vec.set_len(I::from_usize(len - deleted_bytes)) };
+    }
     
+    /// Inserts a character into the `String` at a given byte position.
+    /// 
+    /// Returns [`Err`] if the remaining space is insufficient.
+    /// 
+    /// This is an *O*(*n*) operation as it requires copying every element in the buffer.
+    /// 
+    /// # Panics
+    /// Panics if `idx` is larger than the `String`'s length, or if it does not lie
+    /// on a [`char`] boundary.
+    pub fn try_insert(&mut self, idx: usize, ch: char) -> Result<(), ()> {
+        assert!(self.is_char_boundary(idx));
+        let mut bits = [0; 4];
+        let bits = ch.encode_utf8(&mut bits).as_bytes();
+        self.vec.try_insert_slice(I::from_usize(idx), bits)
+    }
+
+    /// Inserts a character into the `String` at a given byte position.
+    /// 
+    /// This is an *O*(*n*) operation as it requires copying every element in the buffer.
+    /// 
+    /// # Panics
+    /// Panics if `idx` is larger than the `String`'s length, if it does not lie
+    /// on a [`char`] boundary, or if the remaining space is insufficient.
+    pub fn insert(&mut self, idx: usize, ch: char) {
+        self.try_insert(idx, ch).expect("remaining space is insufficient");
+    }
+
+    /// Inserts a string slice into the `String` at a given byte position.
+    /// 
+    /// Returns [`Err`] if the remaining space is insufficient.
+    /// 
+    /// This is an *O*(*n*) operation as it requires copying every element in the buffer.
+    /// 
+    /// # Panics
+    /// Panics if `idx` is larger than the `String`'s length, or if it does not
+    /// lie on a [`char`] boundary.
+    /// 
+    /// # Examples
+    /// ```
+    /// todo!()
+    /// ```
+    pub fn try_insert_str(&mut self, idx: usize, string: &str) -> Result<(), ()> {
+        assert!(self.is_char_boundary(idx));
+        self.vec.try_insert_slice(I::from_usize(idx), string.as_bytes())
+    }
+
+    /// Inserts a string slice into the `String` at a given byte position.
+    /// 
+    /// This is an *O*(*n*) operation as it requires copying every element in the buffer.
+    /// 
+    /// # Panics
+    /// Panics if `idx` is larger than the `String`'s length, if it does not
+    /// lie on a [`char`] boundary, or if the remaining space is insufficient.
+    pub fn insert_str(&mut self, idx: usize, string: &str) {
+        self.try_insert_str(idx, string).expect("remaining space is insufficient");
+    }
+
     /// Returns a mutable reference to the raw byte contents of this `String`.
     /// 
     /// # Safety
@@ -366,11 +483,42 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
         &mut self.vec
     }
     
-    // TODO:
-    // pub fn split_off(&mut self, at: usize) -> String<???> {} // define this only for some storage types?
-    // pub fn drain<R: RangeBounds<usize>>(&mut self, range: R) -> Drain<'_> {}
-    // pub fn replace_range<R: RangeBounds<usize>>(&mut self, range: R, replace_with: &str) {}
-    // pub fn into_boxed_str(self) -> Box<str> // define this only for some storage types...
+    // TODO: pub fn drain<R: RangeBounds<usize>>(&mut self, range: R) -> Drain<'_> {}
+    
+    /// Removes the specified range in the `String` and replaces it with the given string.
+    /// The given string doesn't need to be the same length as the range.
+    /// 
+    /// Returns [`Err`] if the remaining space is insufficient.
+    /// 
+    /// # Panics
+    /// Panics if the starting point is greater than the end point, if the end
+    /// point is greater than the length of the `String`, or if either one does
+    /// not lie on a [`char`] boundary.
+    /// 
+    /// # Examples
+    /// ```
+    /// todo!()
+    /// ```
+    pub fn try_replace_range<R: RangeBounds<usize>>(&mut self, range: R, replace_with: &str) -> Result<(), ()> {
+        let Range { start, end } = normalize_range(range, self.len());
+
+        assert!(self.is_char_boundary(start));
+        assert!(self.is_char_boundary(end));
+
+        let range = I::from_usize(start)..I::from_usize(end);
+        self.vec.try_replace_range(range, replace_with.as_bytes())
+    }
+
+    /// Removes the specified range in the `String` and replaces it with the given string.
+    /// The given string doesn't need to be the same length as the range.
+    /// 
+    /// # Panics
+    /// Panics if the starting point is greater than the end point, if the end
+    /// point is greater than the length of the `String`, if either one does
+    /// not lie on a [`char`] boundary, or if the remaining space is insufficient.
+    pub fn replace_range<R: RangeBounds<usize>>(&mut self, range: R, replace_with: &str) {
+        self.try_replace_range(range, replace_with).expect("remaining space is insufficient");
+    }
 }
 
 impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::ops::Deref for String<S, I> {

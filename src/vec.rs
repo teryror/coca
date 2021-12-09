@@ -692,8 +692,10 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     }
 }
 
-impl<T: Clone, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
-    /// Clones and appends all elements in a slice to the `Vec`.
+impl<T: Copy, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
+    /// Copies and appends all elements in a slice to the `Vec`.
+    /// 
+    /// Returns [`Err`] if the remaining space is insufficient.
     /// 
     /// # Examples
     /// ```
@@ -706,14 +708,220 @@ impl<T: Clone, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// vec.try_extend_from_slice(&[4, 5])
     ///     .expect("must be able to insert 2 elements into a 3-element vector with capacity 5");
     /// 
-    /// assert_eq!(vec, &[1, 2, 3, 4, 5]);
+    /// assert_eq!(&vec, &[1, 2, 3, 4, 5]);
     /// ```
     pub fn try_extend_from_slice(&mut self, other: &[T]) -> Result<(), ()> {
         let new_len = self.len() + other.len();
         if new_len > self.capacity() { return Err(()); }
 
-        self.extend(other.iter());
+        unsafe {
+            let dst_ptr = self.as_mut_ptr().add(self.len());
+            let src_ptr = other.as_ptr();
+            ptr::copy_nonoverlapping(src_ptr, dst_ptr, other.len());
+
+            self.set_len(I::from_usize(new_len));
+        }
+
         Ok(())
+    }
+
+    /// Copies and appends all elements in a slice to the `Vec`.
+    /// 
+    /// # Panics
+    /// Panics if the remaining space is insufficient. See
+    /// [`try_extend_from_slice`](Vec::try_extend_from_slice) for a
+    /// checked version that never panics.
+    #[track_caller]
+    #[inline]
+    pub fn extend_from_slice(&mut self, other: &[T]) {
+        self.try_extend_from_slice(other).expect("`vec.len() + other.len()` must be less than or equal to `vec.capacity()`");
+    }
+
+    /// Copies and inserts all elements from a slice at a given position in the `Vec`.
+    /// 
+    /// Returns [`Err`] if the remaining space is insufficient.
+    /// 
+    /// # Panics
+    /// Panics if `idx` is out of bounds.
+    /// 
+    /// # Examples
+    /// ```
+    /// let mut vec = coca::InlineVec::<u32, 8>::new();
+    /// 
+    /// assert!(vec.try_insert_slice(0, &[1, 2, 5, 6]).is_ok());
+    /// assert!(vec.try_insert_slice(2, &[3, 4]).is_ok());
+    /// assert!(vec.try_insert_slice(6, &[7, 8, 9]).is_err());
+    /// assert!(vec.try_insert_slice(6, &[7, 8]).is_ok());
+    /// 
+    /// assert_eq!(&vec, &[1, 2, 3, 4, 5, 6, 7, 8]);
+    /// ```
+    pub fn try_insert_slice(&mut self, idx: I, src: &[T]) -> Result<(), ()> {
+        let count = src.len();
+        let new_len = self.len() + count;
+        if new_len > self.capacity() {
+            return Err(());
+        }
+
+        #[cold]
+        #[inline(never)]
+        fn assert_failed(idx: usize, len: usize) -> ! {
+            panic!(
+                "idx (is {}) must be less than or equal to len (is {})",
+                idx, len
+            );
+        }
+
+        let idx = idx.as_usize();
+        let len = self.len.as_usize();
+        if idx > len {
+            assert_failed(idx, len);
+        }
+
+        unsafe {
+            // make room at insert position:
+            let src_ptr = self.buf.get_ptr().cast::<T>().add(idx);
+            let dst_ptr = self.buf.get_mut_ptr().cast::<T>().add(idx + count);
+            ptr::copy(src_ptr, dst_ptr, len - idx);
+
+            let src_ptr = src.as_ptr();
+            let dst_ptr = self.buf.get_mut_ptr().cast::<T>().add(idx);
+            ptr::copy_nonoverlapping(src_ptr, dst_ptr, count);
+
+            self.set_len(I::from_usize(new_len));
+        }
+
+        Ok(())
+    }
+
+    /// Copies and inserts all elements from a slice at a given position in the `Vec`.
+    /// 
+    /// # Panics
+    /// Panics if the remaining space is insufficient, or if `idx` is out of bounds.
+    #[track_caller]
+    #[inline]
+    pub fn insert_slice(&mut self, idx: I, src: &[T]) {
+        self.try_insert_slice(idx, src).expect("`vec.len() + src.len()` must be less than or equal to `vec.capacity()`");
+    }
+
+    /// Copies and appends elements from `src` range to the end of the `Vec`.
+    /// 
+    /// Returns [`Err`] if the remaining space is insufficient.
+    /// 
+    /// # Panics
+    /// Panics if the starting point is greater than the end point or if the end
+    /// point is greater than the length of the vector.
+    /// 
+    /// # Examples
+    /// ```
+    /// # fn test() -> Result<(), ()> {
+    /// let mut vec = coca::InlineVec::<u32, 4>::new();
+    /// vec.push(1); vec.push(2);
+    /// vec.try_extend_from_within(0..1)?;
+    /// assert_eq!(&vec, &[1, 2, 1]);
+    /// assert!(vec.try_extend_from_within(0..2).is_err());
+    /// # Ok(()) }
+    /// # assert!(test().is_ok());
+    /// ```
+    pub fn try_extend_from_within<R: RangeBounds<I>>(&mut self, src: R) -> Result<(), ()> {
+        let Range { start, end } = normalize_range(src, self.len());
+        let count = end - start;
+        let new_len = self.len() + count;
+        if new_len > self.capacity() {
+            return Err(());
+        }
+
+        unsafe {
+            let src_ptr = self.as_ptr().add(start);
+            let dst_ptr = self.buf.get_mut_ptr().cast::<T>().add(self.len());
+            ptr::copy_nonoverlapping(src_ptr, dst_ptr, count);
+
+            self.set_len(I::from_usize(new_len));
+        }
+
+        Ok(())
+    }
+
+    /// Copies and appends elements from `src` range to the end of the `Vec`.
+    /// 
+    /// # Panics
+    /// Panics if the starting point is greater than the end point or if the end
+    /// point is greater than the length of the vector, or if the remaining space
+    /// is insufficient.
+    #[track_caller]
+    #[inline]
+    pub fn extend_from_within<R: RangeBounds<I>>(&mut self, src: R) {
+        self.try_extend_from_within(src).expect("`vec.len() + src.len` must be less than or equal to `vec.capacity()`");
+    }
+
+    /// Removes the specified range from the vector, and replaces it with a
+    /// copy of the given slice. The given slice doesn't need to be the same
+    /// length as the removed range.
+    /// 
+    /// Returns [`Err`] if the space remaining space is insufficient.
+    /// 
+    /// # Panics
+    /// Panics if the starting point is greater than the end point or if the end
+    /// point is greater than the length of the vector.
+    /// 
+    /// # Examples
+    /// ```
+    /// let mut vec = coca::InlineVec::<u32, 8>::new();
+    /// assert!(vec.try_replace_range(.., &[1, 2, 3, 4]).is_ok());
+    /// assert!(vec.try_replace_range(1..3, &[4, 1, 4, 1]).is_ok());
+    /// assert!(vec.try_replace_range(.., &[1, 2, 3, 4, 5, 6, 7, 8, 9]).is_err());
+    /// assert_eq!(&vec, &[1, 4, 1, 4, 1, 4]);
+    /// ```
+    pub fn try_replace_range<R: RangeBounds<I>>(&mut self, range: R, replace_with: &[T]) -> Result<(), ()> {
+        let Range { start, end } = normalize_range(range, self.len());
+        let dst_count = end - start;
+        let src_count = replace_with.len();
+
+        if src_count <= dst_count {
+            unsafe {
+                let src_ptr = replace_with.as_ptr();
+                let dst_ptr = self.buf.get_mut_ptr().cast::<T>().add(start);
+                ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_count);
+
+                let src_ptr = dst_ptr.add(dst_count) as *const T;
+                let dst_ptr = dst_ptr.add(src_count);
+                ptr::copy(src_ptr, dst_ptr, self.len() - end);
+                
+                let new_len = I::from_usize(self.len() - (dst_count - src_count));
+                self.set_len(new_len);
+            }
+        } else {
+            let extra_space_needed = src_count - dst_count;
+            if self.len() + extra_space_needed > self.capacity() {
+                return Err(());
+            }
+
+            unsafe {
+                let src_ptr = self.buf.get_ptr().cast::<T>().add(end);
+                let dst_ptr = self.buf.get_mut_ptr().cast::<T>().add(end + extra_space_needed);
+                ptr::copy(src_ptr, dst_ptr, self.len() - end);
+
+                let src_ptr = replace_with.as_ptr();
+                let dst_ptr = self.buf.get_mut_ptr().cast::<T>().add(start);
+                ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_count);
+
+                let new_len = I::from_usize(self.len() + extra_space_needed);
+                self.set_len(new_len);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Removes the specified range from the vector, and replaces it with a
+    /// copy of the given slice. The given slice doesn't need to be the same
+    /// length as the removed range.
+    /// 
+    /// # Panics
+    /// Panics if the starting point is greater than the end point or if the end
+    /// point is greater than the length of the vector, or if the remaining space
+    /// is insufficient.
+    pub fn replace_range<R: RangeBounds<I>>(&mut self, range: R, replace_with: &[T]) {
+        self.try_replace_range(range, replace_with).expect("remaining space is insufficient");
     }
 }
 

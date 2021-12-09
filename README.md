@@ -11,13 +11,14 @@ dead-simple to predict - but it also means insertions can easily fail, so you'll
 need proof you can't break the limit, or a graceful recovery path, which is good
 practice in memory-constrained environments anyway.
 
-Currently, seven main components are provided:
+Currently, eight main components are provided:
 
 - `Arena`, a bump-/stack-allocator, plus `Box<'a, T>` the corresponding smart
   pointer,
 - `Vec`, a bounded, growable array, generic over not only the element type, but
   also the underlying storage type ([as in this recent proposal][generic-vec])
   and the index type (inspired by [`typed-index-collections`][ticollections]),
+- `String`, a UTF-8 encoded, growable string with constant capacity,
 - `BinaryHeap`, a priority queue implemented on top of `Vec`,
 - `Deque`, a double-ended queue implemented with a ring buffer,
 - the `pool` module, containing [`slotmap`-style][slotmap] object pools,
@@ -32,9 +33,7 @@ Currently, seven main components are provided:
 This crate is still in early development! Currently on the road map (in no
 particular order):
 
-- ordered and unordered map and set implementations,
-- a `String` replacement.
-
+- ordered and unordered map and set implementations.
 
 ## Constructive Feedback and Contributions Welcome!
 
