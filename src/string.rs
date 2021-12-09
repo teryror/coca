@@ -3,7 +3,7 @@
 use core::fmt::{self, Display};
 use core::str::{self, Utf8Error};
 
-use crate::storage::{ArrayLike, Storage, Capacity, InlineStorage, AllocStorage, ArenaStorage};
+use crate::storage::{ArrayLike, Storage, Capacity, InlineStorage, ArenaStorage};
 use crate::vec::Vec;
 
 /// A possible error value when converting a UTF-8 byte vector into a [`String`].
@@ -578,14 +578,14 @@ impl<'a, I: Capacity> ArenaString<'a, I> {
 /// ```
 /// todo!()
 /// ```
-pub type AllocString<I = usize> = String<AllocStorage<ArrayLike<u8>>, I>;
+pub type AllocString<I = usize> = String<crate::storage::AllocStorage<ArrayLike<u8>>, I>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<I: Capacity> String<AllocStorage<ArrayLike<u8>>, I> {
+impl<I: Capacity> String<crate::storage::AllocStorage<ArrayLike<u8>>, I> {
     /// Creates a new, empty `AllocString` with the specified capacity.
     pub fn with_capacity(capacity: usize) -> Self {
-        Self::from(AllocStorage::with_capacity(capacity))
+        Self::from(crate::storage::AllocStorage::with_capacity(capacity))
     }
 
     /// Creates a new `AllocString` with the given contents, and zero excess capacity.
