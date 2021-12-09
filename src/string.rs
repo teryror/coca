@@ -553,6 +553,21 @@ impl<'a, I: Capacity> ArenaString<'a, I> {
             Self::from_raw_parts(buf, I::from_usize(length))
         }
     }
+
+    /// Converts the `ArenaString` into an owned `str` slice.
+    /// 
+    /// # Examples
+    /// ```
+    /// todo!()
+    /// ```
+    pub fn into_boxed_str(self) -> crate::arena::Box<'a, str> {
+        let (mut buf, len) = self.into_raw_parts();
+        let ptr = core::ptr::slice_from_raw_parts_mut(buf.get_mut_ptr(), len.as_usize());
+        unsafe {
+            let str_ptr = core::str::from_utf8_unchecked_mut(ptr.as_mut().unwrap());
+            crate::arena::Box::new_unchecked(str_ptr as *mut str)
+        }
+    }
 }
 
 #[cfg(feature = "alloc")]

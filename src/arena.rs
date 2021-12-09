@@ -62,6 +62,7 @@ use crate::pool::direct::DirectArenaPool;
 use crate::pool::Handle;
 use crate::pool::packed::PackedArenaPool;
 use crate::storage::{ArenaStorage, ArrayLike, Capacity, LayoutSpec};
+use crate::string::ArenaString;
 use crate::vec::ArenaVec;
 use crate::{binary_heap::ArenaHeap, ArenaDeque};
 
@@ -87,6 +88,12 @@ pub struct Box<'src, T: ?Sized> {
     src: PhantomData<&'src ()>, // Indicates this pointer must not outlive 'src
 }
 
+impl<'src, T: ?Sized> Box<'src, T> {
+    pub(crate) unsafe fn new_unchecked(ptr: *mut T) -> Self {
+        Box { ptr: NonNull::new_unchecked(ptr), val: PhantomData, src: PhantomData }
+    }
+}
+
 impl<'src, T: Sized> Box<'src, MaybeUninit<T>> {
     /// Converts `self` into a pointer to T.
     ///
@@ -101,12 +108,7 @@ impl<'src, T: Sized> Box<'src, MaybeUninit<T>> {
     pub unsafe fn assume_init(mut self) -> Box<'src, T> {
         let ptr = self.as_mut_ptr();
         core::mem::forget(self);
-
-        Box {
-            ptr: NonNull::new_unchecked(ptr),
-            val: PhantomData,
-            src: PhantomData,
-        }
+        Box::new_unchecked(ptr)
     }
 
     /// Places `x` into the allocation and converts `self` into a pointer to T.
@@ -138,12 +140,7 @@ impl<'src, T: Sized> Box<'src, [MaybeUninit<T>]> {
         let ptr = self.as_mut_ptr().cast::<T>();
         let len = self.len();
         core::mem::forget(self);
-
-        Box {
-            ptr: NonNull::new_unchecked(slice_from_raw_parts_mut(ptr, len)),
-            val: PhantomData,
-            src: PhantomData,
-        }
+        Box::new_unchecked(slice_from_raw_parts_mut(ptr, len))
     }
 
     /// Calls `f` once with each index into `self`, placing the returned value
@@ -699,11 +696,7 @@ impl<'src> Arena<'src> {
             return None;
         }
 
-        Some(Box {
-            ptr: unsafe { NonNull::new_unchecked(ptr) },
-            val: PhantomData,
-            src: PhantomData,
-        })
+        Some(unsafe { Box::new_unchecked(ptr) })
     }
 
     /// Allocates memory in the arena, leaving it uninitialized.
@@ -749,11 +742,7 @@ impl<'src> Arena<'src> {
         count: usize,
     ) -> Option<Box<'src, [MaybeUninit<T>]>> {
         let ptr = self.try_array_raw(count)?;
-        Some(Box {
-            ptr: unsafe { NonNull::new_unchecked(ptr) },
-            val: PhantomData,
-            src: PhantomData,
-        })
+        Some(unsafe { Box::new_unchecked(ptr) })
     }
 
     /// Allocates memory in the arena and then places `count` copies of the
@@ -921,6 +910,86 @@ impl<'src> Arena<'src> {
     pub fn try_vec<T, I: Capacity>(&mut self, capacity: I) -> Option<ArenaVec<'src, T, I>> {
         let storage = self.try_storage_with_capacity(capacity.as_usize())?;
         Some(ArenaVec::<T, I>::from(storage))
+    }
+
+    /// Constructs an [`ArenaString`] with the given capacity.
+    /// 
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient.
+    /// See [`try_string`](Arena::try_string) for a checked version that never panics.
+    #[track_caller]
+    pub fn string<I: Capacity>(&mut self, capacity: I) -> ArenaString<'src, I> {
+        self.try_string(capacity).expect("unexpected allocation failure in `string`")
+    }
+
+    /// Constructs an [`ArenaString`] with the given capacity.
+    /// 
+    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    /// 
+    /// # Examples
+    /// ```
+    /// todo!()
+    /// ```
+    pub fn try_string<I: Capacity>(&mut self, capacity: I) -> Option<ArenaString<'src, I>> {
+        let storage = self.try_storage_with_capacity(capacity.as_usize())?;
+        Some(ArenaString::from(storage))
+    }
+
+    /// Constructs an [`ArenaString`] initialized with the given contents, and no excess capacity.
+    /// 
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient.
+    /// See [`try_string_from`](Arena::try_string_from) for a checked version that never panics.
+    #[track_caller]
+    pub fn string_from<I: Capacity, T: AsRef<str>>(&mut self, value: T) -> ArenaString<'src, I> {
+        self.try_string_from::<I, T>(value).expect("unexpected allocation failure in `string_from`")
+    }
+
+    /// Constructs an [`ArenaString`] initialized with the given contents, and no excess capacity.
+    /// 
+    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    /// 
+    /// # Examples
+    /// ```
+    /// todo!()
+    /// ```
+    pub fn try_string_from<I: Capacity, T: AsRef<str>>(&mut self, value: T) -> Option<ArenaString<'src, I>> {
+        let str = value.as_ref();
+        let mut result = self.try_string(I::from_usize(str.len()))?;
+        result.push_str(str);
+        Some(result)
+    }
+
+    /// Constructs an [`ArenaString`] with the given capacity,
+    /// and initializes it with the given contents.
+    /// 
+    /// # Panics
+    /// Panics if the remaining space in the arena is insufficient.
+    /// See [`try_string_with_capacity_from`](Arena::try_string_with_capacity_from)
+    /// for a checked version that never panics.
+    #[track_caller]
+    pub fn string_with_capacity_from<I: Capacity, T: AsRef<str>>(&mut self, capacity: I, value: T) -> ArenaString<'src, I> {
+        self.try_string_with_capacity_from(capacity, value).expect("unexpected allocation failure in `string_with_capacity_from`")
+    }
+
+    /// Constructs an [`ArenaString`] with the given capacity,
+    /// and initializes it with the given contents.
+    /// 
+    /// Returns [`None`] if the remaining space in the arena is insufficient,
+    /// or if `value.as_ref().len()` is larger than `capacity`.
+    /// 
+    /// # Examples
+    /// ```
+    /// todo!()
+    /// ```
+    pub fn try_string_with_capacity_from<I: Capacity, T: AsRef<str>>(&mut self, capacity: I, value: T) -> Option<ArenaString<'src, I>> {
+        if value.as_ref().len() > capacity.as_usize() {
+            return None;
+        }
+
+        let mut result = self.try_string(capacity)?;
+        result.push_str(value.as_ref());
+        Some(result)
     }
 
     /// Constructs a [`ArenaHeap`] with the given capacity.
@@ -1236,11 +1305,7 @@ impl<'src> Arena<'src> {
 
         unsafe {
             let slice = from_raw_parts_mut(base, count);
-            Some(Box {
-                ptr: NonNull::new_unchecked(slice),
-                val: PhantomData,
-                src: PhantomData,
-            })
+            Some(Box::new_unchecked(slice))
         }
     }
 
@@ -1388,11 +1453,7 @@ impl<'buf> From<Writer<'_, 'buf>> for Box<'buf, str> {
             let slice = from_raw_parts_mut(ptr, writer.len);
             let str_ptr = NonNull::new_unchecked(slice).as_ptr() as *mut str;
 
-            Box {
-                ptr: NonNull::new_unchecked(str_ptr),
-                val: PhantomData,
-                src: PhantomData,
-            }
+            Box::new_unchecked(str_ptr)
         }
     }
 }
