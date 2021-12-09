@@ -388,7 +388,61 @@ impl<'src> From<&'src mut [MaybeUninit<u8>]> for Arena<'src> {
     #[inline]
     fn from(buf: &mut [MaybeUninit<u8>]) -> Self {
         let Range { start, end } = buf.as_mut_ptr_range();
+        unsafe { Arena::from_raw_pointers(start, end) }
+    }
+}
 
+#[cfg(feature = "alloc")]
+impl Arena<'static> {
+    /// Constructs a new `Arena` allocating out of heap-allocated memory.
+    /// 
+    /// Returns [`None`] if the heap allocation fails.
+    /// 
+    /// Note that the backing memory cannot be freed even after the arena is dropped,
+    /// because references to values inside it may outlive the arena.
+    /// 
+    /// # Examples
+    /// ```
+    /// # fn test() -> Option<()> {
+    /// let mut arena = coca::Arena::try_with_capacity(1024 * 1024)?;
+    /// let hello = coca::fmt!(arena, "{}, {}!", "Hello", "World")?;
+    /// assert_eq!(hello.as_ref(), "Hello, World!");
+    /// # Some(())
+    /// # }
+    /// # test().unwrap();
+    /// ```
+    #[inline]
+    pub fn try_with_capacity(capacity: usize) -> Option<Self> {
+        unsafe {
+            let ptr = alloc::alloc::alloc(Layout::from_size_align(capacity, 8).ok()?);
+            if ptr.is_null() { return None; }
+            Some(Self::from_raw_pointers(ptr.cast(), ptr.add(capacity).cast()))
+        }
+    }
+
+    /// Constructs a new `Arena` allocating out of heap-allocated memory.
+    /// 
+    /// Note that the backing memory cannot be freed even after the arena is dropped,
+    /// because references to values inside it may outlive the arena.
+    /// 
+    /// # Panics
+    /// Panics if the heap allocation fails.
+    #[inline]
+    #[track_caller]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self::try_with_capacity(capacity).expect("unexpected allocation failure in `Arena::with_capacity`")
+    }
+}
+
+impl Debug for Arena<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        core::write!(f, "Arena({:p}..{:p})", self.cursor, self.end)
+    }
+}
+
+impl<'src> Arena<'src> {
+    #[inline]
+    unsafe fn from_raw_pointers(start: *mut MaybeUninit<u8>, end: *mut MaybeUninit<u8>) -> Self {
         #[cfg(feature = "profile")]
         #[allow(clippy::cast_ptr_alignment)]
         let end = {
@@ -408,14 +462,12 @@ impl<'src> From<&'src mut [MaybeUninit<u8>]> for Arena<'src> {
 
             debug_assert_eq!(align_offset(new_end, &layout), 0);
             let meta = new_end as *mut ProfileMetaData;
-            unsafe {
-                meta.write(ProfileMetaData {
-                    initial_cursor_pos: start as usize,
-                    peak_cursor_pos: start as usize,
-                    allocation_count: 0,
-                    failed_allocations: 0,
-                });
-            }
+            meta.write(ProfileMetaData {
+                initial_cursor_pos: start as usize,
+                peak_cursor_pos: start as usize,
+                allocation_count: 0,
+                failed_allocations: 0,
+            });
 
             new_end
         };
@@ -426,15 +478,7 @@ impl<'src> From<&'src mut [MaybeUninit<u8>]> for Arena<'src> {
             src: PhantomData,
         }
     }
-}
 
-impl Debug for Arena<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        core::write!(f, "Arena({:p}..{:p})", self.cursor, self.end)
-    }
-}
-
-impl<'src> Arena<'src> {
     /// Calculates the size of the space remaining in the arena in bytes.
     ///
     /// An allocation is not guaranteed to succeed even when the returned value
