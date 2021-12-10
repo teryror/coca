@@ -50,16 +50,26 @@ pub mod object;
 pub use crate::{
     arena::{Arena, Box},
     binary_heap::{ArenaHeap, InlineHeap, SliceHeap, TiInlineHeap},
+    cache::{ArenaDirectMappedCache, Arena2WayLruCache, InlineDirectMappedCache, Inline2WayLruCache},
     deque::{ArenaDeque, InlineDeque, SliceDeque, TiInlineDeque},
     option_group::{OptionGroup8, OptionGroup16, OptionGroup32, OptionGroup64},
     pool::direct::{DirectArenaPool, DirectInlinePool, TiDirectInlinePool},
     pool::packed::{PackedArenaPool, PackedInlinePool, TiPackedInlinePool},
+    string::{ArenaString, InlineString, SliceString},
     vec::{ArenaVec, InlineVec, SliceVec, TiInlineVec},
 };
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-pub use crate::{binary_heap::AllocHeap, deque::AllocDeque, pool::direct::DirectAllocPool, pool::packed::PackedAllocPool, vec::AllocVec};
+pub use crate::{
+    binary_heap::AllocHeap,
+    cache::{AllocDirectMappedCache, Alloc2WayLruCache},
+    deque::AllocDeque,
+    pool::direct::DirectAllocPool,
+    pool::packed::PackedAllocPool,
+    vec::AllocVec,
+    string::AllocString,
+};
 
 #[cfg(feature = "unstable")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "unstable")))]

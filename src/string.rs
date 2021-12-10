@@ -4,7 +4,7 @@ use core::fmt::{self, Display};
 use core::ops::{RangeBounds, Range};
 use core::str::{self, Utf8Error};
 
-use crate::storage::{ArrayLike, Storage, Capacity, InlineStorage, ArenaStorage, normalize_range};
+use crate::storage::{ArrayLike, Storage, Capacity, InlineStorage, ArenaStorage, normalize_range, SliceStorage};
 use crate::vec::Vec;
 
 /// A possible error value when converting a UTF-8 byte vector into a [`String`].
@@ -679,6 +679,13 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::ops::AddAssign<&str> for Stri
     }
 }
 
+/// A string using any mutable byte slice for storage.
+/// 
+/// # Examples
+/// ```
+/// todo!()
+/// ```
+pub type SliceString<'a, I = usize> = String<SliceStorage<'a, u8>, I>;
 /// A string using an arena-allocated byte slice for storage.
 /// 
 /// # Examples
