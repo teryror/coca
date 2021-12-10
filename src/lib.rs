@@ -55,7 +55,7 @@ pub use crate::{
     option_group::{OptionGroup8, OptionGroup16, OptionGroup32, OptionGroup64},
     pool::direct::{DirectArenaPool, DirectInlinePool, TiDirectInlinePool},
     pool::packed::{PackedArenaPool, PackedInlinePool, TiPackedInlinePool},
-    string::{ArenaString, InlineString, SliceString},
+    string::{ArenaString, InlineString, SliceString, TiInlineString},
     vec::{ArenaVec, InlineVec, SliceVec, TiInlineVec},
 };
 

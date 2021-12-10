@@ -84,7 +84,17 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// // Basic Usage:
+    /// let mut bytes = coca::InlineVec::<u8, 8>::new();
+    /// bytes.extend_from_slice(&[240, 159, 146, 150]);
+    /// 
+    /// let sparkle_heart = coca::InlineString::from_utf8(bytes).unwrap();
+    /// assert_eq!(sparkle_heart, "💖");
+    /// 
+    /// // Invalid Bytes:
+    /// let mut bytes = coca::InlineVec::<u8, 8>::new();
+    /// bytes.extend_from_slice(&[0, 159, 146, 150]);
+    /// assert!(coca::InlineString::from_utf8(bytes).is_err());
     /// ```
     #[inline]
     pub fn from_utf8(vec: Vec<u8, S, I>) -> Result<Self, FromUtf8Error<S, I>> {
@@ -102,7 +112,9 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let s = coca::InlineString::<8>::from_str("hello");
+    /// let (storage, len): ([core::mem::MaybeUninit<u8>; 8], usize) = s.into_raw_parts();
+    /// assert_eq!(len, 5);
     /// ```
     #[inline]
     pub fn into_raw_parts(self) -> (S, I) {
@@ -119,7 +131,13 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::InlineString;
+    /// 
+    /// let s = InlineString::<8>::from_str("hello");
+    /// let (storage, len) = s.into_raw_parts();
+    /// 
+    /// let rebuilt = unsafe { InlineString::from_raw_parts(storage, len) };
+    /// assert_eq!(rebuilt, "hello");
     /// ```
     #[inline]
     pub unsafe fn from_raw_parts(buf: S, length: I) -> Self {
@@ -142,7 +160,11 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let mut bytes = coca::InlineVec::<u8, 8>::new();
+    /// bytes.extend_from_slice(&[240, 159, 146, 150]);
+    /// 
+    /// let sparkle_heart = unsafe { coca::InlineString::from_utf8_unchecked(bytes) };
+    /// assert_eq!(sparkle_heart, "💖");
     /// ```
     #[inline]
     pub unsafe fn from_utf8_unchecked(bytes: Vec<u8, S, I>) -> Self {
@@ -153,7 +175,10 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let s = coca::InlineString::<8>::from_str("hello");
+    /// let bytes = s.into_bytes();
+    /// 
+    /// assert_eq!(&[104, 101, 108, 108, 111][..], &bytes[..]);
     /// ```
     #[inline]
     pub fn into_bytes(self) -> Vec<u8, S, I> {
@@ -175,7 +200,12 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let mut s = coca::InlineString::<8>::from_str("foo");
+    /// 
+    /// assert!(s.try_push_str("bar").is_ok());
+    /// 
+    /// assert!(s.try_push_str("bazz").is_err());
+    /// assert_eq!(s, "foobar");
     /// ```
     #[inline]
     pub fn try_push_str(&mut self, string: &str) -> Result<(), ()> {
@@ -212,7 +242,15 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let mut s = coca::InlineString::<10>::from_str("abcde");
+    /// 
+    /// assert!(s.try_extend_from_within(2..).is_ok());
+    /// assert_eq!(s, "abcdecde");
+    /// 
+    /// assert!(s.try_extend_from_within(..2).is_ok());
+    /// assert_eq!(s, "abcdecdeab");
+    /// 
+    /// assert!(s.try_extend_from_within(4..8).is_err());
     /// ```
     pub fn try_extend_from_within<R: RangeBounds<usize>>(&mut self, src: R) -> Result<(), ()> {
         let Range { start, end } = normalize_range(src, self.len());
@@ -264,7 +302,13 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let mut s = coca::InlineString::<4>::from_str("ab");
+    /// 
+    /// assert!(s.try_push('c').is_ok());
+    /// assert!(s.try_push('d').is_ok());
+    /// assert!(s.try_push('e').is_err());
+    /// 
+    /// assert_eq!(s, "abcd");
     /// ```
     #[inline]
     pub fn try_push(&mut self, ch: char) -> Result<(), ()> {
@@ -299,7 +343,8 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let s = coca::InlineString::<8>::from_str("hello");
+    /// assert_eq!(&[104, 101, 108, 108, 111], s.as_bytes());
     /// ```
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
@@ -315,7 +360,11 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let mut s = coca::InlineString::<8>::from_str("hello");
+    /// 
+    /// s.truncate(2);
+    /// 
+    /// assert_eq!(s, "he");
     /// ```
     #[inline]
     pub fn truncate(&mut self, new_len: usize) {
@@ -336,7 +385,13 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let mut s = coca::InlineString::<4>::from_str("foo");
+    /// 
+    /// assert_eq!(s.pop(), Some('o'));
+    /// assert_eq!(s.pop(), Some('o'));
+    /// assert_eq!(s.pop(), Some('f'));
+    /// 
+    /// assert_eq!(s.pop(), None);
     /// ```
     #[inline]
     pub fn pop(&mut self) -> Option<char> {
@@ -357,7 +412,13 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let mut s = coca::InlineString::<4>::from_str("foo");
+    /// 
+    /// assert_eq!(s.remove(0), 'f');
+    /// assert_eq!(s.remove(1), 'o');
+    /// assert_eq!(s.remove(0), 'o');
+    /// 
+    /// assert!(s.is_empty());
     /// ```
     pub fn remove(&mut self, idx: usize) -> char {
         let result = self[idx..].chars().next().expect("cannot remove a char from the end of a string");
@@ -382,7 +443,20 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let mut s = coca::InlineString::<12>::from_str("f_o_o_b_a_r");
+    /// 
+    /// s.retain(|ch| ch != '_');
+    /// 
+    /// assert_eq!(s, "foobar");
+    /// ```
+    /// Because the elements are visited exactly once in the original order,
+    /// external state may be used to decide which characters to keep:
+    /// ```
+    /// let mut s = coca::InlineString::<8>::from_str("abcde");
+    /// let keep = [false, true, true, false, true];
+    /// let mut iter = keep.iter();
+    /// s.retain(|_| *iter.next().unwrap());
+    /// assert_eq!(s, "bce");
     /// ```
     pub fn retain<F: FnMut(char) -> bool>(&mut self, mut f: F) {
         let len = self.len();
@@ -418,6 +492,19 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// # Panics
     /// Panics if `idx` is larger than the `String`'s length, or if it does not lie
     /// on a [`char`] boundary.
+    /// 
+    /// # Examples
+    /// ```
+    /// let mut s = coca::InlineString::<3>::new();
+    /// 
+    /// assert!(s.try_insert(0, 'o').is_ok());
+    /// assert!(s.try_insert(1, 'o').is_ok());
+    /// assert!(s.try_insert(0, 'f').is_ok());
+    /// 
+    /// assert!(s.try_insert(3, 'b').is_err());
+    /// 
+    /// assert_eq!(s, "foo");
+    /// ```
     pub fn try_insert(&mut self, idx: usize, ch: char) -> Result<(), ()> {
         assert!(self.is_char_boundary(idx));
         let mut bits = [0; 4];
@@ -448,7 +535,12 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let mut s = coca::InlineString::<8>::from_str("bar");
+    /// 
+    /// assert!(s.try_insert_str(0, "foo").is_ok());
+    /// assert!(s.try_insert_str(6, "bazz").is_err());
+    /// 
+    /// assert_eq!(s, "foobar");
     /// ```
     pub fn try_insert_str(&mut self, idx: usize, string: &str) -> Result<(), ()> {
         assert!(self.is_char_boundary(idx));
@@ -476,7 +568,16 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let mut s = coca::InlineString::<8>::from_str("hello");
+    /// 
+    /// unsafe {
+    ///     let mut vec = s.as_mut_vec();
+    ///     assert_eq!(&[104, 101, 108, 108, 111][..], &vec[..]);
+    ///     
+    ///     vec.iter_mut().for_each(|b| *b += 1);
+    /// }
+    /// 
+    /// assert_eq!(s, "ifmmp");
     /// ```
     #[inline]
     pub unsafe fn as_mut_vec(&mut self) -> &mut Vec<u8, S, I> {
@@ -497,7 +598,18 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let mut s = coca::InlineString::<32>::from_str("α is alpha, β is beta");
+    /// let beta_offset = s.find('β').unwrap();
+    /// 
+    /// let mut drain_iter = s.drain(..beta_offset);
+    /// assert_eq!(drain_iter.next(), Some('α'));
+    /// assert_eq!(drain_iter.next_back(), Some(' '));
+    /// 
+    /// drop(drain_iter);
+    /// assert_eq!(s, "β is beta");
+    /// 
+    /// s.drain(..);
+    /// assert!(s.is_empty());
     /// ```
     pub fn drain<R: RangeBounds<usize>>(&mut self, range: R) -> Drain<'_, S, I> {
         let Range { start, end } = normalize_range(range, self.len());
@@ -523,7 +635,14 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let mut s = coca::InlineString::<32>::from_str("α is alpha, β is beta");
+    /// let beta_offset = s.find('β').unwrap();
+    /// 
+    /// assert!(s.try_replace_range(..beta_offset, "A is capital alpha; ").is_ok());
+    /// assert_eq!(s, "A is capital alpha; β is beta");
+    /// 
+    /// let beta_offset = s.find('β').unwrap();
+    /// assert!(s.try_replace_range(beta_offset.., "B is capital beta.").is_err());
     /// ```
     pub fn try_replace_range<R: RangeBounds<usize>>(&mut self, range: R, replace_with: &str) -> Result<(), ()> {
         let Range { start, end } = normalize_range(range, self.len());
@@ -709,15 +828,15 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::ops::AddAssign<&str> for Stri
 /// 
 /// # Examples
 /// ```
-/// todo!()
+/// let mut buf = [core::mem::MaybeUninit::<u8>::uninit(); 8];
+/// let str = coca::SliceString::<'_, usize>::from(&mut buf[..6]);
+/// 
+/// assert_eq!(str.capacity(), 6);
 /// ```
 pub type SliceString<'a, I = usize> = String<SliceStorage<'a, u8>, I>;
 /// A string using an arena-allocated byte slice for storage.
 /// 
-/// # Examples
-/// ```
-/// todo!()
-/// ```
+/// See [`Arena::try_string`](crate::Arena::try_string) for example usage.
 pub type ArenaString<'a, I = usize> = String<ArenaStorage<'a, ArrayLike<u8>>, I>;
 
 impl<'a, I: Capacity> ArenaString<'a, I> {
@@ -725,7 +844,20 @@ impl<'a, I: Capacity> ArenaString<'a, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::Arena;
+    /// use core::mem::MaybeUninit;
+    ///
+    /// # fn test() -> Option<()> {
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from(&mut backing_region[..]);
+    /// 
+    /// let boxed_str = coca::fmt!(arena, "{}", 1234567890)?;
+    /// let mut string = coca::ArenaString::<'_, usize>::from_boxed_str(boxed_str);
+    /// 
+    /// string.retain(|c| (c as u8) % 2 == 1);
+    /// assert_eq!(string, "13579");
+    /// # Some(()) }
+    /// # assert!(test().is_some());
     /// ```
     pub fn from_boxed_str(mut string: crate::arena::Box<'a, str>) -> Self {
         let length = string.len();
@@ -739,7 +871,21 @@ impl<'a, I: Capacity> ArenaString<'a, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::Arena;
+    /// use core::mem::MaybeUninit;
+    ///
+    /// # fn test() -> Option<()> {
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from(&mut backing_region[..]);
+    /// 
+    /// let mut string = arena.string_with_capacity_from(16usize, "Hello, ");
+    /// string.push('W');
+    /// string.push_str("orld!");
+    /// 
+    /// let boxed_str = string.into_boxed_str();
+    /// assert_eq!(boxed_str.as_ref(), "Hello, World!");
+    /// # Some(()) }
+    /// # assert!(test().is_some());
     /// ```
     pub fn into_boxed_str(self) -> crate::arena::Box<'a, str> {
         let (mut buf, len) = self.into_raw_parts();
@@ -757,7 +903,11 @@ impl<'a, I: Capacity> ArenaString<'a, I> {
 /// 
 /// # Examples
 /// ```
-/// todo!()
+/// let mut s = coca::AllocString::with_capacity(16usize);
+/// s.push_str("Hello, ");
+/// s.push_str("World!");
+/// 
+/// assert_eq!(s, "Hello, World!");
 /// ```
 pub type AllocString<I = usize> = String<crate::storage::AllocStorage<ArrayLike<u8>>, I>;
 
@@ -765,18 +915,19 @@ pub type AllocString<I = usize> = String<crate::storage::AllocStorage<ArrayLike<
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 impl<I: Capacity> String<crate::storage::AllocStorage<ArrayLike<u8>>, I> {
     /// Creates a new, empty `AllocString` with the specified capacity.
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self::from(crate::storage::AllocStorage::with_capacity(capacity))
+    pub fn with_capacity(capacity: I) -> Self {
+        Self::from(crate::storage::AllocStorage::with_capacity(capacity.as_usize()))
     }
 
     /// Creates a new `AllocString` with the given contents, and zero excess capacity.
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let s = coca::AllocString::<usize>::from_str("abcde");
+    /// assert_eq!(s.capacity(), s.len());
     /// ```
     pub fn from_str(string: &str) -> Self {
-        let mut buf = Self::with_capacity(string.len());
+        let mut buf = Self::with_capacity(I::from_usize(string.len()));
         buf.push_str(string);
         buf
     }
@@ -787,10 +938,15 @@ impl<I: Capacity> String<crate::storage::AllocStorage<ArrayLike<u8>>, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let s = coca::AllocString::try_from_str_with_capacity("abcde", 8usize).unwrap();
+    /// assert_eq!(s.capacity(), 8);
+    /// assert_eq!(s, "abcde");
+    /// 
+    /// assert!(coca::AllocString::try_from_str_with_capacity("abcde", 4usize).is_err());
     /// ```
-    pub fn try_from_str_with_capacity(string: &str, capacity: usize) -> Result<Self, ()> {
-        if string.len() > capacity { return Err(()); }
+    pub fn try_from_str_with_capacity(string: &str, capacity: I) -> Result<Self, ()> {
+        let cap = capacity.as_usize();
+        if string.len() > cap { return Err(()); }
 
         let mut buf = Self::with_capacity(capacity);
         buf.push_str(string);
@@ -803,7 +959,7 @@ impl<I: Capacity> String<crate::storage::AllocStorage<ArrayLike<u8>>, I> {
     /// Panics if the given string is longer (in bytes) than `capacity`.
     /// See [`try_from_str_with_capacity`](String::try_from_str_with_capacity)
     /// for a checked version that never panics.
-    pub fn from_str_with_capacity(string: &str, capacity: usize) -> Self {
+    pub fn from_str_with_capacity(string: &str, capacity: I) -> Self {
         Self::try_from_str_with_capacity(string, capacity).expect("given string is longer than capacity")
     }
 }
@@ -812,14 +968,18 @@ impl<I: Capacity> String<crate::storage::AllocStorage<ArrayLike<u8>>, I> {
 /// 
 /// # Examples
 /// ```
-/// todo!()
+/// let mut s = coca::InlineString::<8>::new();
+/// assert_eq!(s.capacity(), 8);
+/// assert!(s.is_empty());
 /// ```
 pub type InlineString<const C: usize> = String<InlineStorage<u8, C>, usize>;
 /// A string using an inline array for storage, generic over the index type.
 /// 
 /// # Examples
 /// ```
-/// todo!()
+/// let mut s = coca::TiInlineString::<u8, 255>::new();
+/// assert_eq!(s.capacity(), 255);
+/// assert!(s.is_empty());
 /// ```
 pub type TiInlineString<I, const C: usize> = String<InlineStorage<u8, C>, I>;
 
@@ -835,7 +995,11 @@ impl<I: Capacity, const C: usize> String<InlineStorage<u8, C>, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// let s = coca::InlineString::<8>::try_from_str("abcde").unwrap();
+    /// assert_eq!(s.capacity(), 8);
+    /// assert_eq!(s, "abcde");
+    /// 
+    /// assert!(coca::InlineString::<4>::try_from_str("abcde").is_err());
     /// ```
     pub fn try_from_str(string: &str) -> Result<Self, ()> {
         if string.len() <= C {
@@ -875,11 +1039,6 @@ pub struct Drain<'a, S: Storage<ArrayLike<u8>>, I: Capacity> {
 
 impl<S: Storage<ArrayLike<u8>>, I: Capacity> Drain<'_, S, I> {
     /// Returns the remaining (sub)string of this iterator as a slice.
-    /// 
-    /// # Examples
-    /// ```
-    /// todo!()
-    /// ```
     pub fn as_str(&self) -> &str {
         self.iter.as_str()
     }

@@ -403,10 +403,19 @@ impl Arena<'static> {
     /// 
     /// # Examples
     /// ```
+    /// # extern crate alloc;
     /// # fn test() -> Option<()> {
-    /// let mut arena = coca::Arena::try_with_capacity(1024 * 1024)?;
-    /// let hello = coca::fmt!(arena, "{}, {}!", "Hello", "World")?;
-    /// assert_eq!(hello.as_ref(), "Hello, World!");
+    /// # let ptr;
+    /// {
+    ///     let mut arena = coca::Arena::try_with_capacity(1024 * 1024)?;
+    /// # ptr = arena.alloc(()).as_mut() as *mut () as *mut u8;
+    ///     let hello = coca::fmt!(arena, "{}, {}!", "Hello", "World")?;
+    ///     assert_eq!(hello.as_ref(), "Hello, World!");
+    /// }
+    /// 
+    /// // Backing memory is leaked!
+    /// # // so we need to free it, so that miri doesn't complain:
+    /// # unsafe { alloc::alloc::dealloc(ptr, core::alloc::Layout::from_size_align(1024 * 1024, 8).unwrap()); }
     /// # Some(())
     /// # }
     /// # test().unwrap();
@@ -972,7 +981,19 @@ impl<'src> Arena<'src> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::Arena;
+    /// use core::mem::MaybeUninit;
+    ///
+    /// # fn test() -> Option<()> {
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from(&mut backing_region[..]);
+    /// 
+    /// let mut s = arena.try_string(100usize)?;
+    /// s.push_str("Hello, ");
+    /// s.push_str("World!");
+    /// assert_eq!(s, "Hello, World!");
+    /// # Some(()) }
+    /// # assert!(test().is_some());
     /// ```
     pub fn try_string<I: Capacity>(&mut self, capacity: I) -> Option<ArenaString<'src, I>> {
         let storage = self.try_storage_with_capacity(capacity.as_usize())?;
@@ -995,7 +1016,18 @@ impl<'src> Arena<'src> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::Arena;
+    /// use core::mem::MaybeUninit;
+    ///
+    /// # fn test() -> Option<()> {
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from(&mut backing_region[..]);
+    /// 
+    /// let mut s: coca::ArenaString<'_, usize> = arena.try_string_from("Hello, World!")?;
+    /// assert_eq!(s, "Hello, World!");
+    /// assert_eq!(s.len(), s.capacity());
+    /// # Some(()) }
+    /// # assert!(test().is_some());
     /// ```
     pub fn try_string_from<I: Capacity, T: AsRef<str>>(&mut self, value: T) -> Option<ArenaString<'src, I>> {
         let str = value.as_ref();
@@ -1024,7 +1056,18 @@ impl<'src> Arena<'src> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::Arena;
+    /// use core::mem::MaybeUninit;
+    ///
+    /// # fn test() -> Option<()> {
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from(&mut backing_region[..]);
+    /// 
+    /// let mut s = arena.try_string_with_capacity_from(100usize, "Hello, World!")?;
+    /// assert_eq!(s, "Hello, World!");
+    /// assert_eq!(s.capacity(), 100);
+    /// # Some(()) }
+    /// # assert!(test().is_some());
     /// ```
     pub fn try_string_with_capacity_from<I: Capacity, T: AsRef<str>>(&mut self, capacity: I, value: T) -> Option<ArenaString<'src, I>> {
         if value.as_ref().len() > capacity.as_usize() {
