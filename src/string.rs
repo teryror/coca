@@ -483,7 +483,33 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
         &mut self.vec
     }
     
-    // TODO: pub fn drain<R: RangeBounds<usize>>(&mut self, range: R) -> Drain<'_> {}
+    /// Creates a draining iterator that removes the specified range from the `String`
+    /// and yields the removed [`char`]s.
+    /// 
+    /// Note: No matter how many elements of the iterator are consumed,
+    /// the full range is removed when the iterator **is** dropped;
+    /// if the iterator **is not** dropped, the `String` remains unchanged.
+    /// 
+    /// # Panics
+    /// Panics if the starting point is greater than the end point, if the end
+    /// point is greater than the length of the `String`, or if either one does
+    /// not lie on a [`char`] boundary.
+    /// 
+    /// # Examples
+    /// ```
+    /// todo!()
+    /// ```
+    pub fn drain<R: RangeBounds<usize>>(&mut self, range: R) -> Drain<'_, S, I> {
+        let Range { start, end } = normalize_range(range, self.len());
+        assert!(self.is_char_boundary(start));
+        assert!(self.is_char_boundary(end));
+        let target_range = I::from_usize(start)..I::from_usize(end);
+        
+        let self_ptr = self as *mut _;
+        let iter = unsafe { self.get_unchecked(start..end) }.chars();
+
+        Drain { parent: self_ptr, target_range, iter }
+    }
     
     /// Removes the specified range in the `String` and replaces it with the given string.
     /// The given string doesn't need to be the same length as the range.
@@ -837,3 +863,79 @@ impl<I: Capacity, const C: usize> Default for String<InlineStorage<u8, C>, I> {
     }
 }
 
+/// A draining iterator for [`String`].
+/// 
+/// This struct is created by the [`drain`](String::drain) method on `String`.
+/// See its documentation for more.
+pub struct Drain<'a, S: Storage<ArrayLike<u8>>, I: Capacity> {
+    parent: *mut String<S, I>,
+    target_range: Range<I>,
+    iter: str::Chars<'a>,
+}
+
+impl<S: Storage<ArrayLike<u8>>, I: Capacity> Drain<'_, S, I> {
+    /// Returns the remaining (sub)string of this iterator as a slice.
+    /// 
+    /// # Examples
+    /// ```
+    /// todo!()
+    /// ```
+    pub fn as_str(&self) -> &str {
+        self.iter.as_str()
+    }
+}
+
+impl<S: Storage<ArrayLike<u8>>, I: Capacity> fmt::Debug for Drain<'_, S, I> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Drain").field(&self.as_str()).finish()
+    }
+}
+
+impl<S: Storage<ArrayLike<u8>>, I: Capacity> AsRef<str> for Drain<'_, S, I> {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl<S: Storage<ArrayLike<u8>>, I: Capacity> AsRef<[u8]> for Drain<'_, S, I> {
+    fn as_ref(&self) -> &[u8] {
+        self.iter.as_str().as_bytes()
+    }
+}
+
+impl<S: Storage<ArrayLike<u8>>, I: Capacity> Iterator for Drain<'_, S, I> {
+    type Item = char;
+
+    #[inline]
+    fn next(&mut self) -> Option<char> {
+        self.iter.next()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+
+    #[inline]
+    fn last(mut self) -> Option<char> {
+        self.next_back()
+    }
+}
+
+impl<S: Storage<ArrayLike<u8>>, I: Capacity> DoubleEndedIterator for Drain<'_, S, I> {
+    #[inline]
+    fn next_back(&mut self) -> Option<char> {
+        self.iter.next_back()
+    }
+}
+
+impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::iter::FusedIterator for Drain<'_, S, I> {}
+
+impl<S: Storage<ArrayLike<u8>>, I: Capacity> Drop for Drain<'_, S, I> {
+    fn drop(&mut self) {
+        unsafe {
+            let vec = (*self.parent).as_mut_vec();
+            vec.drain(self.target_range.clone());
+        }
+    }
+}
