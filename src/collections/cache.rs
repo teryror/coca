@@ -384,8 +384,8 @@ impl<K, V> Drop for LruCache2<K, V> {
 /// 
 /// For `no_std` compatibility, no default hash builder is provided, but when using
 /// [`Hasher`] types implementing [`Default`], the constructors [`new`](CacheTable::new),
-/// [`with_capacity`](CacheTable::with_capacity) and [`Arena::try_cache`](crate::arena::Arena::try_cache)
-/// are provided. Otherwise, use [`with_hasher`](CacheTable::with_hasehr),
+/// and [`with_capacity`](CacheTable::with_capacity)
+/// are provided. Otherwise, use [`with_hasher`](CacheTable::with_hasher),
 /// [`with_capacity_and_hasher`](CacheTable::with_capacity_and_hasher) or
 /// [`Arena::try_cache_with_hasher`](crate::arena::Arena::try_cache_with_hasher).
 pub struct CacheTable<K: Eq, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H> {

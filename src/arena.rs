@@ -932,18 +932,6 @@ impl<'src> Arena<'src> {
     /// Constructs a collection `C` with the given capacity, backed by arena-allocated memory.
     /// 
     /// Returns [`None`] if the remaining space is insufficient.
-    /// 
-    /// # Examples
-    /// ```
-    /// use coca::{arena::Arena, collections::ArenaVec};
-    /// use core::mem::MaybeUninit;
-    ///
-    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from(&mut backing_region[..]);
-    ///
-    /// let v: ArenaVec<'_, i64, usize> = arena.try_with_capacity(100).unwrap();
-    /// assert!(arena.try_with_capacity::<_, ArenaVec<'_, i64, usize>>(100).is_none());
-    /// ```
     pub fn try_with_capacity<S, C>(&mut self, capacity: usize) -> Option<C>
     where
         C: From<ArenaStorage<'src, S>>,

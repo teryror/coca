@@ -30,12 +30,22 @@ use vec::Vec;
 /// assert_eq!(heap1.capacity(), 16);
 /// assert_eq!(heap2.capacity(), 16);
 /// ```
-pub type SliceHeap<'a, T, I = usize> = BinaryHeap<T, crate::storage::SliceStorage<'a, T>, I>;
+pub type SliceHeap<'a, T, I = usize> = BinaryHeap<T, SliceStorage<'a, T>, I>;
 /// A binary heap using an arena-allocated slice for storage.
 ///
-/// See [`Arena::try_heap`](crate::Arena::try_heap) for a usage example.
-pub type ArenaHeap<'a, T, I = usize> =
-    BinaryHeap<T, crate::storage::ArenaStorage<'a, ArrayLike<T>>, I>;
+/// # Examples
+/// ```
+/// use coca::arena::Arena;
+/// use coca::collections::ArenaHeap;
+/// use core::mem::MaybeUninit;
+///
+/// let mut backing_region = [MaybeUninit::uninit(); 1024];
+/// let mut arena = Arena::from(&mut backing_region[..]);
+///
+/// let heap: ArenaHeap<'_, i64, usize> = arena.try_with_capacity(100).unwrap();
+/// assert!(arena.try_with_capacity::<_, ArenaHeap<'_, i64, usize>>(100).is_none());
+/// ```
+pub type ArenaHeap<'a, T, I = usize> = BinaryHeap<T, ArenaStorage<'a, ArrayLike<T>>, I>;
 
 /// A binary heap using an inline array for storage.
 ///
@@ -47,7 +57,7 @@ pub type ArenaHeap<'a, T, I = usize> =
 /// heap.push('c');
 /// assert_eq!(heap.peek(), Some(&'c'));
 /// ```
-pub type InlineHeap<T, const C: usize> = BinaryHeap<T, crate::storage::InlineStorage<T, C>, usize>;
+pub type InlineHeap<T, const C: usize> = BinaryHeap<T, InlineStorage<T, C>, usize>;
 
 /// A binary heap using an inline array for storage, generic over the index type.
 ///
@@ -58,8 +68,7 @@ pub type InlineHeap<T, const C: usize> = BinaryHeap<T, crate::storage::InlineSto
 /// let vec = heap.into_vec();
 /// assert_eq!(vec[0u8], 'a');
 /// ```
-pub type TiInlineHeap<T, Index, const C: usize> =
-    BinaryHeap<T, crate::storage::InlineStorage<T, C>, Index>;
+pub type TiInlineHeap<T, Index, const C: usize> = BinaryHeap<T, InlineStorage<T, C>, Index>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
@@ -262,11 +271,32 @@ pub type Alloc2WayLruCache<K, V, H> = CacheTable<K, V, crate::storage::AllocStor
 /// assert_eq!(deque1.capacity(), 16);
 /// assert_eq!(deque2.capacity(), 16);
 /// ```
-pub type SliceDeque<'a, T, I = usize> = Deque<T, crate::storage::SliceStorage<'a, T>, I>;
+pub type SliceDeque<'a, T, I = usize> = Deque<T, SliceStorage<'a, T>, I>;
 /// A double-ended queue using an arena-allocated slice for storage.
 ///
-/// See [`Arena::try_deque`](crate::Arena::try_deque) for example usage.
-pub type ArenaDeque<'a, T, I = usize> = Deque<T, crate::storage::ArenaStorage<'a, ArrayLike<T>>, I>;
+/// # Examples
+/// ```
+/// use core::mem::MaybeUninit;
+/// use coca::arena::Arena;
+/// use coca::collections::ArenaDeque;
+/// 
+/// # fn test() -> Option<()> {
+/// let mut backing_region = [MaybeUninit::uninit(); 1024];
+/// let mut arena = Arena::from(&mut backing_region[..]);
+/// let mut deque: ArenaDeque<'_, char, usize> = arena.try_with_capacity(4)?;
+/// 
+/// deque.push_front('b');
+/// deque.push_front('a');
+/// deque.push_back('c');
+/// deque.push_back('d');
+/// 
+/// assert_eq!(deque, &['a', 'b', 'c', 'd']);
+/// assert_eq!(deque.try_push_back('e'), Err('e'));
+/// # Some(())
+/// # }
+/// # assert!(test().is_some());
+/// ```
+pub type ArenaDeque<'a, T, I = usize> = Deque<T, ArenaStorage<'a, ArrayLike<T>>, I>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
@@ -277,10 +307,12 @@ pub type ArenaDeque<'a, T, I = usize> = Deque<T, crate::storage::ArenaStorage<'a
 /// # Examples
 /// ```
 /// let mut deque = coca::collections::AllocDeque::<char>::with_capacity(4);
+/// 
 /// deque.push_front('b');
 /// deque.push_front('a');
 /// deque.push_back('c');
 /// deque.push_back('d');
+/// 
 /// assert_eq!(deque, &['a', 'b', 'c', 'd']);
 /// assert_eq!(deque.try_push_back('e'), Err('e'));
 /// ```
@@ -298,7 +330,7 @@ pub type AllocDeque<T, I = usize> = Deque<T, crate::storage::AllocStorage<ArrayL
 /// assert_eq!(deque, &['a', 'b', 'c', 'd']);
 /// assert_eq!(deque.try_push_back('e'), Err('e'));
 /// ```
-pub type InlineDeque<T, const C: usize> = Deque<T, crate::storage::InlineStorage<T, C>, usize>;
+pub type InlineDeque<T, const C: usize> = Deque<T, InlineStorage<T, C>, usize>;
 
 /// A deque using an inline array for storage, generic over the index type.
 ///
@@ -308,7 +340,7 @@ pub type InlineDeque<T, const C: usize> = Deque<T, crate::storage::InlineStorage
 /// deque.push_front('a');
 /// assert_eq!(deque[0u8], 'a');
 /// ```
-pub type TiInlineDeque<T, I, const C: usize> = Deque<T, crate::storage::InlineStorage<T, C>, I>;
+pub type TiInlineDeque<T, I, const C: usize> = Deque<T, InlineStorage<T, C>, I>;
 
 /// A group of up to eight [`Option`]s with the discriminants packed into a single `u8`.
 pub type OptionGroup8<T> = OptionGroup<u8, T>;
@@ -321,7 +353,18 @@ pub type OptionGroup64<T> = OptionGroup<u64, T>;
 
 /// A direct-mapped pool that stores its contents in an arena-allocated memory block.
 ///
-/// See [`Arena::try_direct_pool`](crate::Arena::try_direct_pool) for example usage.
+/// # Examples
+/// ```
+/// use coca::arena::Arena;
+/// use coca::collections::{DirectArenaPool, pool::DefaultHandle};
+/// use core::mem::MaybeUninit;
+///
+/// let mut backing_region = [MaybeUninit::uninit(); 1024];
+/// let mut arena = Arena::from(&mut backing_region[..]);
+///
+/// let pool: DirectArenaPool<'_, i64, DefaultHandle> = arena.try_with_capacity(50).unwrap();
+/// assert!(arena.try_with_capacity::<_, DirectArenaPool<'_, i64, DefaultHandle>>(50).is_none());
+/// ```
 pub type DirectArenaPool<'src, T, H = DefaultHandle> =
     DirectPool<T, ArenaStorage<'src, DirectPoolLayout<T, H>>, H>;
 
@@ -388,7 +431,18 @@ pub type TiDirectInlinePool<T, H, const N: usize> = DirectPool<T, pool::direct::
 
 /// A densely packed pool that stores its contents in a arena-allocated memory block.
 /// 
-/// See [`Arena::try_packed_pool`](crate::arena::Arena::try_packed_pool) for example usage.
+/// # Examples
+/// ```
+/// use coca::arena::Arena;
+/// use coca::collections::{PackedArenaPool, pool::DefaultHandle};
+/// use core::mem::MaybeUninit;
+///
+/// let mut backing_region = [MaybeUninit::uninit(); 1024];
+/// let mut arena = Arena::from(&mut backing_region[..]);
+///
+/// let pool: PackedArenaPool<'_, i64, DefaultHandle> = arena.try_with_capacity(30).unwrap();
+/// assert!(arena.try_with_capacity::<_, PackedArenaPool<'_, i64, DefaultHandle>>(30).is_none());
+/// ```
 pub type PackedArenaPool<'src, T, H> = PackedPool<T, ArenaStorage<'src, PackedPoolLayout<T, H>>, H>;
 
 /// A densely packed pool that stores its contents in globally allocated memory.
@@ -464,7 +518,18 @@ pub type TiPackedInlinePool<T, H, const N: usize> = PackedPool<T, pool::packed::
 pub type SliceString<'a, I = usize> = String<SliceStorage<'a, u8>, I>;
 /// A string using an arena-allocated byte slice for storage.
 /// 
-/// See [`Arena::try_string`](crate::Arena::try_string) for example usage.
+/// # Examples
+/// ```
+/// use coca::arena::Arena;
+/// use coca::collections::ArenaString;
+/// use core::mem::MaybeUninit;
+///
+/// let mut backing_region = [MaybeUninit::uninit(); 160];
+/// let mut arena = Arena::from(&mut backing_region[..]);
+///
+/// let s: ArenaString<'_, usize> = arena.try_with_capacity(100).unwrap();
+/// assert!(arena.try_with_capacity::<_, ArenaString<'_, usize>>(100).is_none());
+/// ```
 pub type ArenaString<'a, I = usize> = String<ArenaStorage<'a, ArrayLike<u8>>, I>;
 
 #[cfg(feature = "alloc")]
@@ -512,11 +577,22 @@ pub type TiInlineString<I, const C: usize> = String<InlineStorage<u8, C>, I>;
 /// assert_eq!(vec1.capacity(), 16);
 /// assert_eq!(vec2.capacity(), 16);
 /// ```
-pub type SliceVec<'a, T, I = usize> = Vec<T, crate::storage::SliceStorage<'a, T>, I>;
+pub type SliceVec<'a, T, I = usize> = Vec<T, SliceStorage<'a, T>, I>;
 /// A vector using an arena-allocated slice for storage.
 ///
-/// See [`Arena::try_vec`](crate::Arena::try_vec) for example usage.
-pub type ArenaVec<'a, T, I = usize> = Vec<T, crate::storage::ArenaStorage<'a, ArrayLike<T>>, I>;
+/// # Examples
+/// ```
+/// use coca::arena::Arena;
+/// use coca::collections::ArenaVec;
+/// use core::mem::MaybeUninit;
+///
+/// let mut backing_region = [MaybeUninit::uninit(); 1024];
+/// let mut arena = Arena::from(&mut backing_region[..]);
+///
+/// let v: ArenaVec<'_, i64, usize> = arena.try_with_capacity(100).unwrap();
+/// assert!(arena.try_with_capacity::<_, ArenaVec<'_, i64, usize>>(100).is_none());
+/// ```
+pub type ArenaVec<'a, T, I = usize> = Vec<T, ArenaStorage<'a, ArrayLike<T>>, I>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
