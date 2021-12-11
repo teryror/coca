@@ -11,6 +11,8 @@
 - Redefine `ArenaStorage` as a struct for compatibility with non-array-like layouts
 - Remove `HeapStorage` type alias and add `AllocStorage` struct (similar to `ArenaStorage`)
 - Rename `Arena::{collect, try_collect}` to `Arena::{collect_slice, try_collect_slice}`
+- Remove `Arena::{try_vec, try_deque, try_heap, vec, deque, heap}` in favor of
+  the generic `Arena::{try_with_capacity, with_capacity}`
 
 [storage-abstraction-v2]: https://gist.github.com/teryror/7b9a23fd0cd8dcfbcb6ebd34ee2639f8
 
@@ -25,7 +27,7 @@
 - Implement `Vec::drain_filter` and `Vec::drain_filter_range`
 - New methods `Deque::force_push_front` and `Deque::force_push_back`
   for using `Deque` as a classic ring buffer
-- New methods `Arena::with_capacity` for ergonomically constructing arenas when
+- New methods `Arena::static_with_capacity` for ergonomically constructing arenas when
   the `alloc` crate is available, and `Arena::{collect_with_capacity, try_collect_with_capacity}`,
   which more closely approximate `Iterator::collect` than the old `collect` methods
 - Add support for multiple type declarations in a single `index_type!` invocation

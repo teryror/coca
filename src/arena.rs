@@ -58,18 +58,13 @@
 //! This does not apply to creating sub-arenas.
 
 use crate::cache::CacheTable;
-use crate::pool::direct::DirectArenaPool;
-use crate::pool::Handle;
-use crate::pool::packed::PackedArenaPool;
 use crate::storage::{ArenaStorage, ArrayLike, Capacity, LayoutSpec};
 use crate::string::ArenaString;
-use crate::vec::ArenaVec;
-use crate::{binary_heap::ArenaHeap, ArenaDeque};
 
 use core::alloc::Layout;
 use core::cmp::Ordering;
 use core::fmt::{self, Debug, Display, Formatter, Pointer, Write};
-use core::hash::{BuildHasher, BuildHasherDefault, Hash, Hasher};
+use core::hash::{BuildHasher, Hash, Hasher};
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut, Range};
@@ -407,7 +402,7 @@ impl Arena<'static> {
     /// # fn test() -> Option<()> {
     /// # let ptr;
     /// {
-    ///     let mut arena = coca::Arena::try_with_capacity(1024 * 1024)?;
+    ///     let mut arena = coca::Arena::try_static_with_capacity(1024 * 1024)?;
     /// # ptr = arena.alloc(()).as_mut() as *mut () as *mut u8;
     ///     let hello = coca::fmt!(arena, "{}, {}!", "Hello", "World")?;
     ///     assert_eq!(hello.as_ref(), "Hello, World!");
@@ -421,7 +416,7 @@ impl Arena<'static> {
     /// # test().unwrap();
     /// ```
     #[inline]
-    pub fn try_with_capacity(capacity: usize) -> Option<Self> {
+    pub fn try_static_with_capacity(capacity: usize) -> Option<Self> {
         unsafe {
             let ptr = alloc::alloc::alloc(Layout::from_size_align(capacity, 8).ok()?);
             if ptr.is_null() { return None; }
@@ -438,8 +433,8 @@ impl Arena<'static> {
     /// Panics if the heap allocation fails.
     #[inline]
     #[track_caller]
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self::try_with_capacity(capacity).expect("unexpected allocation failure in `Arena::with_capacity`")
+    pub fn static_with_capacity(capacity: usize) -> Self {
+        Self::try_static_with_capacity(capacity).expect("unexpected allocation failure in `Arena::static_with_capacity`")
     }
 }
 
@@ -920,84 +915,41 @@ impl<'src> Arena<'src> {
         self.try_reserve_array(count).map(|b| b.init_with(|_| x))
     }
 
-    /// Constructs a [`ArenaVec`] with the given capacity.
-    ///
-    /// # Panics
-    /// Panics if the specified capacity cannot be represented by a `usize`, or
-    /// if the remaining space in the arena is insufficient. See
-    /// [`try_vec`](Arena::try_vec) for a checked version.
-    #[track_caller]
-    pub fn vec<T, I: Capacity>(&mut self, capacity: I) -> ArenaVec<'src, T, I> {
-        self.try_vec(capacity)
-            .expect("unexpected allocation failure in `vec`")
-    }
-
-    /// Constructs an [`ArenaVec`] with the given capacity.
-    ///
-    /// Returns [`None`] if the remaining space in the arena is insufficient.
-    ///
-    /// # Panics
-    /// Panics if the specified capacity cannot be represented by a `usize`.
-    ///
-    /// # Examples
-    /// ```
-    /// use coca::Arena;
-    /// use core::mem::MaybeUninit;
-    ///
-    /// # fn test() -> Option<()> {
-    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from(&mut backing_region[..]);
-    ///
-    /// let mut squares = arena.try_vec::<i64, usize>(100)?;
-    /// assert!(arena.try_vec::<i64, usize>(100).is_none());
-    ///
-    /// assert_eq!(squares.len(), 0);
-    /// assert_eq!(squares.capacity(), 100);
-    ///
-    /// for x in 1..=100 { squares.push(x * x) }
-    /// assert_eq!(&squares[..8], &[1, 4, 9, 16, 25, 36, 49, 64]);
-    /// # Some(())
-    /// # }
-    /// # assert!(test().is_some());
-    /// ```
-    pub fn try_vec<T, I: Capacity>(&mut self, capacity: I) -> Option<ArenaVec<'src, T, I>> {
-        let storage = self.try_storage_with_capacity(capacity.as_usize())?;
-        Some(ArenaVec::<T, I>::from(storage))
-    }
-
-    /// Constructs an [`ArenaString`] with the given capacity.
+    /// Constructs a collection `C` with the given capacity, backed by arena-allocated memory.
     /// 
     /// # Panics
-    /// Panics if the remaining space in the arena is insufficient.
-    /// See [`try_string`](Arena::try_string) for a checked version that never panics.
-    #[track_caller]
-    pub fn string<I: Capacity>(&mut self, capacity: I) -> ArenaString<'src, I> {
-        self.try_string(capacity).expect("unexpected allocation failure in `string`")
+    /// Panics if the remaining space is insufficient.
+    /// See [`try_with_capacity`](Arena::try_with_capacity) for a checked version
+    /// that never panics.
+    pub fn with_capacity<S, C>(&mut self, capacity: usize) -> C
+    where
+        C: From<ArenaStorage<'src, S>>,
+        S: LayoutSpec,
+    {
+        self.try_with_capacity(capacity).expect("unexpected allocation failure in `with_capacity`")
     }
 
-    /// Constructs an [`ArenaString`] with the given capacity.
+    /// Constructs a collection `C` with the given capacity, backed by arena-allocated memory.
     /// 
-    /// Returns [`None`] if the remaining space in the arena is insufficient.
+    /// Returns [`None`] if the remaining space is insufficient.
     /// 
     /// # Examples
     /// ```
-    /// use coca::Arena;
+    /// use coca::{Arena, ArenaVec};
     /// use core::mem::MaybeUninit;
     ///
-    /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from(&mut backing_region[..]);
-    /// 
-    /// let mut s = arena.try_string(100usize)?;
-    /// s.push_str("Hello, ");
-    /// s.push_str("World!");
-    /// assert_eq!(s, "Hello, World!");
-    /// # Some(()) }
-    /// # assert!(test().is_some());
+    ///
+    /// let v: ArenaVec<'_, i64, usize> = arena.try_with_capacity(100).unwrap();
+    /// assert!(arena.try_with_capacity::<_, ArenaVec<'_, i64, usize>>(100).is_none());
     /// ```
-    pub fn try_string<I: Capacity>(&mut self, capacity: I) -> Option<ArenaString<'src, I>> {
-        let storage = self.try_storage_with_capacity(capacity.as_usize())?;
-        Some(ArenaString::from(storage))
+    pub fn try_with_capacity<S, C>(&mut self, capacity: usize) -> Option<C>
+    where
+        C: From<ArenaStorage<'src, S>>,
+        S: LayoutSpec,
+    {
+        Some(C::from(self.try_storage_with_capacity(capacity)?))
     }
 
     /// Constructs an [`ArenaString`] initialized with the given contents, and no excess capacity.
@@ -1031,7 +983,7 @@ impl<'src> Arena<'src> {
     /// ```
     pub fn try_string_from<I: Capacity, T: AsRef<str>>(&mut self, value: T) -> Option<ArenaString<'src, I>> {
         let str = value.as_ref();
-        let mut result = self.try_string(I::from_usize(str.len()))?;
+        let mut result: ArenaString<'_, _> = self.try_with_capacity(str.len())?;
         result.push_str(str);
         Some(result)
     }
@@ -1074,188 +1026,9 @@ impl<'src> Arena<'src> {
             return None;
         }
 
-        let mut result = self.try_string(capacity)?;
+        let mut result: ArenaString<'_, _> = self.try_with_capacity(capacity.as_usize())?;
         result.push_str(value.as_ref());
         Some(result)
-    }
-
-    /// Constructs a [`ArenaHeap`] with the given capacity.
-    ///
-    /// # Panics
-    /// Panics if the specified capacity cannot be represented by a `usize`, or
-    /// if the remaining space in the arena is insufficient. See
-    /// [`try_heap`](Arena::try_heap) for a checked version.
-    #[track_caller]
-    pub fn heap<T: Ord, I: Capacity>(&mut self, capacity: I) -> ArenaHeap<'src, T, I> {
-        self.try_heap(capacity)
-            .expect("unexpected allocation failure in `heap`")
-    }
-
-    /// Constructs an [`ArenaHeap`] with the given capacity.
-    ///
-    /// Returns [`None`] if the remaining space in the arena is insufficient.
-    ///
-    /// # Panics
-    /// Panics if the specified capacity cannot be represented by a `usize`.
-    ///
-    /// # Examples
-    /// ```
-    /// use coca::Arena;
-    /// use core::mem::MaybeUninit;
-    ///
-    /// # fn test() -> Option<()> {
-    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from(&mut backing_region[..]);
-    ///
-    /// let mut heap = arena.try_heap::<i64, usize>(100)?;
-    /// assert!(arena.try_heap::<i64, usize>(100).is_none());
-    ///
-    /// assert_eq!(heap.len(), 0);
-    /// assert_eq!(heap.capacity(), 100);
-    ///
-    /// for x in 1..=100 { heap.push(x) }
-    /// for x in (1..=100).rev() {
-    ///     assert_eq!(heap.pop(), Some(x));
-    /// }
-    /// # Some(())
-    /// # }
-    /// # assert!(test().is_some());
-    /// ```
-    pub fn try_heap<T: Ord, I: Capacity>(&mut self, capacity: I) -> Option<ArenaHeap<'src, T, I>> {
-        let storage = self.try_storage_with_capacity(capacity.as_usize())?;
-        Some(ArenaHeap::from(storage))
-    }
-
-    /// Constructs a [`ArenaDeque`] with the given capacity.
-    ///
-    /// # Panics
-    /// Panics if the specified capacity cannot be represented by a `usize`, or
-    /// if the remaining space in the arena is insufficient. See
-    /// [`try_deque`](Arena::try_deque) for a checked version.
-    #[track_caller]
-    pub fn deque<T, I: Capacity>(&mut self, capacity: I) -> ArenaDeque<'src, T, I> {
-        self.try_deque(capacity)
-            .expect("unexpected allocation failure in `deque`")
-    }
-
-    /// Constructs a new [`ArenaDeque`] with the given capacity.
-    ///
-    /// Returns [`None`] if the remaining space in the arena is insufficient.
-    ///
-    /// # Panics
-    /// Panics if the specified capacity cannot be represented by a `usize`.
-    ///
-    /// # Examples
-    /// ```
-    /// use coca::Arena;
-    /// use core::mem::MaybeUninit;
-    ///
-    /// # fn test() -> Option<()> {
-    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from(&mut backing_region[..]);
-    ///
-    /// let mut deque = arena.try_deque::<i64, usize>(100)?;
-    /// assert!(arena.try_deque::<i64, usize>(100).is_none());
-    ///
-    /// assert_eq!(deque.len(), 0);
-    /// assert_eq!(deque.capacity(), 100);
-    ///
-    /// for x in 1..=100 { deque.push_back(x) }
-    /// for x in 1..=100 {
-    ///     assert_eq!(deque.pop_front(), Some(x));
-    /// }
-    /// # Some(())
-    /// # }
-    /// # assert!(test().is_some());
-    /// ```
-    pub fn try_deque<T, I: Capacity>(&mut self, capacity: I) -> Option<ArenaDeque<'src, T, I>> {
-        let storage = self.try_storage_with_capacity(capacity.as_usize())?;
-        Some(ArenaDeque::from(storage))
-    }
-
-    /// Constructs a new [`DirectArenaPool`] with the specified capacity.
-    ///
-    /// # Panics
-    /// Panics if the remaining space in the arena is insufficient. See
-    /// [`try_direct_pool`](Arena::try_direct_pool) for a checked version.
-    #[track_caller]
-    pub fn direct_pool<T, H: Handle>(&mut self, capacity: usize) -> DirectArenaPool<'src, T, H> {
-        self.try_direct_pool(capacity)
-            .expect("unexpected allocation failure in direct_pool")
-    }
-
-    /// Constructs a new [`DirectArenaPool`] with the specified capacity.
-    ///
-    /// Returns [`None`] if the remaining space in the arena is insufficient.
-    ///
-    /// # Examples
-    /// ```
-    /// use coca::{Arena, pool::DefaultHandle};
-    /// use core::mem::MaybeUninit;
-    ///
-    /// # fn test() -> Option<()> {
-    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from(&mut backing_region[..]);
-    /// let mut pool = arena.try_direct_pool::<&'static str, DefaultHandle>(20)?;
-    ///
-    /// let hello = pool.insert("Hello, World!");
-    /// assert_eq!(pool.remove(hello), Some("Hello, World!"));
-    /// # Some(())
-    /// # }
-    /// # assert!(test().is_some());
-    /// ```
-    pub fn try_direct_pool<T, H: Handle>(
-        &mut self,
-        capacity: usize,
-    ) -> Option<DirectArenaPool<'src, T, H>> {
-        let storage = self.try_storage_with_capacity(capacity)?;
-        Some(DirectArenaPool::from(storage))
-    }
-
-    /// Constructs a new [`PackedArenaPool`] with the specified capacity.
-    /// 
-    /// # Panics
-    /// Panics if the remaining space in the arena is insufficient. See
-    /// [`try_packed_pool`](Arena::try_packed_pool) for a checked version.
-    #[track_caller]
-    pub fn packed_pool<T, H: Handle>(&mut self, capacity: usize) -> PackedArenaPool<'src, T, H> {
-        self.try_packed_pool(capacity)
-            .expect("unexpected allocation failure in packed_pool")
-    }
-
-    /// Constructs a new [`PackedArenaPool`] with the specified capacity.
-    /// 
-    /// Returns [`None`] if the remaining space in the arena is insufficient.
-    /// 
-    /// # Examples
-    /// ```
-    /// use coca::{Arena, pool::DefaultHandle};
-    /// use core::mem::MaybeUninit;
-    /// 
-    /// # fn test() -> Option<()> {
-    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
-    /// let mut arena = Arena::from(&mut backing_region[..]);
-    /// let mut pool = arena.try_packed_pool::<&'static str, DefaultHandle>(20)?;
-    /// 
-    /// let hello = pool.insert("Hello, World!");
-    /// assert_eq!(pool.remove(hello), Some("Hello, World!"));
-    /// # Some(())
-    /// # }
-    /// # assert!(test().is_some());
-    /// ```
-    pub fn try_packed_pool<T, H: Handle>(&mut self, capacity: usize) -> Option<PackedArenaPool<'src, T, H>> {
-        let storage = self.try_storage_with_capacity(capacity)?;
-        Some(PackedArenaPool::from(storage))
-    }
-
-    /// Constructs a new [`CacheTable`] with a [`BuildHasherDefault`] and the specified capacity, rounded up to the next multiple of `L::CAPACITY`.
-    /// 
-    /// Returns `None` if the remaining space in the arena is insufficient.
-    #[allow(clippy::type_complexity)]
-    pub fn try_cache<K: Eq + Hash, V, L: crate::cache::CacheLine<K, V>, H: core::hash::Hasher + Default>(&mut self, capacity: usize) -> Option<CacheTable<K, V, ArenaStorage<'src, ArrayLike<L>>, L, BuildHasherDefault<H>>> {
-        let capacity = (capacity + L::CAPACITY - 1) / L::CAPACITY;
-        let storage = self.try_storage_with_capacity(capacity)?;
-        Some(CacheTable::from(storage))
     }
 
     /// Constructs a new [`CacheTable`] with the specified hash builder and capacity, rounded up to the next multiple of `L::CAPACITY`.
@@ -1266,17 +1039,6 @@ impl<'src> Arena<'src> {
         let capacity = (capacity + L::CAPACITY - 1) / L::CAPACITY;
         let storage = self.try_storage_with_capacity(capacity)?;
         Some(CacheTable::from_storage_and_hasher(storage, hash_builder))
-    }
-
-    /// Constructs a new [`CacheTable`] with a [`BuildHasherDefault`] and the specified capacity, rounded up to the next multiple of `L::CAPACITY`.
-    /// 
-    /// # Panics
-    /// Panics if the remaining space in the arena is insufficient to exhaust
-    /// the iterator. See [`try_cache`](Arena::try_cache) for a checked
-    /// version that never panics.
-    pub fn cache<K: Eq + Hash, V, L: crate::cache::CacheLine<K, V>, H: core::hash::Hasher + Default>(&mut self, capacity: usize) -> CacheTable<K, V, ArenaStorage<'src, ArrayLike<L>>, L, BuildHasherDefault<H>> {
-        self.try_cache(capacity)
-            .expect("unexpected allocation failure in cache")
     }
 
     /// Constructs a new [`CacheTable`] with the specified hash builder and capacity, rounded up to the next multiple of `L::CAPACITY`.

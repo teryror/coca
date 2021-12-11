@@ -142,7 +142,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
     /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
     /// # let mut arena = coca::Arena::from(&mut backing[..]);
-    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(8);
+    /// let mut pool: DirectArenaPool<u128, DefaultHandle> = arena.with_capacity(8);
     /// let h = pool.insert(0xDEAD_BEEF);
     /// assert!(pool.contains(h));
     /// pool.remove(h);
@@ -198,7 +198,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
     /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
     /// # let mut arena = coca::Arena::from(&mut backing[..]);
-    /// let mut pool = arena.direct_pool::<&'static str, DefaultHandle>(8);
+    /// let mut pool: DirectArenaPool<&'static str, DefaultHandle> = arena.with_capacity(8);
     /// let ha = pool.insert("apple");
     /// let hb = pool.insert("berry");
     /// let hc = pool.insert("coconut");
@@ -257,7 +257,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// # fn test() -> Result<(), u128> {
     /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
     /// # let mut arena = coca::Arena::from(&mut backing[..]);
-    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(8);
+    /// let mut pool: DirectArenaPool<u128, DefaultHandle> = arena.with_capacity(8);
     /// let h = pool.try_insert(42)?;
     /// assert_eq!(pool[h], 42);
     /// # Ok(())
@@ -316,7 +316,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// # fn test() -> Option<()> {
     /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
     /// # let mut arena = coca::Arena::from(&mut backing[..]);
-    /// let mut pool = arena.direct_pool::<(DefaultHandle, u64), DefaultHandle>(10);
+    /// let mut pool: DirectArenaPool<(DefaultHandle, u64), DefaultHandle> = arena.with_capacity(10);
     /// let h = pool.insert_with_handle(|h| (h, 20));
     /// assert_eq!(pool[h], (h, 20));
     /// # Some(())
@@ -366,7 +366,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
     /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
     /// # let mut arena = coca::Arena::from(&mut backing[..]);
-    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(8);
+    /// let mut pool: DirectArenaPool<u128, DefaultHandle> = arena.with_capacity(8);
     /// let h = pool.insert(42);
     /// assert_eq!(pool.remove(h), Some(42));
     /// assert_eq!(pool.remove(h), None);
@@ -411,7 +411,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
     /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
     /// # let mut arena = coca::Arena::from(&mut backing[..]);
-    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(4);
+    /// let mut pool: DirectArenaPool<u128, DefaultHandle> = arena.with_capacity(4);
     /// let h1 = pool.insert(1);
     /// let h2 = pool.insert(2);
     /// let h3 = pool.insert(3);
@@ -437,7 +437,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
     /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
     /// # let mut arena = coca::Arena::from(&mut backing[..]);
-    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(5);
+    /// let mut pool: DirectArenaPool<u128, DefaultHandle> = arena.with_capacity(5);
     /// for i in 0..5 {
     ///     pool.insert(i);
     /// }
@@ -461,7 +461,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
     /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
     /// # let mut arena = coca::Arena::from(&mut backing[..]);
-    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(5);
+    /// let mut pool: DirectArenaPool<u128, DefaultHandle> = arena.with_capacity(5);
     /// let h0 = pool.insert(0);
     /// let h1 = pool.insert(1);
     /// let h2 = pool.insert(2);
@@ -494,7 +494,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
     /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
     /// # let mut arena = coca::Arena::from(&mut backing[..]);
-    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(5);
+    /// let mut pool: DirectArenaPool<u128, DefaultHandle> = arena.with_capacity(5);
     /// let h1 = pool.insert(1);
     /// let h2 = pool.insert(2);
     /// let h3 = pool.insert(3);
@@ -525,7 +525,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
     /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
     /// # let mut arena = coca::Arena::from(&mut backing[..]);
-    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(5);
+    /// let mut pool: DirectArenaPool<u128, DefaultHandle> = arena.with_capacity(5);
     /// assert!(pool.handles().next().is_none());
     ///
     /// let h0 = pool.insert(10);
@@ -555,7 +555,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
     /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
     /// # let mut arena = coca::Arena::from(&mut backing[..]);
-    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(5);
+    /// let mut pool: DirectArenaPool<u128, DefaultHandle> = arena.with_capacity(5);
     /// assert!(pool.values().next().is_none());
     ///
     /// let h0 = pool.insert(10);
@@ -586,7 +586,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
     /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
     /// # let mut arena = coca::Arena::from(&mut backing[..]);
-    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(5);
+    /// let mut pool: DirectArenaPool<u128, DefaultHandle> = arena.with_capacity(5);
     /// assert!(pool.values_mut().next().is_none());
     ///
     /// let h0 = pool.insert(10);
@@ -620,7 +620,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
     /// # let mut backing = [core::mem::MaybeUninit::uninit(); 1024];
     /// # let mut arena = coca::Arena::from(&mut backing[..]);
-    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(5);
+    /// let mut pool: DirectArenaPool<u128, DefaultHandle> = arena.with_capacity(5);
     /// pool.insert(0);
     /// let mut it = pool.drain();
     /// assert!(matches!(it.next(), Some((_, 0))));
@@ -656,7 +656,7 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> DirectPool<T, S, H> {
     /// # use coca::pool::{DefaultHandle, direct::DirectArenaPool};
     /// # let mut backing = [core::mem::MaybeUninit::uninit(); 2048];
     /// # let mut arena = coca::Arena::from(&mut backing[..]);
-    /// let mut pool = arena.direct_pool::<u128, DefaultHandle>(10);
+    /// let mut pool: DirectArenaPool<u128, DefaultHandle> = arena.with_capacity(10);
     /// for i in 1..=10 {
     ///     pool.insert(i);
     /// }
@@ -1292,7 +1292,7 @@ mod tests {
     fn debug_impl() {
         let mut storage = [MaybeUninit::uninit(); 2048];
         let mut arena = Arena::from(&mut storage[..]);
-        let mut pool = arena.direct_pool::<&'static str, DefaultHandle>(4);
+        let mut pool: DirectArenaPool<&'static str, DefaultHandle> = arena.with_capacity(4);
 
         let empty = fmt!(arena, "{:?}", pool).unwrap();
         assert_eq!(
@@ -1351,7 +1351,7 @@ mod tests {
 
         let mut storage = [MaybeUninit::uninit(); 2048];
         let mut arena = Arena::from(&mut storage[..]);
-        let mut pool = arena.direct_pool::<Droppable, DefaultHandle>(32);
+        let mut pool: DirectArenaPool<Droppable, DefaultHandle> = arena.with_capacity(32);
 
         for _ in 0..1000 {
             let remaining_slots = pool.capacity() - pool.len();

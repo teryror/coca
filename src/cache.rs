@@ -582,7 +582,7 @@ impl<K: Eq, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H> Drop for CacheTa
 /// # fn test() -> Option<()> {
 /// let mut backing_region = [MaybeUninit::uninit(); 1024];
 /// let mut arena = Arena::from(&mut backing_region[..]);
-/// let mut cache: ArenaDirectMappedCache<'_, i32, &'static str, BuildHasherDefault<FxHasher>> = arena.try_cache(8)?;
+/// let mut cache: ArenaDirectMappedCache<'_, i32, &'static str, BuildHasherDefault<FxHasher>> = arena.try_with_capacity(8)?;
 /// cache.insert(1, "a");
 /// assert_eq!(cache.get(&1), Some(&"a"));
 /// # Some(())
@@ -603,7 +603,7 @@ pub type ArenaDirectMappedCache<'src, K, V, H> = CacheTable<K, V, ArenaStorage<'
 /// # fn test() -> Option<()> {
 /// let mut backing_region = [MaybeUninit::uninit(); 1024];
 /// let mut arena = Arena::from(&mut backing_region[..]);
-/// let mut cache: Arena2WayLruCache<'_, i32, &'static str, BuildHasherDefault<FxHasher>> = arena.try_cache(8)?;
+/// let mut cache: Arena2WayLruCache<'_, i32, &'static str, BuildHasherDefault<FxHasher>> = arena.try_with_capacity(8)?;
 /// cache.insert(1, "a");
 /// assert_eq!(cache.get(&1), Some(&"a"));
 /// # Some(())

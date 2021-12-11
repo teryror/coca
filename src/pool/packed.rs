@@ -1222,7 +1222,7 @@ mod tests {
     fn debug_impl() {
         let mut storage = [MaybeUninit::uninit(); 2048];
         let mut arena = Arena::from(&mut storage[..]);
-        let mut pool = arena.packed_pool::<&'static str, DefaultHandle>(4);
+        let mut pool: PackedArenaPool<&'static str, DefaultHandle> = arena.with_capacity(4);
 
         let empty = fmt!(arena, "{:?}", pool).unwrap();
         assert_eq!(
