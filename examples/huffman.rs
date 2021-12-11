@@ -1,4 +1,4 @@
-use coca::Arena;
+use coca::arena::{Arena, Box};
 
 use std::mem::{size_of, MaybeUninit};
 
@@ -9,7 +9,7 @@ fn calc_huff_encoded_size(input: &[u8]) -> usize {
     const MEM_FOR_TREES: usize = 512 * size_of::<CodeTree>();
     const ARENA_SIZE: usize = MEM_FOR_FREQS_AND_CODELEN + MEM_FOR_TREES;
 
-    let mut backing = Box::new([MaybeUninit::<u8>::uninit(); ARENA_SIZE]);
+    let mut backing = std::boxed::Box::new([MaybeUninit::<u8>::uninit(); ARENA_SIZE]);
     let mut arena = Arena::from(&mut backing[..]);
 
     let mut freqs = arena.array(0isize, 256);
@@ -23,12 +23,12 @@ fn calc_huff_encoded_size(input: &[u8]) -> usize {
             sym: u8,
         },
         Composite {
-            left: coca::Box<'a, CodeTree<'a>>,
-            right: coca::Box<'a, CodeTree<'a>>,
+            left: Box<'a, CodeTree<'a>>,
+            right: Box<'a, CodeTree<'a>>,
         },
     }
 
-    struct Item<'a>(isize, coca::Box<'a, CodeTree<'a>>);
+    struct Item<'a>(isize, Box<'a, CodeTree<'a>>);
     impl<'a> std::cmp::PartialEq for Item<'a> {
         fn eq(&self, rhs: &Self) -> bool {
             self.0.eq(&rhs.0)
@@ -46,7 +46,7 @@ fn calc_huff_encoded_size(input: &[u8]) -> usize {
         }
     }
 
-    let mut items = arena.vec(256usize);
+    let mut items: coca::collections::ArenaVec<'_, Item> = arena.with_capacity(256usize);
     for (idx, freq) in freqs.iter().enumerate() {
         if *freq == 0 {
             continue;
@@ -55,7 +55,7 @@ fn calc_huff_encoded_size(input: &[u8]) -> usize {
         items.push(Item(*freq, leaf_node));
     }
 
-    let mut queue = coca::ArenaHeap::<Item<'_>, _>::from(items);
+    let mut queue = coca::collections::ArenaHeap::<Item<'_>, _>::from(items);
     while queue.len() > 1 {
         let Item(freq_l, left) = queue.pop().unwrap();
         let Item(freq_r, right) = queue.pop().unwrap();

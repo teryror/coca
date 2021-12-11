@@ -76,7 +76,7 @@ unsafe impl<A, const N: usize> Storage<ObjectLayout> for InlineStorage<A, N> {
 /// This is primarily intended for use with `dyn Trait` (see
 /// [`InlineObject::new`](Object::new) for example usage).
 ///
-/// [`Vec`](crate::vec) should be preferred for dynamically sized arrays.
+/// [`Vec`](crate::collections::vec) should be preferred for dynamically sized arrays.
 ///
 /// While it is *possible* to store a [`Sized`] type in an `Object`, there are
 /// no benefits to doing so, and it adds at least one `usize` of storage overhead.

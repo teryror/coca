@@ -24,8 +24,8 @@
 //! handle_type! { TinyHandle: 16 / 32; }
 //!
 //! # let mut storage = [core::mem::MaybeUninit::uninit(); 128];
-//! # let mut arena = coca::Arena::from(&mut storage[..]);
-//! let mut pool = arena.direct_pool::<&'static str, TinyHandle>(4);
+//! # let mut arena = coca::arena::Arena::from(&mut storage[..]);
+//! let mut pool: coca::collections::DirectArenaPool<&'static str, TinyHandle> = arena.with_capacity(4);
 //! let first = pool.insert("this was first");
 //!
 //! let mut last_handle = first;
@@ -122,7 +122,7 @@ enum DebugEntry<'a, T: Debug, H: Handle> {
 ///
 /// # Examples
 /// ```
-/// use coca::{handle_type, pool::Handle};
+/// use coca::{handle_type, collections::pool::Handle};
 /// handle_type! {
 ///     A: 12 / 32;
 ///     /// Documentation for `B` goes here.
@@ -169,7 +169,7 @@ macro_rules! handle_type {
             }
         }
 
-        unsafe impl $crate::pool::Handle for $name {
+        unsafe impl $crate::collections::pool::Handle for $name {
             type Index = u32;
             const MAX_INDEX: usize = 0xFFFF_FFFF;
             const MAX_GENERATION: u32 = 0xFFFF_FFFF;
@@ -211,12 +211,12 @@ macro_rules! handle_type {
             #[allow(dead_code)]
             $v const fn null() -> Self {
                 unsafe { $name(core::num::NonZeroU32::new_unchecked(
-                    <Self as $crate::pool::Handle>::MAX_INDEX as u32
+                    <Self as $crate::collections::pool::Handle>::MAX_INDEX as u32
                 )) }
             }
         }
 
-        unsafe impl $crate::pool::Handle for $name {
+        unsafe impl $crate::collections::pool::Handle for $name {
             type Index = u16;
             const MAX_INDEX: usize = !(!0 << $n);
             const MAX_GENERATION: u32 = !(!0 << (32 - $n)) as u32;

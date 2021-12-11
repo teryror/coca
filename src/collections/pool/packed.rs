@@ -12,7 +12,7 @@ use core::mem::MaybeUninit;
 use core::ops::{Index, IndexMut};
 
 use super::{buffer_too_large_for_handle_type, DebugEntry, DefaultHandle, Handle};
-use crate::storage::{ArenaStorage, Capacity, LayoutSpec, Storage};
+use crate::storage::{Capacity, LayoutSpec, Storage};
 
 /// The [`LayoutSpec`] for a [`PackedPool`].
 pub struct PackedPoolLayout<T, H>(PhantomData<(T, H)>);
@@ -33,8 +33,8 @@ impl<T, H: Handle> LayoutSpec for PackedPoolLayout<T, H> {
 
 /// A densely packed object pool with constant capacity.
 /// 
-/// See the [super module documentation](crate::pool) for information on
-/// pool-based memory management, and [this module's documentation](crate::pool::packed)
+/// See the [super module documentation](crate::collections::pool) for information on
+/// pool-based memory management, and [this module's documentation](crate::collections::pool::packed)
 /// for details on this variation of it.
 pub struct PackedPool<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle = DefaultHandle> {
     buf: S,
@@ -42,11 +42,6 @@ pub struct PackedPool<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle = Default
     next_free_slot: H::Index,
     items: PhantomData<T>,
 }
-
-/// A densely packed pool that stores its contents in a arena-allocated memory block.
-/// 
-/// See [`Arena::try_packed_pool`](crate::arena::Arena::try_packed_pool) for example usage.
-pub type PackedArenaPool<'src, T, H> = PackedPool<T, ArenaStorage<'src, PackedPoolLayout<T, H>>, H>;
 
 impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> From<S> for PackedPool<T, S, H> {
     fn from(buf: S) -> Self {
@@ -204,7 +199,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// 
     /// # Examples
     /// ```
-    /// # use coca::pool::packed::PackedInlinePool;
+    /// # use coca::collections::PackedInlinePool;
     /// let mut pool = PackedInlinePool::<u128, 16>::new();
     /// let h0 = pool.insert(0);
     /// let h1 = pool.insert(1);
@@ -225,7 +220,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// 
     /// # Examples
     /// ```
-    /// # use coca::pool::packed::PackedInlinePool;
+    /// # use coca::collections::PackedInlinePool;
     /// let mut pool = PackedInlinePool::<u128, 16>::new();
     /// let h0 = pool.insert(0);
     /// let h1 = pool.insert(1);
@@ -248,7 +243,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// 
     /// # Examples
     /// ```
-    /// # use coca::pool::packed::PackedInlinePool;
+    /// # use coca::collections::PackedInlinePool;
     /// let mut pool = PackedInlinePool::<u128, 16>::new();
     /// let h0 = pool.insert(0);
     /// let h1 = pool.insert(1);
@@ -271,7 +266,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// 
     /// # Examples
     /// ```
-    /// # use coca::pool::packed::PackedInlinePool;
+    /// # use coca::collections::PackedInlinePool;
     /// let mut pool = PackedInlinePool::<u128, 16>::new();
     /// let h0 = pool.insert(0);
     /// let h1 = pool.insert(1);
@@ -308,7 +303,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// 
     /// # Examples
     /// ```
-    /// # use coca::pool::packed::PackedInlinePool;
+    /// # use coca::collections::PackedInlinePool;
     /// let mut pool = PackedInlinePool::<u128, 16>::new();
     /// let h = pool.insert(0xF0E1_D2C3_B4A5_9687);
     /// assert!(pool.contains(h));
@@ -373,7 +368,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// 
     /// # Examples
     /// ```
-    /// # use coca::pool::packed::PackedInlinePool;
+    /// # use coca::collections::PackedInlinePool;
     /// let mut pool = PackedInlinePool::<&'static str, 5>::new();
     /// let ha = pool.insert("apple");
     /// let hb = pool.insert("berry");
@@ -435,7 +430,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// 
     /// # Examples
     /// ```
-    /// # use coca::pool::packed::PackedInlinePool;
+    /// # use coca::collections::PackedInlinePool;
     /// let mut pool = PackedInlinePool::<u16, 8>::new();
     /// let h = pool.try_insert(42).expect("failed to insert into an empty pool?!");
     /// assert_eq!(pool.get(h), Some(&42));
@@ -494,7 +489,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// 
     /// # Examples
     /// ```
-    /// # use coca::pool::{DefaultHandle, packed::PackedInlinePool};
+    /// # use coca::collections::{pool::DefaultHandle, PackedInlinePool};
     /// let mut pool = PackedInlinePool::<(DefaultHandle, u16), 8>::new();
     /// let h = pool.try_insert_with_handle(|h| (h, 42)).expect("failed to insert into an empty pool?!");
     /// assert_eq!(pool.get(h), Some(&(h, 42)));
@@ -532,7 +527,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     ///
     /// # Panics
     /// Panics if the pool is already full. See
-    /// [`try_insert_with_handle`](Packed::try_insert_with_handle) for a
+    /// [`try_insert_with_handle`](PackedPool::try_insert_with_handle) for a
     /// checked version.
     pub fn insert_with_handle<F: FnOnce(H) -> T>(&mut self, f: F) -> H {
         self.try_insert_with_handle(f)
@@ -544,7 +539,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// 
     /// # Examples
     /// ```
-    /// # use coca::pool::packed::PackedInlinePool;
+    /// # use coca::collections::PackedInlinePool;
     /// let mut pool = PackedInlinePool::<u16, 8>::new();
     /// assert_eq!(pool.len(), 0);
     /// let h = pool.insert(42);
@@ -603,7 +598,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// 
     /// # Examples
     /// ```
-    /// # use coca::pool::packed::PackedInlinePool;
+    /// # use coca::collections::PackedInlinePool;
     /// let mut pool = PackedInlinePool::<u128, 4>::new();
     /// let h1 = pool.insert(1);
     /// let h2 = pool.insert(2);
@@ -624,7 +619,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// 
     /// # Examples
     /// ```
-    /// # use coca::pool::{DefaultHandle, packed::PackedInlinePool};
+    /// # use coca::collections::{pool::DefaultHandle, PackedInlinePool};
     /// let mut pool = PackedInlinePool::<u16, 5>::new();
     /// for i in 0..5 { pool.insert(i); }
     /// assert!(pool.is_full());
@@ -654,7 +649,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// 
     /// # Examples
     /// ```
-    /// # use coca::pool::packed::PackedInlinePool;
+    /// # use coca::collections::PackedInlinePool;
     /// let mut pool = PackedInlinePool::<u128, 5>::new();
     /// let h0 = pool.insert(0);
     /// let h1 = pool.insert(1);
@@ -678,7 +673,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     ///
     /// # Examples
     /// ```
-    /// # use coca::pool::packed::PackedInlinePool;
+    /// # use coca::collections::PackedInlinePool;
     /// let mut pool = PackedInlinePool::<u128, 5>::new();
     /// let h1 = pool.insert(1);
     /// let h2 = pool.insert(2);
@@ -706,7 +701,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// 
     /// # Examples
     /// ```
-    /// # use coca::pool::packed::PackedInlinePool;
+    /// # use coca::collections::PackedInlinePool;
     /// let mut pool = PackedInlinePool::<u128, 5>::new();
     /// pool.insert(0);
     /// let mut it = pool.drain();
@@ -734,7 +729,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     ///
     /// # Examples
     /// ```
-    /// # use coca::pool::packed::PackedInlinePool;
+    /// # use coca::collections::PackedInlinePool;
     /// let mut pool = PackedInlinePool::<u128, 10>::new();
     /// for i in 1..=10 {
     ///     pool.insert(i);
@@ -1013,31 +1008,11 @@ impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -
 impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> ExactSizeIterator for DrainFilter<'a, T, S, H, F> {}
 impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> FusedIterator for DrainFilter<'a, T, S, H, F> {}
 
-/// A densely packed pool that stores its contents in globally allocated memory.
-/// 
-/// # Examples
-/// ```
-/// # use coca::pool::DefaultHandle;
-/// # use coca::pool::packed::PackedAllocPool;
-/// const A: u128 = 0x0123_4567_89AB_CDEF_0123_4567_89AB_CDEF;
-/// const B: u128 = 0xFEDC_BA98_7654_3210_FEDC_BA98_7654_3210;
-///
-/// let mut pool = PackedAllocPool::<u128>::with_capacity(8);
-/// let a = pool.insert(A);
-/// let b = pool.insert(B);
-/// assert_eq!(pool.len(), 2);
-/// assert_eq!(pool.remove(a), Some(A));
-/// assert_eq!(pool.remove(b), Some(B));
-/// assert!(pool.is_empty());
-/// ```
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-pub type PackedAllocPool<T, H = DefaultHandle> = PackedPool<T, crate::storage::AllocStorage<PackedPoolLayout<T, H>>, H>;
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T, H: Handle> PackedAllocPool<T, H> {
-    /// Constructs a new, empty [`PackedAllocPool`] with the specified capacity.
+impl<T, H: Handle> crate::collections::PackedAllocPool<T, H> {
+    /// Constructs a new, empty [`PackedAllocPool`](crate::collections::PackedAllocPool)
+    /// with the specified capacity.
     ///
     /// # Panics
     /// Panics if the specified capacity is greater than or equal to `H::MAX_INDEX`.
@@ -1054,7 +1029,7 @@ impl<T, H: Handle> PackedAllocPool<T, H> {
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T: Clone, H: Handle> Clone for PackedAllocPool<T, H> {
+impl<T: Clone, H: Handle> Clone for crate::collections::PackedAllocPool<T, H> {
     fn clone(&self) -> Self {
         let storage = crate::storage::AllocStorage::with_capacity(self.capacity());
         let mut result: Self = PackedPool {
@@ -1110,46 +1085,6 @@ unsafe impl<T, H: Handle, const N: usize> Storage<PackedPoolLayout<T, H>> for In
         N
     }
 }
-
-/// A densely packed pool that stores its contents inline, indexed by [`DefaultHandle`].
-/// 
-/// # Examples
-/// ```
-/// # use coca::pool::DefaultHandle;
-/// # use coca::pool::packed::PackedInlinePool;
-/// const A: u128 = 0x0123_4567_89AB_CDEF_0123_4567_89AB_CDEF;
-/// const B: u128 = 0xFEDC_BA98_7654_3210_FEDC_BA98_7654_3210;
-///
-/// let mut pool = PackedInlinePool::<u128, 8>::new();
-/// let a = pool.insert(A);
-/// let b = pool.insert(B);
-/// assert_eq!(pool.len(), 2);
-/// assert_eq!(pool.remove(a), Some(A));
-/// assert_eq!(pool.remove(b), Some(B));
-/// assert!(pool.is_empty());
-/// ```
-pub type PackedInlinePool<T, const N: usize> = PackedPool<T, InlineStorage<T, DefaultHandle, N>, DefaultHandle>;
-
-/// A densely packed pool that stores its contents inline, indexed by the specified custom [`Handle`].
-/// 
-/// # Examples
-/// ```
-/// # use coca::handle_type;
-/// # use coca::pool::packed::TiPackedInlinePool;
-/// handle_type! { CustomHandle: 8 / 32; }
-/// 
-/// const A: u128 = 0x0123_4567_89AB_CDEF_0123_4567_89AB_CDEF;
-/// const B: u128 = 0xFEDC_BA98_7654_3210_FEDC_BA98_7654_3210;
-///
-/// let mut pool = TiPackedInlinePool::<u128, CustomHandle, 8>::new();
-/// let a: CustomHandle = pool.insert(A);
-/// let b = pool.insert(B);
-/// assert_eq!(pool.len(), 2);
-/// assert_eq!(pool.remove(a), Some(A));
-/// assert_eq!(pool.remove(b), Some(B));
-/// assert!(pool.is_empty());
-/// ```
-pub type TiPackedInlinePool<T, H, const N: usize> = PackedPool<T, InlineStorage<T, H, N>, H>;
 
 impl<T, H: Handle, const N: usize> PackedPool<T, InlineStorage<T, H, N>, H> {
     /// Constructs a new, empty `DirectPool` backed by [`InlineStorage`].
@@ -1214,15 +1149,15 @@ impl<T: Clone, H: Handle, const N: usize> Clone for PackedPool<T, InlineStorage<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pool::{DefaultHandle, Handle};
+    use crate::collections::pool::{DefaultHandle, Handle};
     use crate::storage::LayoutSpec;
-    use crate::{fmt, Arena};
+    use crate::{fmt, arena::Arena};
 
     #[test]
     fn debug_impl() {
         let mut storage = [MaybeUninit::uninit(); 2048];
         let mut arena = Arena::from(&mut storage[..]);
-        let mut pool: PackedArenaPool<&'static str, DefaultHandle> = arena.with_capacity(4);
+        let mut pool: crate::collections::PackedArenaPool<&'static str, DefaultHandle> = arena.with_capacity(4);
 
         let empty = fmt!(arena, "{:?}", pool).unwrap();
         assert_eq!(
@@ -1279,6 +1214,6 @@ mod tests {
         test_layout::<[u8; 3], DefaultHandle, 10>();
         test_layout::<[u8; 25], DefaultHandle, 20>();
         test_layout::<u128, DefaultHandle, 40>();
-        test_layout::<crate::ArenaDeque<u8>, DefaultHandle, 80>();
+        test_layout::<crate::collections::ArenaDeque<u8>, DefaultHandle, 80>();
     }
 }

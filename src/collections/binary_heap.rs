@@ -10,7 +10,7 @@
 //! allowing it to be used for an O(n log(n)) in-place heap sort.
 
 use crate::storage::{ArrayLike, Capacity, Storage};
-use crate::vec::{Drain, Vec};
+use crate::collections::vec::{Drain, Vec};
 
 use core::fmt::{self, Debug, Formatter};
 use core::iter::{FromIterator, FusedIterator};
@@ -31,25 +31,6 @@ use core::ops::{Deref, DerefMut};
 pub struct BinaryHeap<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity = usize> {
     a: Vec<T, S, I>,
 }
-
-/// A binary heap using a mutable slice for storage.
-///
-/// # Examples
-/// ```
-/// use core::mem::MaybeUninit;
-/// let mut backing_array = [MaybeUninit::<char>::uninit(); 32];
-/// let (slice1, slice2) = (&mut backing_array[..]).split_at_mut(16);
-/// let mut heap1 = coca::SliceHeap::<_>::from(slice1);
-/// let mut heap2 = coca::SliceHeap::<_>::from(slice2);
-/// assert_eq!(heap1.capacity(), 16);
-/// assert_eq!(heap2.capacity(), 16);
-/// ```
-pub type SliceHeap<'a, T, I = usize> = BinaryHeap<T, crate::storage::SliceStorage<'a, T>, I>;
-/// A binary heap using an arena-allocated slice for storage.
-///
-/// See [`Arena::try_heap`](crate::Arena::try_heap) for a usage example.
-pub type ArenaHeap<'a, T, I = usize> =
-    BinaryHeap<T, crate::storage::ArenaStorage<'a, ArrayLike<T>>, I>;
 
 /// Structure wrapping a mutable reference to the greatest item on a `BinaryHeap`.
 ///
@@ -179,7 +160,7 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> BinaryHeap<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
-    /// let mut heap = coca::SliceHeap::<_>::from(&mut backing_region[..]);
+    /// let mut heap = coca::collections::SliceHeap::<_>::from(&mut backing_region[..]);
     /// heap.try_push(3);
     /// heap.try_push(5);
     /// heap.try_push(1);
@@ -206,7 +187,7 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> BinaryHeap<T, S, I> {
     ///
     /// # Examples
     /// ```
-    /// use coca::{SliceHeap, SliceVec};
+    /// use coca::collections::{SliceHeap, SliceVec};
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
     /// let mut vec = SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(3);
@@ -250,7 +231,7 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> BinaryHeap<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
-    /// let mut heap = coca::SliceHeap::<_>::from(&mut backing_region[..]);
+    /// let mut heap = coca::collections::SliceHeap::<_>::from(&mut backing_region[..]);
     /// heap.try_push(3);
     /// heap.try_push(5);
     /// heap.try_push(1);
@@ -304,7 +285,7 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> BinaryHeap<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
-    /// let mut heap = coca::SliceHeap::<_>::from(&mut backing_region[..]);
+    /// let mut heap = coca::collections::SliceHeap::<_>::from(&mut backing_region[..]);
     /// heap.push(1); heap.push(3);
     /// assert!(!heap.is_empty());
     ///
@@ -332,7 +313,7 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> BinaryHeap<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
-    /// let mut heap = coca::SliceHeap::<_>::from(&mut backing_region[..]);
+    /// let mut heap = coca::collections::SliceHeap::<_>::from(&mut backing_region[..]);
     /// heap.push(1); heap.push(3); heap.push(5);
     ///
     /// let mut iter = heap.drain_sorted();
@@ -362,7 +343,7 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> BinaryHeap<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
-    /// let mut heap = coca::SliceHeap::<_>::from(&mut backing_region[..]);
+    /// let mut heap = coca::collections::SliceHeap::<_>::from(&mut backing_region[..]);
     /// heap.push(1); heap.push(5); heap.push(3); heap.push(2); heap.push(4);
     /// let vec = heap.into_sorted_vec();
     /// assert_eq!(vec, &[1, 2, 3, 4, 5][..]);
@@ -389,7 +370,7 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> BinaryHeap<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
-    /// let mut heap = coca::SliceHeap::<_>::from(&mut backing_region[..]);
+    /// let mut heap = coca::collections::SliceHeap::<_>::from(&mut backing_region[..]);
     /// heap.push(1); heap.push(3); heap.push(5);
     ///
     /// let mut iter = heap.into_iter_sorted();
@@ -510,23 +491,7 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Drop for IntoIterSorted<T, S
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-/// A binary heap using a heap-allocated slice for storage.
-///
-/// Note this still has a fixed capacity, and will never reallocate.
-///
-/// # Examples
-/// ```
-/// let mut heap = coca::AllocHeap::<char>::with_capacity(3);
-/// heap.push('a');
-/// heap.push('b');
-/// heap.push('c');
-/// assert!(heap.try_push('d').is_err());
-/// ```
-pub type AllocHeap<T, I = usize> = BinaryHeap<T, crate::storage::AllocStorage<ArrayLike<T>>, I>;
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T: Copy + Ord, I: Capacity> AllocHeap<T, I> {
+impl<T: Copy + Ord, I: Capacity> crate::collections::AllocHeap<T, I> {
     /// Constructs a new, empty `AllocHeap<T, I>` with the specified capacity.
     ///
     /// # Panics
@@ -540,35 +505,11 @@ impl<T: Copy + Ord, I: Capacity> AllocHeap<T, I> {
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T: Copy + Ord, I: Capacity> Clone for AllocHeap<T, I> {
+impl<T: Copy + Ord, I: Capacity> Clone for crate::collections::AllocHeap<T, I> {
     fn clone(&self) -> Self {
         BinaryHeap { a: self.a.clone() }
     }
 }
-
-/// A binary heap using an inline array for storage.
-///
-/// # Examples
-/// ```
-/// let mut heap = coca::InlineHeap::<char, 3>::new();
-/// heap.push('a');
-/// heap.push('b');
-/// heap.push('c');
-/// assert_eq!(heap.peek(), Some(&'c'));
-/// ```
-pub type InlineHeap<T, const C: usize> = BinaryHeap<T, crate::storage::InlineStorage<T, C>, usize>;
-
-/// A binary heap using an inline array for storage, generic over the index type.
-///
-/// # Examples
-/// ```
-/// let mut heap = coca::TiInlineHeap::<char, u8, 3>::new();
-/// heap.push('a');
-/// let vec = heap.into_vec();
-/// assert_eq!(vec[0u8], 'a');
-/// ```
-pub type TiInlineHeap<T, Index, const C: usize> =
-    BinaryHeap<T, crate::storage::InlineStorage<T, C>, Index>;
 
 impl<T: Ord, I: Capacity, const C: usize> BinaryHeap<T, [MaybeUninit<T>; C], I> {
     /// Constructs a new, empty `BinaryHeap` backed by an inline array.
@@ -578,7 +519,7 @@ impl<T: Ord, I: Capacity, const C: usize> BinaryHeap<T, [MaybeUninit<T>; C], I> 
     ///
     /// # Examples
     /// ```
-    /// let heap = coca::InlineHeap::<char, 4>::new();
+    /// let heap = coca::collections::InlineHeap::<char, 4>::new();
     /// assert_eq!(heap.capacity(), 4);
     /// assert!(heap.is_empty());
     /// ```
@@ -637,7 +578,7 @@ mod tests {
         use rand::{rngs::SmallRng, RngCore, SeedableRng};
 
         let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 32];
-        let mut heap = SliceHeap::<_>::from(&mut backing_region[..]);
+        let mut heap = crate::collections::SliceHeap::<_>::from(&mut backing_region[..]);
 
         let mut rng = SmallRng::from_seed([
             0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc,
@@ -669,7 +610,7 @@ mod tests {
         #[derive(Clone)]
         struct Droppable<'a, 'b> {
             value: usize,
-            log: &'a RefCell<crate::SliceVec<'b, usize>>,
+            log: &'a RefCell<crate::collections::SliceVec<'b, usize>>,
         }
 
         impl PartialEq for Droppable<'_, '_> {
@@ -699,7 +640,7 @@ mod tests {
         }
 
         let mut backing_array = [MaybeUninit::<usize>::uninit(); 16];
-        let drop_log = RefCell::new(crate::SliceVec::<_>::from(&mut backing_array[..]));
+        let drop_log = RefCell::new(crate::collections::SliceVec::<_>::from(&mut backing_array[..]));
 
         let mut backing_region = [
             core::mem::MaybeUninit::<Droppable>::uninit(),
@@ -712,7 +653,7 @@ mod tests {
             core::mem::MaybeUninit::<Droppable>::uninit(),
         ];
 
-        let mut heap = SliceHeap::<Droppable>::from(&mut backing_region[..]);
+        let mut heap = crate::collections::SliceHeap::<Droppable>::from(&mut backing_region[..]);
         for i in 1..=8 {
             heap.push(Droppable {
                 value: i,

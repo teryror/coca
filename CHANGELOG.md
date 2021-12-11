@@ -7,6 +7,7 @@
   are no longer required to perform validation on _every_ call
 - Remove the `nightly` feature flag and the `feature(min_const_generics)` attribute,
   raising the minimum supported compiler version to 1.51.
+- Rework the module hierarchy, introducing the `collections` module
 - Rename `Array{Vec, Deque, Heap}` to `Inline*` for consistency with `InlineObject`
 - Redefine `ArenaStorage` as a struct for compatibility with non-array-like layouts
 - Remove `HeapStorage` type alias and add `AllocStorage` struct (similar to `ArenaStorage`)

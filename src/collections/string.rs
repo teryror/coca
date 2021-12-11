@@ -4,8 +4,8 @@ use core::fmt::{self, Display};
 use core::ops::{RangeBounds, Range};
 use core::str::{self, Utf8Error};
 
-use crate::storage::{ArrayLike, Storage, Capacity, InlineStorage, ArenaStorage, normalize_range, SliceStorage};
-use crate::vec::Vec;
+use crate::collections::vec::Vec;
+use crate::storage::{ArrayLike, Storage, Capacity, InlineStorage, ArenaStorage, normalize_range};
 
 /// A possible error value when converting a UTF-8 byte vector into a [`String`].
 /// 
@@ -85,16 +85,16 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// # Examples
     /// ```
     /// // Basic Usage:
-    /// let mut bytes = coca::InlineVec::<u8, 8>::new();
+    /// let mut bytes = coca::collections::InlineVec::<u8, 8>::new();
     /// bytes.extend_from_slice(&[240, 159, 146, 150]);
     /// 
-    /// let sparkle_heart = coca::InlineString::from_utf8(bytes).unwrap();
+    /// let sparkle_heart = coca::collections::InlineString::from_utf8(bytes).unwrap();
     /// assert_eq!(sparkle_heart, "💖");
     /// 
     /// // Invalid Bytes:
-    /// let mut bytes = coca::InlineVec::<u8, 8>::new();
+    /// let mut bytes = coca::collections::InlineVec::<u8, 8>::new();
     /// bytes.extend_from_slice(&[0, 159, 146, 150]);
-    /// assert!(coca::InlineString::from_utf8(bytes).is_err());
+    /// assert!(coca::collections::InlineString::from_utf8(bytes).is_err());
     /// ```
     #[inline]
     pub fn from_utf8(vec: Vec<u8, S, I>) -> Result<Self, FromUtf8Error<S, I>> {
@@ -112,7 +112,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let s = coca::InlineString::<8>::from_str("hello");
+    /// let s = coca::collections::InlineString::<8>::from_str("hello");
     /// let (storage, len): ([core::mem::MaybeUninit<u8>; 8], usize) = s.into_raw_parts();
     /// assert_eq!(len, 5);
     /// ```
@@ -131,7 +131,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// use coca::InlineString;
+    /// use coca::collections::InlineString;
     /// 
     /// let s = InlineString::<8>::from_str("hello");
     /// let (storage, len) = s.into_raw_parts();
@@ -160,10 +160,10 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut bytes = coca::InlineVec::<u8, 8>::new();
+    /// let mut bytes = coca::collections::InlineVec::<u8, 8>::new();
     /// bytes.extend_from_slice(&[240, 159, 146, 150]);
     /// 
-    /// let sparkle_heart = unsafe { coca::InlineString::from_utf8_unchecked(bytes) };
+    /// let sparkle_heart = unsafe { coca::collections::InlineString::from_utf8_unchecked(bytes) };
     /// assert_eq!(sparkle_heart, "💖");
     /// ```
     #[inline]
@@ -175,7 +175,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let s = coca::InlineString::<8>::from_str("hello");
+    /// let s = coca::collections::InlineString::<8>::from_str("hello");
     /// let bytes = s.into_bytes();
     /// 
     /// assert_eq!(&[104, 101, 108, 108, 111][..], &bytes[..]);
@@ -200,7 +200,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut s = coca::InlineString::<8>::from_str("foo");
+    /// let mut s = coca::collections::InlineString::<8>::from_str("foo");
     /// 
     /// assert!(s.try_push_str("bar").is_ok());
     /// 
@@ -242,7 +242,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut s = coca::InlineString::<10>::from_str("abcde");
+    /// let mut s = coca::collections::InlineString::<10>::from_str("abcde");
     /// 
     /// assert!(s.try_extend_from_within(2..).is_ok());
     /// assert_eq!(s, "abcdecde");
@@ -302,7 +302,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut s = coca::InlineString::<4>::from_str("ab");
+    /// let mut s = coca::collections::InlineString::<4>::from_str("ab");
     /// 
     /// assert!(s.try_push('c').is_ok());
     /// assert!(s.try_push('d').is_ok());
@@ -343,7 +343,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let s = coca::InlineString::<8>::from_str("hello");
+    /// let s = coca::collections::InlineString::<8>::from_str("hello");
     /// assert_eq!(&[104, 101, 108, 108, 111], s.as_bytes());
     /// ```
     #[inline]
@@ -360,7 +360,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut s = coca::InlineString::<8>::from_str("hello");
+    /// let mut s = coca::collections::InlineString::<8>::from_str("hello");
     /// 
     /// s.truncate(2);
     /// 
@@ -385,7 +385,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut s = coca::InlineString::<4>::from_str("foo");
+    /// let mut s = coca::collections::InlineString::<4>::from_str("foo");
     /// 
     /// assert_eq!(s.pop(), Some('o'));
     /// assert_eq!(s.pop(), Some('o'));
@@ -412,7 +412,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut s = coca::InlineString::<4>::from_str("foo");
+    /// let mut s = coca::collections::InlineString::<4>::from_str("foo");
     /// 
     /// assert_eq!(s.remove(0), 'f');
     /// assert_eq!(s.remove(1), 'o');
@@ -443,7 +443,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut s = coca::InlineString::<12>::from_str("f_o_o_b_a_r");
+    /// let mut s = coca::collections::InlineString::<12>::from_str("f_o_o_b_a_r");
     /// 
     /// s.retain(|ch| ch != '_');
     /// 
@@ -452,7 +452,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// Because the elements are visited exactly once in the original order,
     /// external state may be used to decide which characters to keep:
     /// ```
-    /// let mut s = coca::InlineString::<8>::from_str("abcde");
+    /// let mut s = coca::collections::InlineString::<8>::from_str("abcde");
     /// let keep = [false, true, true, false, true];
     /// let mut iter = keep.iter();
     /// s.retain(|_| *iter.next().unwrap());
@@ -495,7 +495,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut s = coca::InlineString::<3>::new();
+    /// let mut s = coca::collections::InlineString::<3>::new();
     /// 
     /// assert!(s.try_insert(0, 'o').is_ok());
     /// assert!(s.try_insert(1, 'o').is_ok());
@@ -535,7 +535,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut s = coca::InlineString::<8>::from_str("bar");
+    /// let mut s = coca::collections::InlineString::<8>::from_str("bar");
     /// 
     /// assert!(s.try_insert_str(0, "foo").is_ok());
     /// assert!(s.try_insert_str(6, "bazz").is_err());
@@ -568,7 +568,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut s = coca::InlineString::<8>::from_str("hello");
+    /// let mut s = coca::collections::InlineString::<8>::from_str("hello");
     /// 
     /// unsafe {
     ///     let mut vec = s.as_mut_vec();
@@ -598,7 +598,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut s = coca::InlineString::<32>::from_str("α is alpha, β is beta");
+    /// let mut s = coca::collections::InlineString::<32>::from_str("α is alpha, β is beta");
     /// let beta_offset = s.find('β').unwrap();
     /// 
     /// let mut drain_iter = s.drain(..beta_offset);
@@ -635,7 +635,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut s = coca::InlineString::<32>::from_str("α is alpha, β is beta");
+    /// let mut s = coca::collections::InlineString::<32>::from_str("α is alpha, β is beta");
     /// let beta_offset = s.find('β').unwrap();
     /// 
     /// assert!(s.try_replace_range(..beta_offset, "A is capital alpha; ").is_ok());
@@ -824,27 +824,12 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::ops::AddAssign<&str> for Stri
     }
 }
 
-/// A string using any mutable byte slice for storage.
-/// 
-/// # Examples
-/// ```
-/// let mut buf = [core::mem::MaybeUninit::<u8>::uninit(); 8];
-/// let str = coca::SliceString::<'_, usize>::from(&mut buf[..6]);
-/// 
-/// assert_eq!(str.capacity(), 6);
-/// ```
-pub type SliceString<'a, I = usize> = String<SliceStorage<'a, u8>, I>;
-/// A string using an arena-allocated byte slice for storage.
-/// 
-/// See [`Arena::try_string`](crate::Arena::try_string) for example usage.
-pub type ArenaString<'a, I = usize> = String<ArenaStorage<'a, ArrayLike<u8>>, I>;
-
-impl<'a, I: Capacity> ArenaString<'a, I> {
+impl<'a, I: Capacity> crate::collections::ArenaString<'a, I> {
     /// Converts the given boxed `str` slice into a `String`.
     /// 
     /// # Examples
     /// ```
-    /// use coca::Arena;
+    /// use coca::arena::Arena;
     /// use core::mem::MaybeUninit;
     ///
     /// # fn test() -> Option<()> {
@@ -852,7 +837,7 @@ impl<'a, I: Capacity> ArenaString<'a, I> {
     /// let mut arena = Arena::from(&mut backing_region[..]);
     /// 
     /// let boxed_str = coca::fmt!(arena, "{}", 1234567890)?;
-    /// let mut string = coca::ArenaString::<'_, usize>::from_boxed_str(boxed_str);
+    /// let mut string = coca::collections::ArenaString::<'_, usize>::from_boxed_str(boxed_str);
     /// 
     /// string.retain(|c| (c as u8) % 2 == 1);
     /// assert_eq!(string, "13579");
@@ -871,7 +856,7 @@ impl<'a, I: Capacity> ArenaString<'a, I> {
     /// 
     /// # Examples
     /// ```
-    /// use coca::Arena;
+    /// use coca::arena::Arena;
     /// use core::mem::MaybeUninit;
     ///
     /// # fn test() -> Option<()> {
@@ -899,20 +884,6 @@ impl<'a, I: Capacity> ArenaString<'a, I> {
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-/// A string using a heap-allocated slice for storage.
-/// 
-/// # Examples
-/// ```
-/// let mut s = coca::AllocString::with_capacity(16usize);
-/// s.push_str("Hello, ");
-/// s.push_str("World!");
-/// 
-/// assert_eq!(s, "Hello, World!");
-/// ```
-pub type AllocString<I = usize> = String<crate::storage::AllocStorage<ArrayLike<u8>>, I>;
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 impl<I: Capacity> String<crate::storage::AllocStorage<ArrayLike<u8>>, I> {
     /// Creates a new, empty `AllocString` with the specified capacity.
     pub fn with_capacity(capacity: I) -> Self {
@@ -923,7 +894,7 @@ impl<I: Capacity> String<crate::storage::AllocStorage<ArrayLike<u8>>, I> {
     /// 
     /// # Examples
     /// ```
-    /// let s = coca::AllocString::<usize>::from_str("abcde");
+    /// let s = coca::collections::AllocString::<usize>::from_str("abcde");
     /// assert_eq!(s.capacity(), s.len());
     /// ```
     pub fn from_str(string: &str) -> Self {
@@ -938,11 +909,11 @@ impl<I: Capacity> String<crate::storage::AllocStorage<ArrayLike<u8>>, I> {
     /// 
     /// # Examples
     /// ```
-    /// let s = coca::AllocString::try_from_str_with_capacity("abcde", 8usize).unwrap();
+    /// let s = coca::collections::AllocString::try_from_str_with_capacity("abcde", 8usize).unwrap();
     /// assert_eq!(s.capacity(), 8);
     /// assert_eq!(s, "abcde");
     /// 
-    /// assert!(coca::AllocString::try_from_str_with_capacity("abcde", 4usize).is_err());
+    /// assert!(coca::collections::AllocString::try_from_str_with_capacity("abcde", 4usize).is_err());
     /// ```
     pub fn try_from_str_with_capacity(string: &str, capacity: I) -> Result<Self, ()> {
         let cap = capacity.as_usize();
@@ -964,25 +935,6 @@ impl<I: Capacity> String<crate::storage::AllocStorage<ArrayLike<u8>>, I> {
     }
 }
 
-/// A string using an inline array for storage.
-/// 
-/// # Examples
-/// ```
-/// let mut s = coca::InlineString::<8>::new();
-/// assert_eq!(s.capacity(), 8);
-/// assert!(s.is_empty());
-/// ```
-pub type InlineString<const C: usize> = String<InlineStorage<u8, C>, usize>;
-/// A string using an inline array for storage, generic over the index type.
-/// 
-/// # Examples
-/// ```
-/// let mut s = coca::TiInlineString::<u8, 255>::new();
-/// assert_eq!(s.capacity(), 255);
-/// assert!(s.is_empty());
-/// ```
-pub type TiInlineString<I, const C: usize> = String<InlineStorage<u8, C>, I>;
-
 impl<I: Capacity, const C: usize> String<InlineStorage<u8, C>, I> {
     /// Constructs a new, empty `String` backed by an inline array.
     pub fn new() -> Self {
@@ -995,11 +947,11 @@ impl<I: Capacity, const C: usize> String<InlineStorage<u8, C>, I> {
     /// 
     /// # Examples
     /// ```
-    /// let s = coca::InlineString::<8>::try_from_str("abcde").unwrap();
+    /// let s = coca::collections::InlineString::<8>::try_from_str("abcde").unwrap();
     /// assert_eq!(s.capacity(), 8);
     /// assert_eq!(s, "abcde");
     /// 
-    /// assert!(coca::InlineString::<4>::try_from_str("abcde").is_err());
+    /// assert!(coca::collections::InlineString::<4>::try_from_str("abcde").is_err());
     /// ```
     pub fn try_from_str(string: &str) -> Result<Self, ()> {
         if string.len() <= C {

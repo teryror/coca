@@ -132,7 +132,7 @@ unsafe impl Capacity for usize {
 
 /// Generates one or more new types wrapping an implementor of [`Capacity`].
 ///
-/// This can help in avoiding use of the wrong index with a [`Vec`](crate::vec::Vec).
+/// This can help in avoiding use of the wrong index with a [`Vec`](crate::collections::vec::Vec).
 ///
 /// # Examples
 /// ```compile_fail

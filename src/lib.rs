@@ -34,42 +34,12 @@
 pub extern crate alloc;
 
 pub mod arena;
-pub mod binary_heap;
-pub mod cache;
-pub mod deque;
-pub mod option_group;
-pub mod pool;
+pub mod collections;
 pub mod storage;
-pub mod string;
-pub mod vec;
 
 #[cfg(feature = "unstable")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "unstable")))]
 pub mod object;
-
-pub use crate::{
-    arena::{Arena, Box},
-    binary_heap::{ArenaHeap, InlineHeap, SliceHeap, TiInlineHeap},
-    cache::{ArenaDirectMappedCache, Arena2WayLruCache, InlineDirectMappedCache, Inline2WayLruCache},
-    deque::{ArenaDeque, InlineDeque, SliceDeque, TiInlineDeque},
-    option_group::{OptionGroup8, OptionGroup16, OptionGroup32, OptionGroup64},
-    pool::direct::{DirectArenaPool, DirectInlinePool, TiDirectInlinePool},
-    pool::packed::{PackedArenaPool, PackedInlinePool, TiPackedInlinePool},
-    string::{ArenaString, InlineString, SliceString, TiInlineString},
-    vec::{ArenaVec, InlineVec, SliceVec, TiInlineVec},
-};
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-pub use crate::{
-    binary_heap::AllocHeap,
-    cache::{AllocDirectMappedCache, Alloc2WayLruCache},
-    deque::AllocDeque,
-    pool::direct::DirectAllocPool,
-    pool::packed::PackedAllocPool,
-    vec::AllocVec,
-    string::AllocString,
-};
 
 #[cfg(feature = "unstable")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "unstable")))]

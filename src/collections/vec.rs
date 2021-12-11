@@ -3,19 +3,20 @@
 //! Bounded vectors have O(1) indexing, push and pop (from the end), as well as
 //! unordered removal.
 //!
-//! Unlike `alloc::Vec`, [`coca::Vec`](Vec) is not only generic over the element type,
+//! Unlike `alloc::Vec`, [`coca::collections::Vec`](Vec) is not only generic over the element type,
 //! but also the underlying storage mechanism and index type (which defaults to
 //! `usize`).
 //!
 //! With no optional features enabled, the only supported storage types are
-//! [references to slices](SliceVec), [arena-allocated slices](ArenaVec),
-//! [arrays inlined in the `Vec`](InlineVec), as well as referenced and
-//! (arena-)boxed arrays, which do not require a run-time representation of
-//! their capacity.
+//! [references to slices](crate::collections::SliceVec),
+//! [arena-allocated slices](crate::collections::ArenaVec),
+//! [arrays inlined in the `Vec`](crate::collections::InlineVec), as well as
+//! referenced and (arena-)boxed arrays, which do not require a run-time
+//! representation of their capacity.
 //!
-//! The `alloc` feature allows using [owned slices](AllocVec) for storage. Note
-//! that such a vector still does not reallocate - this may be useful in cases
-//! where domain logic dictates a length limit on a list.
+//! The `alloc` feature allows using [owned slices](crate::collections::AllocVec)
+//! for storage. Note that such a vector still does not reallocate - this may
+//! be useful in cases where domain logic dictates a length limit on a list.
 //!
 //! Specifying an index type smaller than `usize`, such as `u16` or even `u8`,
 //! can aid in struct size optimization, especially with `InlineVec`. It's also
@@ -52,30 +53,12 @@ use core::ptr;
 ///
 /// Generic over the storage buffer type `S` and the index type `I`.
 ///
-/// See the [module-level documentation](crate::vec) for more.
+/// See the [module-level documentation](crate::collections::vec) for more.
 pub struct Vec<T, S: Storage<ArrayLike<T>>, I: Capacity = usize> {
     len: I,
     buf: S,
     elem: PhantomData<T>,
 }
-
-/// A vector using any mutable slice for storage.
-///
-/// # Examples
-/// ```
-/// use core::mem::MaybeUninit;
-/// let mut backing_array = [MaybeUninit::<char>::uninit(); 32];
-/// let (slice1, slice2) = (&mut backing_array[..]).split_at_mut(16);
-/// let mut vec1 = coca::SliceVec::<_>::from(slice1);
-/// let mut vec2 = coca::SliceVec::<_>::from(slice2);
-/// assert_eq!(vec1.capacity(), 16);
-/// assert_eq!(vec2.capacity(), 16);
-/// ```
-pub type SliceVec<'a, T, I = usize> = Vec<T, crate::storage::SliceStorage<'a, T>, I>;
-/// A vector using an arena-allocated slice for storage.
-///
-/// See [`Arena::try_vec`](crate::Arena::try_vec) for example usage.
-pub type ArenaVec<'a, T, I = usize> = Vec<T, crate::storage::ArenaStorage<'a, ArrayLike<T>>, I>;
 
 impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for Vec<T, S, I> {
     /// Converts a contiguous block of memory into an empty vector.
@@ -105,7 +88,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.extend(&[1, 2, 3]);
     ///
     /// let (slice, len) = vec.into_raw_parts();
@@ -133,11 +116,11 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.extend(&[1, 2, 3]);
     ///
     /// let (buf, length) = vec.into_raw_parts();
-    /// let vec = unsafe { coca::SliceVec::<u32>::from_raw_parts(buf, length) };
+    /// let vec = unsafe { coca::collections::SliceVec::<u32>::from_raw_parts(buf, length) };
     /// assert_eq!(vec.as_slice(), &[1, 2, 3]);
     /// ```
     pub unsafe fn from_raw_parts(buf: S, length: I) -> Self {
@@ -183,7 +166,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3);
     /// assert_eq!(vec.pop(), Some(3));
     /// assert_eq!(vec, &[1, 2][..]);
@@ -220,7 +203,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3);
     /// assert_eq!(vec.get(1), Some(&2));
     /// assert_eq!(vec.get(3), None);
@@ -253,7 +236,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 3];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// assert!(vec.try_push(1).is_ok());
     /// assert!(vec.try_push(2).is_ok());
     /// assert!(vec.try_push(3).is_ok());
@@ -297,7 +280,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4);
     ///
     /// vec.truncate(6);
@@ -337,7 +320,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4);
     ///
     /// vec.swap(0, 2);
@@ -361,7 +344,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4);
     ///
     /// vec.swap_remove(1);
@@ -422,7 +405,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3);
     ///
     /// assert!(vec.try_insert(3, 4).is_ok());
@@ -468,7 +451,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3);
     ///
     /// assert_eq!(vec.replace(1, 4), 2);
@@ -503,7 +486,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3);
     /// vec.remove(0);
     ///
@@ -544,7 +527,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4);
     /// vec.retain(|&x| x % 2 == 0);
     ///
@@ -553,7 +536,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// The exact order may be useful for tracking external state, like an index.
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4);
     /// let keep = [false, true, true, false];
     /// let mut i = 0;
@@ -583,7 +566,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4); vec.push(5);
     /// let mut iter = vec.drain(1..3);
     /// assert_eq!(iter.next(), Some(2));
@@ -625,7 +608,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4); vec.push(5);
     /// {
     ///     let mut it = vec.drain_filter(
@@ -660,7 +643,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.push(1); vec.push(2); vec.push(3); vec.push(4); vec.push(5);
     /// {
     ///     let mut it = vec.drain_filter_range(1..=3,
@@ -700,7 +683,7 @@ impl<T: Copy, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
-    /// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+    /// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
     /// vec.try_extend_from_slice(&[1, 2, 3])
     ///     .expect("must be able to insert 3 elements into an empty vector with capacity 5");
     /// vec.try_extend_from_slice(&[4, 5, 6])
@@ -746,7 +729,7 @@ impl<T: Copy, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut vec = coca::InlineVec::<u32, 8>::new();
+    /// let mut vec = coca::collections::InlineVec::<u32, 8>::new();
     /// 
     /// assert!(vec.try_insert_slice(0, &[1, 2, 5, 6]).is_ok());
     /// assert!(vec.try_insert_slice(2, &[3, 4]).is_ok());
@@ -814,7 +797,7 @@ impl<T: Copy, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Examples
     /// ```
     /// # fn test() -> Result<(), ()> {
-    /// let mut vec = coca::InlineVec::<u32, 4>::new();
+    /// let mut vec = coca::collections::InlineVec::<u32, 4>::new();
     /// vec.push(1); vec.push(2);
     /// vec.try_extend_from_within(0..1)?;
     /// assert_eq!(&vec, &[1, 2, 1]);
@@ -865,7 +848,7 @@ impl<T: Copy, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut vec = coca::InlineVec::<u32, 8>::new();
+    /// let mut vec = coca::collections::InlineVec::<u32, 8>::new();
     /// assert!(vec.try_replace_range(.., &[1, 2, 3, 4]).is_ok());
     /// assert!(vec.try_replace_range(1..3, &[4, 1, 4, 1]).is_ok());
     /// assert!(vec.try_replace_range(.., &[1, 2, 3, 4, 5, 6, 7, 8, 9]).is_err());
@@ -1122,9 +1105,9 @@ where
 /// # Example
 /// ```
 /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 4];
-/// let mut vec = coca::SliceVec::<u32>::from(&mut backing_region[..]);
+/// let mut vec = coca::collections::SliceVec::<u32>::from(&mut backing_region[..]);
 /// # vec.push(1); vec.push(2);
-/// let mut iter: coca::vec::IntoIterator<_, _, _> = vec.into_iter();
+/// let mut iter: coca::collections::vec::IntoIterator<_, _, _> = vec.into_iter();
 /// # assert_eq!(iter.next(), Some(1));
 /// # assert_eq!(iter.next(), Some(2));
 /// # assert_eq!(iter.next(), None);
@@ -1358,23 +1341,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Drop
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-/// A vector using a heap-allocated slice for storage.
-///
-/// Note this still has a fixed capacity, and will never reallocate.
-///
-/// # Examples
-/// ```
-/// let mut vec = coca::AllocVec::<char>::with_capacity(3);
-/// vec.push('a');
-/// vec.push('b');
-/// vec.push('c');
-/// assert!(vec.try_push('d').is_err());
-/// ```
-pub type AllocVec<T, I = usize> = Vec<T, crate::storage::AllocStorage<ArrayLike<T>>, I>;
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T: Copy, I: Capacity> AllocVec<T, I> {
+impl<T: Copy, I: Capacity> crate::collections::AllocVec<T, I> {
     /// Constructs a new, empty `AllocVec<T, I>` with the specified capacity.
     ///
     /// # Panics
@@ -1395,7 +1362,7 @@ impl<T: Copy, I: Capacity> AllocVec<T, I> {
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T: Copy, I: Capacity> Clone for AllocVec<T, I> {
+impl<T: Copy, I: Capacity> Clone for crate::collections::AllocVec<T, I> {
     fn clone(&self) -> Self {
         let mut result = Self::with_capacity(I::from_usize(self.capacity()));
         for item in self.iter() {
@@ -1405,28 +1372,6 @@ impl<T: Copy, I: Capacity> Clone for AllocVec<T, I> {
     }
 }
 
-/// A vector using an inline array for storage.
-///
-/// # Examples
-/// ```
-/// let mut vec = coca::InlineVec::<char, 3>::new();
-/// vec.push('a');
-/// vec.push('b');
-/// vec.push('c');
-/// assert!(vec.try_push('d').is_err());
-/// ```
-pub type InlineVec<T, const C: usize> = Vec<T, InlineStorage<T, C>, usize>;
-
-/// A vector using an inline array for storage, generic over the index type.
-///
-/// # Examples
-/// ```
-/// let mut vec = coca::TiInlineVec::<char, u8, 3>::new();
-/// vec.push('a');
-/// assert_eq!(vec[0u8], 'a');
-/// ```
-pub type TiInlineVec<T, Index, const C: usize> = Vec<T, InlineStorage<T, C>, Index>;
-
 impl<T, I: Capacity, const C: usize> Vec<T, InlineStorage<T, C>, I> {
     /// Constructs a new, empty `Vec` backed by an inline array.
     ///
@@ -1435,7 +1380,7 @@ impl<T, I: Capacity, const C: usize> Vec<T, InlineStorage<T, C>, I> {
     ///
     /// # Examples
     /// ```
-    /// let vec = coca::InlineVec::<u32, 6>::new();
+    /// let vec = coca::collections::InlineVec::<u32, 6>::new();
     /// assert_eq!(vec.capacity(), 6);
     /// assert_eq!(vec.len(), 0);
     /// ```
@@ -1559,6 +1504,7 @@ impl<T, I: Capacity, const C: usize> core::iter::FromIterator<T>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::collections::{ArenaVec, InlineVec, SliceVec, TiInlineVec};
 
     #[test]
     #[should_panic]
@@ -1575,7 +1521,7 @@ mod tests {
         assert_eq!(size_of::<ArenaVec<u64, usize>>(), 3 * size_of::<usize>());
 
         #[cfg(feature = "alloc")]
-        assert_eq!(size_of::<AllocVec<u64, usize>>(), 3 * size_of::<usize>());
+        assert_eq!(size_of::<crate::collections::AllocVec<u64, usize>>(), 3 * size_of::<usize>());
 
         assert_eq!(size_of::<InlineVec<u8, 8>>(), size_of::<usize>() + 8);
         assert_eq!(size_of::<TiInlineVec<u8, u8, 99>>(), 100);

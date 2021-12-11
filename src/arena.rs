@@ -13,7 +13,7 @@
 //!
 //! ```compile_fail
 //! use core::mem::MaybeUninit;
-//! use coca::{Arena, Box};
+//! use coca::arena::{Arena, Box};
 //!
 //! let bad_array = {
 //!     let mut backing_region = [MaybeUninit::uninit(); 256];
@@ -33,7 +33,7 @@
 //!
 //! ```no_run
 //! # use core::mem::MaybeUninit;
-//! # use coca::{Arena, Box};
+//! # use coca::arena::{Arena, Box};
 //! // callers must drop the return value before they can allocate from `arena` again!
 //! fn semi_bad_array<'a>(arena: &'a mut Arena) -> Box<'a, [i32]> {
 //!     let mut sub = arena.make_sub_arena();
@@ -57,9 +57,9 @@
 //! your target platform's pointer size and the alignment of the passed buffer).
 //! This does not apply to creating sub-arenas.
 
-use crate::cache::CacheTable;
+use crate::collections::cache::CacheTable;
+use crate::collections::ArenaString;
 use crate::storage::{ArenaStorage, ArrayLike, Capacity, LayoutSpec};
-use crate::string::ArenaString;
 
 use core::alloc::Layout;
 use core::cmp::Ordering;
@@ -375,7 +375,7 @@ impl<'src> From<&'src mut [MaybeUninit<u8>]> for Arena<'src> {
     /// # Examples
     /// ```
     /// use core::mem::MaybeUninit;
-    /// use coca::Arena;
+    /// use coca::arena::Arena;
     ///
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let arena = Arena::from(&mut backing_region[..]);
@@ -402,7 +402,7 @@ impl Arena<'static> {
     /// # fn test() -> Option<()> {
     /// # let ptr;
     /// {
-    ///     let mut arena = coca::Arena::try_static_with_capacity(1024 * 1024)?;
+    ///     let mut arena = coca::arena::Arena::try_static_with_capacity(1024 * 1024)?;
     /// # ptr = arena.alloc(()).as_mut() as *mut () as *mut u8;
     ///     let hello = coca::fmt!(arena, "{}, {}!", "Hello", "World")?;
     ///     assert_eq!(hello.as_ref(), "Hello, World!");
@@ -500,7 +500,7 @@ impl<'src> Arena<'src> {
     /// # Examples
     /// ```
     /// use core::mem::MaybeUninit;
-    /// use coca::Arena;
+    /// use coca::arena::Arena;
     ///
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from(&mut backing_region[..]);
@@ -588,7 +588,7 @@ impl<'src> Arena<'src> {
     /// # Examples
     /// ```
     /// # use core::mem::MaybeUninit;
-    /// # use coca::{arena::Arena, pool::direct::DirectPool};
+    /// # use coca::{arena::Arena, collections::pool::direct::DirectPool};
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from(&mut backing_region[..]);
@@ -631,7 +631,7 @@ impl<'src> Arena<'src> {
     /// # Examples
     /// ```
     /// use core::mem::MaybeUninit;
-    /// use coca::Arena;
+    /// use coca::arena::Arena;
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
@@ -675,7 +675,7 @@ impl<'src> Arena<'src> {
     /// # Examples
     /// ```
     /// use core::mem::MaybeUninit;
-    /// use coca::Arena;
+    /// use coca::arena::Arena;
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
@@ -718,7 +718,7 @@ impl<'src> Arena<'src> {
     /// # Examples
     /// ```
     /// use core::mem::MaybeUninit;
-    /// use coca::Arena;
+    /// use coca::arena::Arena;
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
@@ -767,7 +767,7 @@ impl<'src> Arena<'src> {
     /// # Examples
     /// ```
     /// use core::mem::MaybeUninit;
-    /// use coca::Arena;
+    /// use coca::arena::Arena;
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
@@ -825,7 +825,7 @@ impl<'src> Arena<'src> {
     /// # Examples
     /// ```
     /// use core::mem::MaybeUninit;
-    /// use coca::Arena;
+    /// use coca::arena::Arena;
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
@@ -896,7 +896,7 @@ impl<'src> Arena<'src> {
     /// # Examples
     /// ```
     /// use core::mem::MaybeUninit;
-    /// use coca::Arena;
+    /// use coca::arena::Arena;
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
@@ -935,7 +935,7 @@ impl<'src> Arena<'src> {
     /// 
     /// # Examples
     /// ```
-    /// use coca::{Arena, ArenaVec};
+    /// use coca::{arena::Arena, collections::ArenaVec};
     /// use core::mem::MaybeUninit;
     ///
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
@@ -968,14 +968,14 @@ impl<'src> Arena<'src> {
     /// 
     /// # Examples
     /// ```
-    /// use coca::Arena;
+    /// use coca::arena::Arena;
     /// use core::mem::MaybeUninit;
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from(&mut backing_region[..]);
     /// 
-    /// let mut s: coca::ArenaString<'_, usize> = arena.try_string_from("Hello, World!")?;
+    /// let mut s: coca::collections::ArenaString<'_, usize> = arena.try_string_from("Hello, World!")?;
     /// assert_eq!(s, "Hello, World!");
     /// assert_eq!(s.len(), s.capacity());
     /// # Some(()) }
@@ -1008,7 +1008,7 @@ impl<'src> Arena<'src> {
     /// 
     /// # Examples
     /// ```
-    /// use coca::Arena;
+    /// use coca::arena::Arena;
     /// use core::mem::MaybeUninit;
     ///
     /// # fn test() -> Option<()> {
@@ -1035,7 +1035,7 @@ impl<'src> Arena<'src> {
     /// 
     /// Returns `None` if the remaining space in the arena is insufficient.
     #[allow(clippy::type_complexity)]
-    pub fn try_cache_with_hasher<K: Eq + Hash, V, L: crate::cache::CacheLine<K, V>, H: BuildHasher>(&mut self, capacity: usize, hash_builder: H) -> Option<CacheTable<K, V, ArenaStorage<'src, ArrayLike<L>>, L, H>> {
+    pub fn try_cache_with_hasher<K: Eq + Hash, V, L: crate::collections::cache::CacheLine<K, V>, H: BuildHasher>(&mut self, capacity: usize, hash_builder: H) -> Option<CacheTable<K, V, ArenaStorage<'src, ArrayLike<L>>, L, H>> {
         let capacity = (capacity + L::CAPACITY - 1) / L::CAPACITY;
         let storage = self.try_storage_with_capacity(capacity)?;
         Some(CacheTable::from_storage_and_hasher(storage, hash_builder))
@@ -1047,7 +1047,7 @@ impl<'src> Arena<'src> {
     /// Panics if the remaining space in the arena is insufficient to exhaust
     /// the iterator. See [`try_cache_with_hasher`](Arena::try_cache_with_hasher)
     /// for a checked version that never panics.
-    pub fn cache_with_hasher<K: Eq + Hash, V, L: crate::cache::CacheLine<K, V>, H: BuildHasher>(&mut self, capacity: usize, hash_builder: H) -> CacheTable<K, V, ArenaStorage<'src, ArrayLike<L>>, L, H> {
+    pub fn cache_with_hasher<K: Eq + Hash, V, L: crate::collections::cache::CacheLine<K, V>, H: BuildHasher>(&mut self, capacity: usize, hash_builder: H) -> CacheTable<K, V, ArenaStorage<'src, ArrayLike<L>>, L, H> {
         self.try_cache_with_hasher(capacity, hash_builder)
             .expect("unexpected allocation failure in cache_with_hasher")
     }
@@ -1056,8 +1056,8 @@ impl<'src> Arena<'src> {
     ///
     /// # Panics
     /// Panics if the remaining space in the arena is insufficient to exhaust
-    /// the iterator. See [`try_collect`](Arena::try_collect) for a checked
-    /// version that never panics.
+    /// the iterator. See [`try_collect_slice`](Arena::try_collect_slice)
+    /// for a checked version that never panics.
     #[inline]
     #[track_caller]
     pub fn collect_slice<T, I>(&mut self, iter: I) -> Box<'src, [T]>
@@ -1077,7 +1077,7 @@ impl<'src> Arena<'src> {
     /// # Examples
     /// ```
     /// use core::mem::{MaybeUninit, size_of, size_of_val};
-    /// use coca::Arena;
+    /// use coca::arena::Arena;
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
@@ -1197,14 +1197,14 @@ impl<'src> Arena<'src> {
     /// # Examples
     /// ```
     /// use core::mem::{MaybeUninit, size_of, size_of_val};
-    /// use coca::Arena;
+    /// use coca::arena::Arena;
     ///
     /// # fn test() -> Option<()> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from(&mut backing_region[..]);
     ///
     /// let chars = ['a', 'b', 'c', 'd', 'e'];
-    /// let s: coca::ArenaString<'_, usize> = arena.try_collect_with_capacity(chars.iter(), 8)?;
+    /// let s: coca::collections::ArenaString<'_, usize> = arena.try_collect_with_capacity(chars.iter(), 8)?;
     /// 
     /// assert_eq!(s, "abcde");
     /// # Some(())
@@ -1232,7 +1232,7 @@ impl<'src> Arena<'src> {
     ///
     /// # Examples
     /// ```
-    /// use coca::{Arena, Box};
+    /// use coca::arena::{Arena, Box};
     /// use core::{fmt::Write, mem::MaybeUninit};
     ///
     /// # fn main() -> Result<(), core::fmt::Error> {
@@ -1265,7 +1265,7 @@ impl Arena<'_> {
     /// # Examples
     /// ```
     /// use core::mem::MaybeUninit;
-    /// use coca::Arena;
+    /// use coca::arena::Arena;
     ///
     /// let mut backing_region = [MaybeUninit::uninit(); 256];
     /// let mut arena = Arena::from(&mut backing_region[..]);
@@ -1387,7 +1387,7 @@ impl<'buf> From<Writer<'_, 'buf>> for Box<'buf, str> {
 ///
 /// # Examples
 /// ```
-/// use coca::{Arena, fmt};
+/// use coca::{arena::Arena, fmt};
 /// use core::mem::MaybeUninit;
 ///
 /// # fn test() -> Option<()> {
@@ -1402,11 +1402,12 @@ impl<'buf> From<Writer<'_, 'buf>> for Box<'buf, str> {
 #[macro_export]
 macro_rules! fmt {
     ($arena:expr, $($arg:tt)*) => {{
+        #[allow(unused_imports)]
         use core::fmt::Write;
         let mut writer = $arena.make_writer();
         core::write!(writer, $($arg)*)
             .ok()
-            .map(|_| $crate::Box::<'_, str>::from(writer))
+            .map(|_| $crate::arena::Box::<'_, str>::from(writer))
     }}
 }
 

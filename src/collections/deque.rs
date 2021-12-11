@@ -12,7 +12,7 @@ use core::ops::{Index, IndexMut, Range};
 use crate::storage::{
     buffer_too_large_for_index_type, mut_ptr_at_index, normalize_range, ptr_at_index, ArrayLike, Capacity, Storage,
 };
-use crate::vec::Vec;
+use crate::collections::vec::Vec;
 
 /// A double-ended queue implemented with a ring buffer.
 ///
@@ -37,24 +37,6 @@ pub struct Deque<T, S: Storage<ArrayLike<T>>, I: Capacity> {
     buf: S,
     elem: PhantomData<T>,
 }
-
-/// A double-ended queue using any mutable slice for storage.
-///
-/// # Examples
-/// ```
-/// use core::mem::MaybeUninit;
-/// let mut backing_array = [MaybeUninit::<char>::uninit(); 32];
-/// let (slice1, slice2) = (&mut backing_array[..]).split_at_mut(16);
-/// let mut deque1 = coca::SliceDeque::<_>::from(slice1);
-/// let mut deque2 = coca::SliceDeque::<_>::from(slice2);
-/// assert_eq!(deque1.capacity(), 16);
-/// assert_eq!(deque2.capacity(), 16);
-/// ```
-pub type SliceDeque<'a, T, I = usize> = Deque<T, crate::storage::SliceStorage<'a, T>, I>;
-/// A double-ended queue using an arena-allocated slice for storage.
-///
-/// See [`Arena::try_deque`](crate::Arena::try_deque) for example usage.
-pub type ArenaDeque<'a, T, I = usize> = Deque<T, crate::storage::ArenaStorage<'a, ArrayLike<T>>, I>;
 
 impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for Deque<T, S, I> {
     /// Converts a contiguous block of memory into an empty deque.
@@ -97,7 +79,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 3];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_front(1);
     /// deque.push_back(2);
     /// let (buf, front, len) = deque.into_raw_parts();
@@ -124,12 +106,12 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 3];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_front(1);
     /// deque.push_back(2);
     ///
     /// let (buf, front, len) = deque.into_raw_parts();
-    /// let deque = unsafe { coca::SliceDeque::from_raw_parts(buf, front, len) };
+    /// let deque = unsafe { coca::collections::SliceDeque::from_raw_parts(buf, front, len) };
     /// assert_eq!(deque, &[1, 2]);
     /// ```
     pub unsafe fn from_raw_parts(buf: S, front: I, length: I) -> Self {
@@ -170,7 +152,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 3];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_back(0);
     /// deque.push_back(1);
     /// assert_eq!(deque.contains(&1), true);
@@ -255,7 +237,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 3];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_back(1);
     /// deque.push_back(2);
     /// assert_eq!(deque.pop_front(), Some(1));
@@ -280,7 +262,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 3];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_back(1);
     /// deque.push_back(3);
     /// assert_eq!(deque.pop_back(), Some(3));
@@ -305,7 +287,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 3];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// assert!(deque.try_push_front(1).is_ok());
     /// assert!(deque.try_push_front(2).is_ok());
     /// assert!(deque.try_push_front(3).is_ok());
@@ -344,7 +326,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut deque = coca::InlineDeque::<&'static str, 2>::new();
+    /// let mut deque = coca::collections::InlineDeque::<&'static str, 2>::new();
     /// 
     /// assert!(deque.force_push_front("Alice").is_none());
     /// assert!(deque.force_push_front("Bob").is_none());
@@ -365,7 +347,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 3];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// assert!(deque.try_push_back(1).is_ok());
     /// assert!(deque.try_push_back(2).is_ok());
     /// assert!(deque.try_push_back(3).is_ok());
@@ -403,7 +385,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// let mut deque = coca::InlineDeque::<&'static str, 2>::new();
+    /// let mut deque = coca::collections::InlineDeque::<&'static str, 2>::new();
     /// 
     /// assert!(deque.force_push_back("Hello").is_none());
     /// assert!(deque.force_push_back("World").is_none());
@@ -425,7 +407,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 4];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_back(5);
     /// deque.push_back(10);
     /// deque.push_back(15);
@@ -470,7 +452,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 4];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_back(2);
     /// deque.push_back(1);
     /// deque.push_front(3);
@@ -497,7 +479,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 4];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_back(1);
     /// deque.push_back(2);
     /// deque.push_back(3);
@@ -527,7 +509,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 4];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_back(1);
     /// deque.push_back(2);
     /// deque.push_back(3);
@@ -560,7 +542,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<char>::uninit(); 4];
-    /// let mut deque = coca::SliceDeque::<char>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<char>::from(&mut backing_region[..]);
     /// deque.push_back('a');
     /// deque.push_back('b');
     /// deque.push_back('c');
@@ -709,7 +691,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 4];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_back(1);
     /// deque.push_back(2);
     /// deque.push_back(3);
@@ -811,7 +793,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 4];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_back(1);
     /// deque.push_back(2);
     /// deque.push_back(4);
@@ -834,7 +816,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 4];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_back(1);
     /// deque.push_back(2);
     /// deque.push_back(3);
@@ -937,7 +919,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 16];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// for x in 0..10 { deque.push_back(x); }
     /// for i in 1..10 {
     ///     deque.rotate_left(3);
@@ -972,7 +954,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 16];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// for x in 0..10 { deque.push_back(x); }
     /// for i in 1..10 {
     ///     deque.rotate_right(3);
@@ -1001,7 +983,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 4];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_back(2);
     /// deque.push_back(1);
     /// deque.push_front(3);
@@ -1033,7 +1015,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 4];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_back(2);
     /// deque.push_back(1);
     /// deque.push_front(3);
@@ -1082,7 +1064,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 4];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_back(2);
     /// deque.push_back(1);
     /// assert_eq!(deque, &[2, 1]);
@@ -1110,7 +1092,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 4];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_back(5);
     /// deque.push_back(3);
     /// deque.push_back(4);
@@ -1135,7 +1117,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 4];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.push_back(5);
     /// deque.push_back(3);
     /// deque.push_back(4);
@@ -1162,7 +1144,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 8];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.extend(1..=5);
     /// assert_eq!(deque, &[1, 2, 3, 4, 5]);
     ///
@@ -1190,7 +1172,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 8];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.extend(1..=5);
     /// assert_eq!(deque, &[1, 2, 3, 4, 5]);
     ///
@@ -1222,7 +1204,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 8];
-    /// let mut deque = coca::SliceDeque::<i32>::from(&mut backing_region[..]);
+    /// let mut deque = coca::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
     /// deque.extend(1..=5);
     ///
     /// let mut drained = deque.drain(2..4);
@@ -1840,25 +1822,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Drain<'_, T, S, I> {
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-/// A deque using a heap-allocated slice for storage.
-///
-/// Note that this still has a fixed capacity, and will never reallocate.
-///
-/// # Examples
-/// ```
-/// let mut deque = coca::AllocDeque::<char>::with_capacity(4);
-/// deque.push_front('b');
-/// deque.push_front('a');
-/// deque.push_back('c');
-/// deque.push_back('d');
-/// assert_eq!(deque, &['a', 'b', 'c', 'd']);
-/// assert_eq!(deque.try_push_back('e'), Err('e'));
-/// ```
-pub type AllocDeque<T, I = usize> = Deque<T, crate::storage::AllocStorage<ArrayLike<T>>, I>;
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T: Copy, I: Capacity> AllocDeque<T, I> {
+impl<T: Copy, I: Capacity> crate::collections::AllocDeque<T, I> {
     /// Creates an empty `AllocDeque` with the specified capacity.
     ///
     /// # Panics
@@ -1880,37 +1844,13 @@ impl<T: Copy, I: Capacity> AllocDeque<T, I> {
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T: Copy, I: Capacity> Clone for AllocDeque<T, I> {
+impl<T: Copy, I: Capacity> Clone for crate::collections::AllocDeque<T, I> {
     fn clone(&self) -> Self {
         let mut result = Self::with_capacity(I::from_usize(self.capacity()));
         result.extend(self.iter().cloned());
         result
     }
 }
-
-/// A deque using an inline array for storage.
-///
-/// # Examples
-/// ```
-/// let mut deque = coca::InlineDeque::<char, 4>::new();
-/// deque.push_front('b');
-/// deque.push_front('a');
-/// deque.push_back('c');
-/// deque.push_back('d');
-/// assert_eq!(deque, &['a', 'b', 'c', 'd']);
-/// assert_eq!(deque.try_push_back('e'), Err('e'));
-/// ```
-pub type InlineDeque<T, const C: usize> = Deque<T, crate::storage::InlineStorage<T, C>, usize>;
-
-/// A deque using an inline array for storage, generic over the index type.
-///
-/// # Examples
-/// ```
-/// let mut deque = coca::TiInlineDeque::<char, u8, 4>::new();
-/// deque.push_front('a');
-/// assert_eq!(deque[0u8], 'a');
-/// ```
-pub type TiInlineDeque<T, I, const C: usize> = Deque<T, crate::storage::InlineStorage<T, C>, I>;
 
 impl<T, I: Capacity, const C: usize> Deque<T, [core::mem::MaybeUninit<T>; C], I> {
     /// Constructs a new deque backed by an inline array.
@@ -1920,7 +1860,7 @@ impl<T, I: Capacity, const C: usize> Deque<T, [core::mem::MaybeUninit<T>; C], I>
     ///
     /// # Examples
     /// ```
-    /// let deque = coca::InlineDeque::<u32, 7>::new();
+    /// let deque = coca::collections::InlineDeque::<u32, 7>::new();
     /// assert_eq!(deque.len(), 0);
     /// assert_eq!(deque.capacity(), 7);
     /// ```
@@ -1960,12 +1900,10 @@ impl<T: Clone, I: Capacity, const C: usize> Clone for Deque<T, [core::mem::Maybe
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn all_insertion_cases() {
         let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 8];
-        let mut deque = SliceDeque::<i32>::from(&mut backing_region[..]);
+        let mut deque = crate::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
 
         deque.try_insert(0, 1).unwrap();
         assert_eq!(deque.as_slices(), (&[1][..], &[][..]));
@@ -2001,7 +1939,7 @@ mod tests {
     #[test]
     fn all_removal_cases() {
         let mut backing_region = [core::mem::MaybeUninit::<i32>::uninit(); 8];
-        let mut deque = SliceDeque::<i32>::from(&mut backing_region[..]);
+        let mut deque = crate::collections::SliceDeque::<i32>::from(&mut backing_region[..]);
 
         deque.push_back(1);
         deque.push_back(2);
@@ -2063,7 +2001,7 @@ mod tests {
                             core::mem::MaybeUninit::<Droppable>::uninit(),
                             core::mem::MaybeUninit::<Droppable>::uninit(),
                         ];
-                        let mut deque = SliceDeque::<Droppable>::from(&mut backing_region[..]);
+                        let mut deque = crate::collections::SliceDeque::<Droppable>::from(&mut backing_region[..]);
 
                         for _ in 0..offset {
                             deque.push_front(drop_count.new_droppable(()));

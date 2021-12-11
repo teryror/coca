@@ -10,7 +10,7 @@ use core::hash::{BuildHasher, BuildHasherDefault, Hash, Hasher};
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 
-use crate::storage::{ArenaStorage, ArrayLike, InlineStorage, Storage};
+use crate::storage::{ArrayLike, InlineStorage, Storage};
 
 // TODO: wider cache line types!
 
@@ -54,7 +54,7 @@ pub trait CacheLine<K: Eq, V> {
 /// 
 /// # Examples
 /// ```
-/// use coca::cache::{UnitCache, CacheLine};
+/// use coca::collections::cache::{UnitCache, CacheLine};
 /// let mut cache = UnitCache::<&'static str, i32>::default();
 /// 
 /// assert!(cache.get(&"hello").is_none());
@@ -213,7 +213,7 @@ macro_rules! get_methods {
 /// 
 /// # Examples
 /// ```
-/// use coca::cache::{LruCache2, CacheLine};
+/// use coca::collections::cache::{LruCache2, CacheLine};
 /// let mut cache = LruCache2::<i32, &'static str>::default();
 /// 
 /// assert!(cache.get(&1).is_none());
@@ -438,7 +438,7 @@ impl<K: Eq, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H> CacheTable<K, V,
     /// ```
     /// # extern crate rustc_hash;
     /// use rustc_hash::FxHasher;
-    /// use coca::cache::InlineDirectMappedCache;
+    /// use coca::collections::InlineDirectMappedCache;
     /// use core::hash::BuildHasherDefault;
     /// 
     /// let mut cache = InlineDirectMappedCache::<i32, &'static str, BuildHasherDefault<FxHasher>, 4>::new();
@@ -481,7 +481,7 @@ impl<K: Eq + Hash, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H: BuildHash
     /// ```
     /// # extern crate rustc_hash;
     /// use rustc_hash::FxHasher;
-    /// use coca::cache::InlineDirectMappedCache;
+    /// use coca::collections::InlineDirectMappedCache;
     /// use core::hash::BuildHasherDefault;
     /// 
     /// let mut cache = InlineDirectMappedCache::<i32, &'static str, BuildHasherDefault<FxHasher>, 4>::new();
@@ -502,7 +502,7 @@ impl<K: Eq + Hash, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H: BuildHash
     /// ```
     /// # extern crate rustc_hash;
     /// use rustc_hash::FxHasher;
-    /// use coca::cache::InlineDirectMappedCache;
+    /// use coca::collections::InlineDirectMappedCache;
     /// use core::hash::BuildHasherDefault;
     /// 
     /// let mut cache = InlineDirectMappedCache::<i32, &'static str, BuildHasherDefault<FxHasher>, 4>::new();
@@ -525,7 +525,7 @@ impl<K: Eq + Hash, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H: BuildHash
     /// ```
     /// # extern crate rustc_hash;
     /// use rustc_hash::FxHasher;
-    /// use coca::cache::InlineDirectMappedCache;
+    /// use coca::collections::InlineDirectMappedCache;
     /// use core::hash::BuildHasherDefault;
     /// 
     /// let mut cache = InlineDirectMappedCache::<i32, &'static str, BuildHasherDefault<FxHasher>, 4>::new();
@@ -550,7 +550,7 @@ impl<K: Eq + Hash, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H: BuildHash
     /// ```
     /// # extern crate rustc_hash;
     /// use rustc_hash::FxHasher;
-    /// use coca::cache::InlineDirectMappedCache;
+    /// use coca::collections::InlineDirectMappedCache;
     /// use core::hash::BuildHasherDefault;
     /// 
     /// let mut cache = InlineDirectMappedCache::<i32, &'static str, BuildHasherDefault<FxHasher>, 4>::new();
@@ -570,114 +570,6 @@ impl<K: Eq, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H> Drop for CacheTa
     }
 }
 
-/// A direct-mapped cache using an arena-allocated slice for storage.
-/// 
-/// # Examples
-/// ```
-/// # extern crate rustc_hash;
-/// use rustc_hash::FxHasher;
-/// use coca::{Arena, cache::ArenaDirectMappedCache};
-/// use core::{hash::BuildHasherDefault, mem::MaybeUninit};
-/// 
-/// # fn test() -> Option<()> {
-/// let mut backing_region = [MaybeUninit::uninit(); 1024];
-/// let mut arena = Arena::from(&mut backing_region[..]);
-/// let mut cache: ArenaDirectMappedCache<'_, i32, &'static str, BuildHasherDefault<FxHasher>> = arena.try_with_capacity(8)?;
-/// cache.insert(1, "a");
-/// assert_eq!(cache.get(&1), Some(&"a"));
-/// # Some(())
-/// # }
-/// # assert!(test().is_some());
-/// ```
-pub type ArenaDirectMappedCache<'src, K, V, H> = CacheTable<K, V, ArenaStorage<'src, ArrayLike<UnitCache<K, V>>>, UnitCache<K, V>, H>;
-/// A 2-way set-associative cache with a least recently used eviction policy,
-/// using an arena-allocated slice for storage.
-/// 
-/// # Examples
-/// ```
-/// # extern crate rustc_hash;
-/// use rustc_hash::FxHasher;
-/// use coca::{Arena, cache::Arena2WayLruCache};
-/// use core::{hash::BuildHasherDefault, mem::MaybeUninit};
-/// 
-/// # fn test() -> Option<()> {
-/// let mut backing_region = [MaybeUninit::uninit(); 1024];
-/// let mut arena = Arena::from(&mut backing_region[..]);
-/// let mut cache: Arena2WayLruCache<'_, i32, &'static str, BuildHasherDefault<FxHasher>> = arena.try_with_capacity(8)?;
-/// cache.insert(1, "a");
-/// assert_eq!(cache.get(&1), Some(&"a"));
-/// # Some(())
-/// # }
-/// # assert!(test().is_some());
-/// ```
-pub type Arena2WayLruCache<'src, K, V, H> = CacheTable<K, V, ArenaStorage<'src, ArrayLike<LruCache2<K, V>>>, LruCache2<K, V>, H>;
-
-/// A direct-mapped cache using an inline array for storage.
-/// 
-/// # Examples
-/// ```
-/// # extern crate rustc_hash;
-/// use rustc_hash::FxHasher;
-/// # use coca::cache::InlineDirectMappedCache;
-/// # use core::hash::BuildHasherDefault;
-/// # fn main() {
-/// let keys = ["Alice", "Bob", "Charlie", "Eve"];
-/// let mut cache = InlineDirectMappedCache::<&'static str, usize, BuildHasherDefault<FxHasher>, 3>::new();
-/// 
-/// for k in &keys {
-///     cache.insert(k, k.len());
-///     assert_eq!(cache.get(k), Some(&k.len()));
-/// }
-/// 
-/// let mut remembered = 0;
-/// for k in &keys {
-///     if let Some(len) = cache.get(k) {
-///         assert_eq!(len, &k.len());
-///         remembered += 1;
-///     }
-/// }
-/// 
-/// assert!(0 < remembered);
-/// assert!(remembered < keys.len());
-/// # }
-/// ```
-pub type InlineDirectMappedCache<K, V, H, const N: usize> = CacheTable<K, V, InlineStorage<UnitCache<K, V>, N>, UnitCache<K, V>, H>;
-/// A 2-way set-associative cache with a least recently used eviction policy,
-/// using an inline array for storage.
-/// 
-/// Note that the constant generic parameter `N` is the number of cache lines,
-/// i.e. caches of this type have capacity for `2 * N` key-value pairs.
-/// 
-/// # Examples
-/// ```
-/// # extern crate rustc_hash;
-/// use rustc_hash::FxHasher;
-/// # use coca::cache::Inline2WayLruCache;
-/// # use core::hash::BuildHasherDefault;
-/// # fn main() {
-/// let keys = ["Alice", "Bob", "Charlie", "David", "Eve", "Faythe", "Grace"];
-/// let mut cache = Inline2WayLruCache::<&'static str, usize, BuildHasherDefault<FxHasher>, 3>::new();
-/// assert_eq!(cache.capacity(), 6);
-/// 
-/// for k in &keys {
-///     cache.insert(k, k.len());
-///     assert_eq!(cache.get(k), Some(&k.len()));
-/// }
-/// 
-/// let mut remembered = 0;
-/// for k in &keys {
-///     if let Some(len) = cache.get(k) {
-///         assert_eq!(len, &k.len());
-///         remembered += 1;
-///     }
-/// }
-/// 
-/// assert!(0 < remembered);
-/// assert!(remembered < keys.len());
-/// # }
-/// ``` 
-pub type Inline2WayLruCache<K, V, H, const N: usize> = CacheTable<K, V, InlineStorage<LruCache2<K, V>, N>, LruCache2<K, V>, H>;
-
 impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: BuildHasher, const N: usize> CacheTable<K, V, InlineStorage<L, N>, L, H> {
     /// Constructs a new, empty `CacheTable` using inline storage and the specified [`BuildHasher`].
     /// 
@@ -685,7 +577,7 @@ impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: BuildHasher, const N: usize> CacheT
     /// ```
     /// # extern crate rustc_hash;
     /// type HashBuilder = core::hash::BuildHasherDefault<rustc_hash::FxHasher>;
-    /// type CacheTable = coca::cache::Inline2WayLruCache<u128, &'static str, HashBuilder, 32>;
+    /// type CacheTable = coca::collections::Inline2WayLruCache<u128, &'static str, HashBuilder, 32>;
     /// let mut cache = CacheTable::with_hasher(HashBuilder::default());
     /// assert_eq!(cache.capacity(), 64);
     /// ```
@@ -711,7 +603,7 @@ impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: Hasher + Default, const N: usize> C
     /// ```
     /// # extern crate rustc_hash;
     /// type HashBuilder = core::hash::BuildHasherDefault<rustc_hash::FxHasher>;
-    /// type CacheTable = coca::cache::Inline2WayLruCache<u128, &'static str, HashBuilder, 32>;
+    /// type CacheTable = coca::collections::Inline2WayLruCache<u128, &'static str, HashBuilder, 32>;
     /// let mut cache = CacheTable::new();
     /// assert_eq!(cache.capacity(), 64);
     /// ```
@@ -734,71 +626,6 @@ impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: Hasher + Default, const N: usize> D
     }
 }
 
-/// A direct-mapped cache using a heap-allocated array for storage.
-/// 
-/// # Examples
-/// ```
-/// # extern crate rustc_hash;
-/// use rustc_hash::FxHasher;
-/// # use coca::cache::AllocDirectMappedCache;
-/// # use core::hash::BuildHasherDefault;
-/// let mut cache = AllocDirectMappedCache::<&'static str, usize, BuildHasherDefault<FxHasher>>::with_capacity(3);
-/// assert_eq!(cache.capacity(), 3);
-/// 
-/// let keys = ["Alice", "Bob", "Charlie", "Eve"];
-/// for k in &keys {
-///     cache.insert(k, k.len());
-///     assert_eq!(cache.get(k), Some(&k.len()));
-/// }
-/// 
-/// let mut remembered = 0;
-/// for k in &keys {
-///     if let Some(len) = cache.get(k) {
-///         assert_eq!(len, &k.len());
-///         remembered += 1;
-///     }
-/// }
-/// 
-/// assert!(0 < remembered);
-/// assert!(remembered < keys.len());
-/// ```
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-pub type AllocDirectMappedCache<K, V, H> = CacheTable<K, V, crate::storage::AllocStorage<ArrayLike<UnitCache<K, V>>>, UnitCache<K, V>, H>;
-
-/// A 2-way set-associative cache with a least recently used eviction policy,
-/// using a heap-allocated array for storage.
-/// 
-/// # Examples 
-/// ```
-/// # extern crate rustc_hash;
-/// use rustc_hash::FxHasher;
-/// # use coca::cache::Alloc2WayLruCache;
-/// # use core::hash::BuildHasherDefault;
-/// let mut cache = Alloc2WayLruCache::<&'static str, usize, BuildHasherDefault<FxHasher>>::with_capacity(6);
-/// assert_eq!(cache.capacity(), 6);
-/// 
-/// let keys = ["Alice", "Bob", "Charlie", "David", "Eve", "Faythe", "Grace"];
-/// for k in &keys {
-///     cache.insert(k, k.len());
-///     assert_eq!(cache.get(k), Some(&k.len()));
-/// }
-/// 
-/// let mut remembered = 0;
-/// for k in &keys {
-///     if let Some(len) = cache.get(k) {
-///         assert_eq!(len, &k.len());
-///         remembered += 1;
-///     }
-/// }
-/// 
-/// assert!(0 < remembered);
-/// assert!(remembered < keys.len());
-/// ```
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-pub type Alloc2WayLruCache<K, V, H> = CacheTable<K, V, crate::storage::AllocStorage<ArrayLike<LruCache2<K, V>>>, LruCache2<K, V>, H>;
-
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: BuildHasher> CacheTable<K, V, crate::storage::AllocStorage<ArrayLike<L>>, L, H> {
@@ -810,7 +637,7 @@ impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: BuildHasher> CacheTable<K, V, crate
     /// ```
     /// # extern crate rustc_hash;
     /// type HashBuilder = core::hash::BuildHasherDefault<rustc_hash::FxHasher>;
-    /// type CacheTable = coca::cache::Alloc2WayLruCache<u128, &'static str, HashBuilder>;
+    /// type CacheTable = coca::collections::Alloc2WayLruCache<u128, &'static str, HashBuilder>;
     /// let mut cache = CacheTable::with_capacity_and_hasher(63, HashBuilder::default());
     /// assert_eq!(cache.capacity(), 64);
     /// ```
@@ -832,7 +659,7 @@ impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: Hasher + Default> CacheTable<K, V, 
     /// ```
     /// # extern crate rustc_hash;
     /// type HashBuilder = core::hash::BuildHasherDefault<rustc_hash::FxHasher>;
-    /// type CacheTable = coca::cache::Alloc2WayLruCache<u128, &'static str, HashBuilder>;
+    /// type CacheTable = coca::collections::Alloc2WayLruCache<u128, &'static str, HashBuilder>;
     /// let mut cache = CacheTable::with_capacity(63);
     /// assert_eq!(cache.capacity(), 64);
     /// ```

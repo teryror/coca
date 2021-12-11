@@ -15,6 +15,11 @@
 //!   associated functions are available depending on which of these modes
 //!   is chosen.
 //! 
+//! [`OptionGroup8`]: crate::collections::OptionGroup8
+//! [`OptionGroup16`]: crate::collections::OptionGroup16
+//! [`OptionGroup32`]: crate::collections::OptionGroup32
+//! [`OptionGroup64`]: crate::collections::OptionGroup64
+//! 
 //! In either case, equivalents to
 //! `Option::{`[`is_some`][0]`, `[`is_none`][1]`, `[`as_ref`][2]`, `[`as_mut`][3]`, `[`insert`][4]`, `[`get_or_insert`][5]`, `[`get_or_insert_with`][6]`, `[`take`][7]`, `[`replace`][8]`}`
 //! are provided. Note the absence of equivalents to consuming functions such
@@ -39,7 +44,7 @@
 //! function name:
 //! 
 //! ```
-//! # use coca::option_group::OptionGroup8;
+//! # use coca::collections::OptionGroup8;
 //! let mut four_options: OptionGroup8<(u32, i16, u8, i8)> = OptionGroup8::empty();
 //! assert!(four_options.is_empty());
 //! 
@@ -66,7 +71,7 @@
 //! of accessor functions, each taking the field index as an argument:
 //! 
 //! ```
-//! # use coca::option_group::OptionGroup32;
+//! # use coca::collections::OptionGroup32;
 //! let mut many_options: OptionGroup32<[usize; 20]> = OptionGroup32::empty();
 //! assert_eq!(many_options.replace(0, 100), None);
 //! assert_eq!(many_options.insert(1, 200), &mut 200);
@@ -234,20 +239,11 @@ impl<S> Representable<u64> for S where S: Representable<u32> {}
 /// 
 /// Generic over the compound type `T` and the flags type `F`.
 /// 
-/// See the [module-level documentation](crate::option_group) for more.
+/// See the [module-level documentation](crate::collections::option_group) for more.
 pub struct OptionGroup<F, T> where F: Flags, T: Representable<F> {
     value: MaybeUninit<T>,
     flags: F,
 }
-
-/// A group of up to eight [`Option`]s with the discriminants packed into a single `u8`.
-pub type OptionGroup8<T> = OptionGroup<u8, T>;
-/// A group of up to sixteen [`Option`]s with the discriminants packed into a single `u16`.
-pub type OptionGroup16<T> = OptionGroup<u16, T>;
-/// A group of up to 32 [`Option`]s with the discriminants packed into a single `u32`.
-pub type OptionGroup32<T> = OptionGroup<u32, T>;
-/// A group of up to 64 [`Option`]s with the discriminants packed into a single `u64`.
-pub type OptionGroup64<T> = OptionGroup<u64, T>;
 
 impl<F, T> OptionGroup<F, T> where F: Flags, T: Representable<F> {
     /// Creates a new group with all options set to `None`.
@@ -608,7 +604,7 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Repres
     /// # Examples
     /// 
     /// ```
-    /// # use coca::OptionGroup8;
+    /// # use coca::collections::OptionGroup8;
     /// let group = OptionGroup8::new([None, Some(1), None, Some(2)]);
     /// let mut iter = group.iter();
     /// 
@@ -631,7 +627,7 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Repres
     /// # Examples
     /// 
     /// ```
-    /// # use coca::OptionGroup8;
+    /// # use coca::collections::OptionGroup8;
     /// let group = OptionGroup8::new([None, Some(7), None, Some(19)]);
     /// let mut iter = group.some_values();
     /// assert_eq!(iter.next(), Some((1, &7)));
@@ -649,7 +645,7 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Repres
     /// # Examples
     /// 
     /// ```
-    /// # use coca::OptionGroup8;
+    /// # use coca::collections::OptionGroup8;
     /// let mut group = OptionGroup8::new([None, Some(7), None, Some(19)]);
     /// for (i, value) in group.some_values_mut() {
     ///     *value *= i + 1;
@@ -672,7 +668,7 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Repres
     /// 
     /// # Examples
     /// ```
-    /// # use coca::OptionGroup8;
+    /// # use coca::collections::OptionGroup8;
     /// let mut group = OptionGroup8::new([None, Some(7), None, Some(19)]);
     /// let mut sum = 0;
     /// for (_, value) in group.take_all() {
@@ -949,7 +945,8 @@ impl<'a, F, T, const N: usize> Drop for TakeAll<'a, F, T, N> where F: Flags, [T;
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::Arena;
+    use crate::arena::Arena;
+    use crate::collections::OptionGroup8;
 
     #[test]
     fn debug_implentations() {

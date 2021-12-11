@@ -2,8 +2,9 @@
 
 use std::mem::MaybeUninit;
 
+use coca::arena::Arena;
+use coca::collections::{ArenaDeque, ArenaVec};
 use coca::storage::Capacity;
-use coca::{Arena, ArenaDeque, ArenaVec};
 
 coca::index_type! { VertexID: u32 }
 
@@ -23,10 +24,10 @@ fn generate_icosphere<'a>(arena: &mut Arena<'a>, subdivision_frequency: u32) -> 
 
     let triangulation_number = subdivision_frequency.pow(2);
     let n_vertices = 10 * triangulation_number + 2;
-    let mut vertices: ArenaVec<'_, Vertex, VertexID> = arena.vec(VertexID(n_vertices));
+    let mut vertices: ArenaVec<'_, Vertex, VertexID> = arena.with_capacity(n_vertices as usize);
 
     let n_faces = 20 * triangulation_number;
-    let mut faces: ArenaDeque<'_, Face, u32> = arena.deque(n_faces);
+    let mut faces: ArenaDeque<'_, Face, u32> = arena.with_capacity(n_faces as usize);
 
     // each edge's midpoint is calculated twice, once for each adjacent face
     // so we can cache the calculated midpoint the first time,
@@ -38,7 +39,7 @@ fn generate_icosphere<'a>(arena: &mut Arena<'a>, subdivision_frequency: u32) -> 
 
     let mut tmp = arena.make_sub_arena();
     let mut edge_subdivision_cache: ArenaVec<(VertexID, VertexID, VertexID), u32> =
-        tmp.vec(30 * (subdivision_frequency / 2).pow(2));
+        tmp.with_capacity(30 * (subdivision_frequency / 2).pow(2) as usize);
 
     fn subdivide_edge(
         a: VertexID,
