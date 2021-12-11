@@ -1298,12 +1298,12 @@ impl<'src> Arena<'src> {
     /// version that never panics.
     #[inline]
     #[track_caller]
-    pub fn collect<T, I>(&mut self, iter: I) -> Box<'src, [T]>
+    pub fn collect_slice<T, I>(&mut self, iter: I) -> Box<'src, [T]>
     where
         T: Sized,
         I: IntoIterator<Item = T>,
     {
-        self.try_collect(iter)
+        self.try_collect_slice(iter)
             .expect("unexpected allocation failure in `collect`")
     }
 
@@ -1322,14 +1322,14 @@ impl<'src> Arena<'src> {
     /// let mut arena = Arena::from(&mut backing_region[..]);
     ///
     /// let a = [1, 2, 3];
-    /// let doubled = arena.try_collect(a.iter().map(|&x| x * 2))?;
+    /// let doubled = arena.try_collect_slice(a.iter().map(|&x| x * 2))?;
     ///
     /// assert_eq!(&doubled[..], &[2, 4, 6]);
     /// # Some(())
     /// # }
     /// # assert!(test().is_some());
     /// ```
-    pub fn try_collect<T, I>(&mut self, iter: I) -> Option<Box<'src, [T]>>
+    pub fn try_collect_slice<T, I>(&mut self, iter: I) -> Option<Box<'src, [T]>>
     where
         T: Sized,
         I: IntoIterator<Item = T>,
@@ -1351,7 +1351,17 @@ impl<'src> Arena<'src> {
             return None;
         }
 
+        let iter = iter.into_iter();
+        let (min_items, _) = iter.size_hint();
+        
         let item_capacity = (bytes_remaining - align_offset) / core::mem::size_of::<T>();
+        if item_capacity < min_items {
+            #[cfg(feature = "profile")]
+            {
+                self.profile_meta_data_mut().failed_allocations += 1;
+            }
+            return None;
+        }
 
         let base = unsafe { self.cursor.add(align_offset).cast::<T>() };
         let mut count = 0_usize;
@@ -1394,6 +1404,61 @@ impl<'src> Arena<'src> {
             let slice = from_raw_parts_mut(base, count);
             Some(Box::new_unchecked(slice))
         }
+    }
+
+    /// Transforms an iterator into a collection `C` with the given capacity.
+    /// 
+    /// The collection type must be convertible [`From<ArenaStorage>`](core::convert::From),
+    /// i.e. able to use arena-allocated memory, and must be [`Extend`able](core::iter::Extend)
+    /// by including the contents of the given iterator.
+    /// 
+    /// # Panics
+    /// Panics if the remaining space is insufficient.
+    #[track_caller]
+    pub fn collect_with_capacity<I, S, C>(&mut self, iter: I, capacity: usize) -> C
+    where
+        S: LayoutSpec,
+        C: From<ArenaStorage<'src, S>> + Extend<I::Item>,
+        I: Iterator,
+    {
+        self.try_collect_with_capacity(iter, capacity).expect("unexpected allocation failure in `collect_with_capacity`")
+    }
+
+    /// Transforms an iterator into a collection `C` with the given capacity.
+    /// 
+    /// The collection type must be convertible [`From<ArenaStorage>`](core::convert::From),
+    /// i.e. able to use arena-allocated memory, and must be [`Extend`able](core::iter::Extend)
+    /// by including the contents of the given iterator.
+    /// 
+    /// Returns [`None`] if the remaining space is insufficient.
+    /// 
+    /// # Examples
+    /// ```
+    /// use core::mem::{MaybeUninit, size_of, size_of_val};
+    /// use coca::Arena;
+    ///
+    /// # fn test() -> Option<()> {
+    /// let mut backing_region = [MaybeUninit::uninit(); 1024];
+    /// let mut arena = Arena::from(&mut backing_region[..]);
+    ///
+    /// let chars = ['a', 'b', 'c', 'd', 'e'];
+    /// let s: coca::ArenaString<'_, usize> = arena.try_collect_with_capacity(chars.iter(), 8)?;
+    /// 
+    /// assert_eq!(s, "abcde");
+    /// # Some(())
+    /// # }
+    /// # assert!(test().is_some());
+    /// ```
+    pub fn try_collect_with_capacity<I, S, C>(&mut self, iter: I, capacity: usize) -> Option<C>
+    where
+        S: LayoutSpec,
+        C: From<ArenaStorage<'src, S>> + Extend<I::Item>,
+        I: Iterator,
+    {
+        let storage = self.try_storage_with_capacity(capacity)?;
+        let mut result = C::from(storage);
+        result.extend(iter);
+        Some(result)
     }
 
     /// Constructs a new [`Writer`] backed by the free space remaining in `self`.
@@ -1597,7 +1662,7 @@ mod tests {
         
         let drop_count = DropCounter::new();
         let mut taken_count = 0;
-        let result = arena.try_collect((0..100).map(|_| {
+        let result = arena.try_collect_slice((0..100).map(|_| {
             taken_count += 1;
             drop_count.new_droppable(())
         }));
