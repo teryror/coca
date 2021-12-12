@@ -58,7 +58,7 @@
 //! This does not apply to creating sub-arenas.
 
 use crate::collections::cache::CacheTable;
-use crate::collections::ArenaString;
+use crate::ArenaString;
 use crate::storage::{ArenaStorage, ArrayLike, Capacity, LayoutSpec};
 
 use core::alloc::Layout;
@@ -963,7 +963,7 @@ impl<'src> Arena<'src> {
     /// let mut backing_region = [MaybeUninit::uninit(); 1024];
     /// let mut arena = Arena::from(&mut backing_region[..]);
     /// 
-    /// let mut s: coca::collections::ArenaString<'_, usize> = arena.try_string_from("Hello, World!")?;
+    /// let mut s: coca::ArenaString<'_, usize> = arena.try_string_from("Hello, World!")?;
     /// assert_eq!(s, "Hello, World!");
     /// assert_eq!(s.len(), s.capacity());
     /// # Some(()) }
@@ -1192,7 +1192,7 @@ impl<'src> Arena<'src> {
     /// let mut arena = Arena::from(&mut backing_region[..]);
     ///
     /// let chars = ['a', 'b', 'c', 'd', 'e'];
-    /// let s: coca::collections::ArenaString<'_, usize> = arena.try_collect_with_capacity(chars.iter(), 8)?;
+    /// let s: coca::ArenaString<'_, usize> = arena.try_collect_with_capacity(chars.iter(), 8)?;
     /// 
     /// assert_eq!(s, "abcde");
     /// # Some(())

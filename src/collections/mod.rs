@@ -3,7 +3,6 @@ pub mod cache;
 pub mod deque;
 pub mod option_group;
 pub mod pool;
-pub mod string;
 pub mod vec;
 
 use crate::storage::{ArenaStorage, ArrayLike, InlineStorage, SliceStorage};
@@ -15,7 +14,6 @@ use option_group::OptionGroup;
 use pool::DefaultHandle;
 use pool::direct::{DirectPool, DirectPoolLayout};
 use pool::packed::{PackedPool, PackedPoolLayout};
-use string::String;
 use vec::Vec;
 
 /// A binary heap using a mutable slice for storage.
@@ -505,65 +503,6 @@ pub type PackedInlinePool<T, const N: usize> = PackedPool<T, pool::packed::Inlin
 /// assert!(pool.is_empty());
 /// ```
 pub type TiPackedInlinePool<T, H, const N: usize> = PackedPool<T, pool::packed::InlineStorage<T, H, N>, H>;
-
-/// A string using any mutable byte slice for storage.
-/// 
-/// # Examples
-/// ```
-/// let mut buf = [core::mem::MaybeUninit::<u8>::uninit(); 8];
-/// let str = coca::collections::SliceString::<'_, usize>::from(&mut buf[..6]);
-/// 
-/// assert_eq!(str.capacity(), 6);
-/// ```
-pub type SliceString<'a, I = usize> = String<SliceStorage<'a, u8>, I>;
-/// A string using an arena-allocated byte slice for storage.
-/// 
-/// # Examples
-/// ```
-/// use coca::arena::Arena;
-/// use coca::collections::ArenaString;
-/// use core::mem::MaybeUninit;
-///
-/// let mut backing_region = [MaybeUninit::uninit(); 160];
-/// let mut arena = Arena::from(&mut backing_region[..]);
-///
-/// let s: ArenaString<'_, usize> = arena.try_with_capacity(100).unwrap();
-/// assert!(arena.try_with_capacity::<_, ArenaString<'_, usize>>(100).is_none());
-/// ```
-pub type ArenaString<'a, I = usize> = String<ArenaStorage<'a, ArrayLike<u8>>, I>;
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-/// A string using a heap-allocated slice for storage.
-/// 
-/// # Examples
-/// ```
-/// let mut s = coca::collections::AllocString::with_capacity(16usize);
-/// s.push_str("Hello, ");
-/// s.push_str("World!");
-/// 
-/// assert_eq!(s, "Hello, World!");
-/// ```
-pub type AllocString<I = usize> = String<crate::storage::AllocStorage<ArrayLike<u8>>, I>;
-
-/// A string using an inline array for storage.
-/// 
-/// # Examples
-/// ```
-/// let mut s = coca::collections::InlineString::<8>::new();
-/// assert_eq!(s.capacity(), 8);
-/// assert!(s.is_empty());
-/// ```
-pub type InlineString<const C: usize> = String<InlineStorage<u8, C>, usize>;
-/// A string using an inline array for storage, generic over the index type.
-/// 
-/// # Examples
-/// ```
-/// let mut s = coca::collections::TiInlineString::<u8, 255>::new();
-/// assert_eq!(s.capacity(), 255);
-/// assert!(s.is_empty());
-/// ```
-pub type TiInlineString<I, const C: usize> = String<InlineStorage<u8, C>, I>;
 
 /// A vector using any mutable slice for storage.
 ///
