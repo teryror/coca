@@ -539,7 +539,53 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
         }
     }
 
-    // TODO: retain, into_keys, into_values
+    // TODO: retain
+
+    /// Creates a consuming iterator visiting all keys in arbitrary order.
+    /// The map cannot be used after calling this. The iterator element type is `K`.
+    /// 
+    /// # Examples
+    /// ```
+    /// use coca::collections::{InlineListMap, InlineVec};
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    /// 
+    /// let mut vec = InlineVec::<&'static str, 4>::new();
+    /// vec.extend(map.into_keys());
+    /// // The keys are visited in arbitrary order,
+    /// // so they must be sorted for this test.
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, ["a", "b", "c"]);
+    /// ```
+    pub fn into_keys(self) -> IntoKeys<K, V, S, I> {
+        IntoKeys { base: self.into_iter() }
+    }
+
+    /// Creates a consuming iterator visiting all values in arbitrary order.
+    /// The map cannot be used after calling this. The iterator element type is `K`.
+    /// 
+    /// # Examples
+    /// ```
+    /// use coca::collections::{InlineListMap, InlineVec};
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    /// 
+    /// let mut vec = InlineVec::<u32, 4>::new();
+    /// vec.extend(map.into_values());
+    /// // The values are visited in arbitrary order,
+    /// // so they must be sorted for this test.
+    /// vec.sort_unstable();
+    /// assert_eq!(vec, [1, 2, 3]);
+    /// ```
+    pub fn into_values(self) -> IntoValues<K, V, S, I> {
+        IntoValues { base: self.into_iter() }
+    }
 }
 
 impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Drop for ListMap<K, V, S, I> {
@@ -1134,3 +1180,98 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> IntoIterator for &'
         self.iter_mut()
     }
 }
+
+/// An owning iterator over the entries of a [`ListMap`].
+/// 
+/// This `struct` is created by the [`into_iter`](IntoIterator::into_iter)
+/// method on `ListMap` (provided by the [`IntoIterator`] trait). See its
+/// documentation for more.
+pub struct IntoIter<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> {
+    map: ListMap<K, V, S, I>,
+}
+
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Iterator for IntoIter<K, V, S, I> {
+    type Item = (K, V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.map.len() == 0 { return None; }
+
+        let new_len = self.map.len() - 1;
+        self.map.len = I::from_usize(new_len);
+
+        unsafe {
+            let base_ptr = self.map.buf.get_ptr();
+            
+            let keys_ptr = base_ptr.cast::<K>();
+            let k = keys_ptr.add(new_len).read();
+
+            let values_ptr = base_ptr.add(self.map.values_offset()).cast::<V>();
+            let v = values_ptr.add(new_len).read();
+
+            Some((k, v))
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.map.len();
+        (len, Some(len))
+    }
+}
+
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ExactSizeIterator for IntoIter<K, V, S, I> {}
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> FusedIterator for IntoIter<K, V, S, I> {}
+
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> IntoIterator for ListMap<K, V, S, I> {
+    type Item = (K, V);
+    type IntoIter = IntoIter<K, V, S, I>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter { map: self }
+    }
+}
+
+/// An owning iterator over the keys of a [`ListMap`].
+/// 
+/// This `struct` is created by the [`into_keys`](ListMap::into_keys) method on `ListMap`.
+/// See its documentation for more.
+pub struct IntoKeys<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> {
+    base: IntoIter<K, V, S, I>,
+}
+
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Iterator for IntoKeys<K, V, S, I> {
+    type Item = K;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.base.next().map(|(k, _)| k)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.base.size_hint()
+    }
+}
+
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ExactSizeIterator for IntoKeys<K, V, S, I> {}
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> FusedIterator for IntoKeys<K, V, S, I> {}
+
+/// An owning iterator over the values of a [`ListMap`].
+/// 
+/// This `struct` is created by the [`into_values`](ListMap::into_values) method on `ListMap`.
+/// See its documentation for more.
+pub struct IntoValues<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> {
+    base: IntoIter<K, V, S, I>,
+}
+
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Iterator for IntoValues<K, V, S, I> {
+    type Item = V;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.base.next().map(|(_, v)| v)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.base.size_hint()
+    }
+}
+
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ExactSizeIterator for IntoValues<K, V, S, I> {}
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> FusedIterator for IntoValues<K, V, S, I> {}
