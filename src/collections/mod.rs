@@ -1,6 +1,7 @@
 pub mod binary_heap;
 pub mod cache;
 pub mod deque;
+pub mod list_map;
 pub mod option_group;
 pub mod pool;
 pub mod vec;
