@@ -3,6 +3,7 @@
 use core::alloc::{Layout, LayoutError};
 use core::borrow::Borrow;
 use core::fmt::Debug;
+use core::iter::FusedIterator;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 
@@ -141,7 +142,49 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
         }
     }
 
-    // TODO: iter, iter_mut
+    /// An iterator visiting all key-value pairs in arbitrary order.
+    /// The iterator element type is `(&'a K, &'a V)`.
+    /// 
+    /// # Examples
+    /// ```
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    /// 
+    /// for (key, val) in map.iter() {
+    ///     println!("{} -> {}", key, val);
+    /// }
+    /// ```
+    pub fn iter(&self) -> Iter<'_, K, V, S, I> {
+        Iter { map: self, front: I::from_usize(0) }
+    }
+
+    /// An iterator visiting all key-value pairs in arbitrary order, with
+    /// mutable references to the values. The iterator element type is
+    /// `(&'a K, &'a mut V)`.
+    /// 
+    /// # Examples
+    /// ```
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    /// 
+    /// for (_, val) in map.iter_mut() {
+    ///     *val *= 2;
+    /// }
+    /// 
+    /// assert_eq!(map.get("a"), Some(&2));
+    /// assert_eq!(map.get("b"), Some(&4));
+    /// assert_eq!(map.get("c"), Some(&6));
+    pub fn iter_mut(&mut self) -> IterMut<'_, K, V, S, I> {
+        IterMut { map: self, front: I::from_usize(0) }
+    }
 
     /// Returns the number of entries in the map.
     #[inline]
@@ -999,3 +1042,95 @@ impl<K: Debug, V: Debug, S: Storage<ListMapLayout<K, V>>, I: Capacity> Debug for
     }
 }
 
+/// An iterator over the entries of a [`ListMap`].
+/// 
+/// This `struct` is created by the [`iter`](ListMap::iter) method on `ListMap`.
+/// See its documentation for more.
+pub struct Iter<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> {
+    map: &'a ListMap<K, V, S, I>,
+    front: I,
+}
+
+impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Iterator for Iter<'a, K, V, S, I> {
+    type Item = (&'a K, &'a V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let front = self.front.as_usize();
+        if front >= self.map.len() { return None; }
+
+        let k = &self.map.keys()[front];
+        let v = &self.map.values()[front];
+        self.front = I::from_usize(front + 1);
+
+        Some((k, v))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let front = self.front.as_usize();
+        let len = self.map.len() - front;
+        (len, Some(len))
+    }
+}
+
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ExactSizeIterator for Iter<'_, K, V, S, I> {}
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> FusedIterator for Iter<'_, K, V, S, I> {}
+
+impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> IntoIterator for &'a ListMap<K, V, S, I> {
+    type Item = (&'a K, &'a V);
+    type IntoIter = Iter<'a, K, V, S, I>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// A mutable iterator over the entries of a [`ListMap`].
+/// 
+/// This `struct` is created by the [`iter_mut`](ListMap::iter_mut)
+/// method on `ListMap`. See its documentation for more.
+pub struct IterMut<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> {
+    map: &'a mut ListMap<K, V, S, I>,
+    front: I,
+}
+
+impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Iterator for IterMut<'a, K, V, S, I> {
+    type Item = (&'a K, &'a mut V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let front = self.front.as_usize();
+        if front >= self.map.len() { return None; }
+
+        let (k, v) = unsafe {
+            let base_ptr = self.map.buf.get_mut_ptr();
+            
+            let keys_ptr = base_ptr.cast::<K>();
+            let k = keys_ptr.add(front).as_ref().unwrap();
+
+            let values_ptr = base_ptr.add(self.map.values_offset()).cast::<V>();
+            let v = values_ptr.add(front).as_mut().unwrap();
+
+            (k, v)
+        };
+
+        self.front = I::from_usize(front + 1);
+        Some((k, v))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let front = self.front.as_usize();
+        let len = self.map.len() - front;
+        (len, Some(len))
+    }
+}
+
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ExactSizeIterator for IterMut<'_, K, V, S, I> {}
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> FusedIterator for IterMut<'_, K, V, S, I> {}
+
+impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> IntoIterator for &'a mut ListMap<K, V, S, I> {
+    type Item = (&'a K, &'a mut V);
+    type IntoIter = IterMut<'a, K, V, S, I>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
