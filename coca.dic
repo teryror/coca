@@ -1,9 +1,10 @@
-27
+29
 accessor
 allocator
 deque
 deque's
 discriminants
+enum
 growable
 implementor
 implementors
