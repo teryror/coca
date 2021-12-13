@@ -48,6 +48,12 @@ pub struct ListMap<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> {
     pairs: PhantomData<(K, V)>,
 }
 
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> From<S> for ListMap<K, V, S, I> {
+    fn from(buf: S) -> Self {
+        ListMap { buf, len: I::from_usize(0), pairs: PhantomData }
+    }
+}
+
 impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
     /// Returns the number of entries the map can hold.
     #[inline]
@@ -59,7 +65,16 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    /// 
+    /// for key in map.keys() {
+    ///     println!("{}", key);
+    /// }
     /// ```
     #[inline]
     pub fn keys(&self) -> &[K] {
@@ -80,7 +95,16 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    /// 
+    /// for val in map.values() {
+    ///     println!("{}", val);
+    /// }
     /// ```
     #[inline]
     pub fn values(&self) -> &[V] {
@@ -94,7 +118,20 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    /// 
+    /// for val in map.values_mut() {
+    ///     *val = *val * 2;
+    /// }
+    /// 
+    /// assert_eq!(map.get("a"), Some(&2));
+    /// assert_eq!(map.get("b"), Some(&4));
+    /// assert_eq!(map.get("c"), Some(&6));
     /// ```
     #[inline]
     pub fn values_mut(&mut self) -> &mut [V] {
@@ -130,7 +167,18 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// 
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// map.insert("c", 3);
+    /// map.insert("d", 4);
+    /// assert!(map.is_full());
+    /// 
+    /// map.clear();
+    /// assert!(map.is_empty());
     /// ```
     pub fn clear(&mut self) {
         unsafe {
@@ -164,7 +212,20 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut letters = InlineListMap::<char, u32, 32>::new();
+    /// 
+    /// for ch in "i am, therefore i'm coded".chars() {
+    ///     let counter = letters.try_entry(ch).unwrap().or_insert(0);
+    ///     *counter += 1;
+    /// }
+    /// 
+    /// assert_eq!(letters.get(&'a'), Some(&1));
+    /// assert_eq!(letters.get(&'e'), Some(&4));
+    /// assert_eq!(letters.get(&'i'), Some(&2));
+    /// assert_eq!(letters.get(&'o'), Some(&2));
+    /// assert_eq!(letters.get(&'u'), None);
     /// ```
     pub fn try_entry(&mut self, key: K) -> Result<Entry<'_, K, V, S, I>, K>
     where
@@ -195,7 +256,13 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// map.insert("a", 1);
+    /// 
+    /// assert_eq!(map.get("a"), Some(&1));
+    /// assert_eq!(map.get("b"), None);
     /// ```
     pub fn get<Q>(&self, key: &Q) -> Option<&V>
     where
@@ -213,7 +280,13 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// map.insert("a", 1);
+    /// 
+    /// assert_eq!(map.get_key_value("a"), Some((&"a", &1)));
+    /// assert_eq!(map.get_key_value("b"), None);
     /// ```
     pub fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
     where
@@ -231,7 +304,13 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// map.insert("a", 1);
+    /// 
+    /// assert_eq!(map.contains_key("a"), true);
+    /// assert_eq!(map.contains_key("b"), false);
     /// ```
     pub fn contains_key<Q>(&self, key: &Q) -> bool
     where
@@ -248,7 +327,16 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// map.insert("a", 1);
+    /// 
+    /// if let Some(x) = map.get_mut(&"a") {
+    ///     *x = *x + 2;
+    /// }
+    /// 
+    /// assert_eq!(map.get("a"), Some(&3));
     /// ```
     pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
     where
@@ -287,7 +375,17 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// assert_eq!(map.try_insert("a", 37), Ok(None));
+    /// assert_eq!(map.try_insert("a", 42), Ok(Some(37)));
+    /// 
+    /// map.insert("b", 23);
+    /// map.insert("c", 19);
+    /// map.insert("d", 8);
+    /// assert_eq!(map.is_full(), true);
+    /// assert_eq!(map.try_insert("e", 0), Err(("e", 0)));
     /// ```
     pub fn try_insert(&mut self, key: K, value: V) -> Result<Option<V>, (K, V)> where K: Eq {
         if let Some((idx, _)) = self.lookup(&key) {
@@ -320,7 +418,13 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// map.insert("a", 1);
+    /// 
+    /// assert_eq!(map.remove("a"), Some(1));
+    /// assert_eq!(map.remove("a"), None);
     /// ```
     pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
     where
@@ -357,7 +461,13 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// map.insert("a", 1);
+    /// 
+    /// assert_eq!(map.remove_entry("a"), Some(("a", 1)));
+    /// assert_eq!(map.remove_entry("a"), None);
     /// ```
     pub fn remove_entry<Q>(&mut self, key: &Q) -> Option<(K, V)>
     where
@@ -395,6 +505,16 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Drop for ListMap<K, V, 
     }
 }
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+impl<K, V, I: Capacity> crate::collections::AllocListMap<K, V, I> {
+    /// Constructs a new, empty [`AllocListMap`](crate::storage::AllocListMap)
+    /// with the specified capacity.
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self::from(crate::storage::AllocStorage::with_capacity(capacity))
+    }
+}
+
 /// A statically-sized storage block for a [`ListMap`].
 #[repr(C)]
 pub struct InlineStorage<K, V, const N: usize> {
@@ -416,6 +536,24 @@ unsafe impl<K, V, const N: usize> Storage<ListMapLayout<K, V>> for InlineStorage
     }
 }
 
+impl<K, V, I: Capacity, const N: usize> ListMap<K, V, InlineStorage<K, V, N>, I> {
+    /// Constructs a new, empty [`InlineListMap`](crate::collections::InlineListMap).
+    pub fn new() -> Self {
+        let buf = unsafe { InlineStorage {
+            keys: MaybeUninit::uninit().assume_init(),
+            values: MaybeUninit::uninit().assume_init(),
+        }};
+
+        Self::from(buf)
+    }
+}
+
+impl<K, V, I: Capacity, const N: usize> Default for ListMap<K, V, InlineStorage<K, V, N>, I> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A view into an occupied entry in a [`ListMap`]. It is part of the [`Entry`] enum.
 pub struct OccupiedEntry<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> {
     key: K,
@@ -433,7 +571,19 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> OccupiedEntry<'a, K
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// use coca::collections::list_map::Entry;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// 
+    /// map.entry("foobar").or_insert(12);
+    /// assert_eq!(map.get("foobar"), Some(&12));
+    /// 
+    /// if let Entry::Occupied(o) = map.entry("foobar") {
+    ///     o.remove_entry();
+    /// }
+    /// 
+    /// assert_eq!(map.contains_key("foobar"), false);
     /// ```
     pub fn remove_entry(self) -> (K, V) {
         unsafe {
@@ -460,7 +610,17 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> OccupiedEntry<'a, K
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// use coca::collections::list_map::Entry;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// 
+    /// map.entry("foobar").or_insert(12);
+    /// assert_eq!(map.get("foobar"), Some(&12));
+    /// 
+    /// if let Entry::Occupied(o) = map.entry("foobar") {
+    ///     assert_eq!(o.get(), &12);
+    /// }
     /// ```
     pub fn get(&self) -> &V {
         unsafe {
@@ -477,7 +637,23 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> OccupiedEntry<'a, K
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// use coca::collections::list_map::Entry;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// 
+    /// map.entry("foobar").or_insert(12);
+    /// assert_eq!(map.get("foobar"), Some(&12));
+    /// 
+    /// if let Entry::Occupied(mut o) = map.entry("foobar") {
+    ///     *o.get_mut() += 10;
+    ///     assert_eq!(*o.get(), 22);
+    /// 
+    ///     // You can use the same Entry multiple times:
+    ///     *o.get_mut() += 2;
+    /// }
+    /// 
+    /// assert_eq!(map.get("foobar"), Some(&24));
     /// ```
     pub fn get_mut(&mut self) -> &mut V {
         unsafe {
@@ -495,7 +671,19 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> OccupiedEntry<'a, K
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// use coca::collections::list_map::Entry;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// 
+    /// map.entry("foobar").or_insert(12);
+    /// assert_eq!(map.get("foobar"), Some(&12));
+    /// 
+    /// if let Entry::Occupied(o) = map.entry("foobar") {
+    ///     *o.into_mut() += 10;
+    /// }
+    /// 
+    /// assert_eq!(map.get("foobar"), Some(&22));
     /// ```
     pub fn into_mut(self) -> &'a mut V {
         unsafe {
@@ -509,7 +697,19 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> OccupiedEntry<'a, K
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// use coca::collections::list_map::Entry;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// 
+    /// map.entry("foobar").or_insert(12);
+    /// assert_eq!(map.get("foobar"), Some(&12));
+    /// 
+    /// if let Entry::Occupied(mut o) = map.entry("foobar") {
+    ///     assert_eq!(o.insert(15), 12);
+    /// }
+    /// 
+    /// assert_eq!(map.get("foobar"), Some(&15));
     /// ```
     pub fn insert(&mut self, value: V) -> V {
         unsafe {
@@ -523,7 +723,19 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> OccupiedEntry<'a, K
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// use coca::collections::list_map::Entry;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// 
+    /// map.entry("foobar").or_insert(12);
+    /// assert_eq!(map.get("foobar"), Some(&12));
+    /// 
+    /// if let Entry::Occupied(o) = map.entry("foobar") {
+    ///     assert_eq!(o.remove(), 12);
+    /// }
+    /// 
+    /// assert_eq!(map.contains_key("foobar"), false);
     /// ```
     pub fn remove(self) -> V {
         unsafe {
@@ -545,6 +757,24 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> OccupiedEntry<'a, K
     }
 
     /// Replaces the entry, returning the old key-value pair. The new key in the map will be the key used to create the entry.
+    /// 
+    /// # Examples
+    /// ```
+    /// use coca::collections::InlineListMap;
+    /// use coca::collections::list_map::Entry;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// map.insert("foobar", 15);
+    /// 
+    /// if let Entry::Occupied(entry) = map.entry("foobar") {
+    ///     let (old_key, old_value) = entry.replace_entry(16);
+    ///     
+    ///     assert_eq!(old_key, "foobar");
+    ///     assert_eq!(old_value, 15);
+    /// }
+    /// 
+    /// assert_eq!(map.get("foobar"), Some(&16));
+    /// ```
     pub fn replace_entry(self, value: V) -> (K, V) {
         unsafe {
             let base_ptr = self.map.buf.get_mut_ptr();
@@ -561,10 +791,7 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> OccupiedEntry<'a, K
 
     /// Replaces the key in the map with the one used to create the entry.
     /// 
-    /// # Examples
-    /// ```
-    /// todo!()
-    /// ```
+    /// This matters for key types that can be `==` without being identical.
     pub fn replace_key(self) -> K {
         unsafe {
             let keys_ptr = self.map.buf.get_mut_ptr().cast::<K>();
@@ -640,7 +867,15 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Entry<'a, K, V, S, 
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    ///
+    /// map.entry("foobar").or_insert(3);
+    /// assert_eq!(map.get("foobar"), Some(&3));
+    /// 
+    /// *map.entry("foobar").or_insert(5) *= 2;
+    /// assert_eq!(map.get("foobar"), Some(&6));
     /// ```
     pub fn or_insert(self, default: V) -> &'a mut V {
         match self {
@@ -654,7 +889,13 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Entry<'a, K, V, S, 
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// let bazz = 0xDEADBEEF;
+    /// 
+    /// map.entry("foobar").or_insert_with(|| bazz);
+    /// assert_eq!(map.get("foobar"), Some(&bazz));
     /// ```
     pub fn or_insert_with<F: FnOnce() -> V>(self, default: F) -> &'a mut V {
         match self {
@@ -672,7 +913,13 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Entry<'a, K, V, S, 
     ///
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, usize, 4>::new();
+    /// 
+    /// map.entry("foobar").or_insert_with_key(|key| key.chars().count());
+    /// 
+    /// assert_eq!(map.get("foobar"), Some(&6));
     /// ```
     pub fn or_insert_with_key<F: FnOnce(&K) -> V>(self, default: F) -> &'a mut V {
         match self {
@@ -697,7 +944,19 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Entry<'a, K, V, S, 
     ///
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// 
+    /// map.entry("foobar")
+    ///     .and_modify(|v| { *v += 1 })
+    ///     .or_insert(37);
+    /// assert_eq!(map.get("foobar"), Some(&37));
+    /// 
+    /// map.entry("foobar")
+    ///     .and_modify(|v| { *v += 1 })
+    ///     .or_insert(42);
+    /// assert_eq!(map.get("foobar"), Some(&38));
     /// ```
     pub fn and_modify<F: FnOnce(&mut V)>(self, f: F) -> Self {
         match self {
@@ -716,7 +975,12 @@ impl<'a, K, V: Default, S: Storage<ListMapLayout<K, V>>, I: Capacity> Entry<'a, 
     /// 
     /// # Examples
     /// ```
-    /// todo!()
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// map.entry("foobar").or_default();
+    /// 
+    /// assert_eq!(map.get("foobar"), Some(&0));
     /// ```
     pub fn or_default(self) -> &'a mut V {
         match self {

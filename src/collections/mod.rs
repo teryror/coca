@@ -11,6 +11,7 @@ use crate::storage::{ArenaStorage, ArrayLike, InlineStorage, SliceStorage};
 use binary_heap::BinaryHeap;
 use cache::{CacheTable, UnitCache, LruCache2};
 use deque::Deque;
+use list_map::{ListMap, ListMapLayout};
 use option_group::OptionGroup;
 use pool::DefaultHandle;
 use pool::direct::{DirectPool, DirectPoolLayout};
@@ -340,6 +341,51 @@ pub type InlineDeque<T, const C: usize> = Deque<T, InlineStorage<T, C>, usize>;
 /// assert_eq!(deque[0u8], 'a');
 /// ```
 pub type TiInlineDeque<T, I, const C: usize> = Deque<T, InlineStorage<T, C>, I>;
+
+/// An association list that stores its contents in an arena-allocated memory block.
+/// 
+/// # Examples
+/// ```
+/// use coca::arena::Arena;
+/// use coca::collections::ArenaListMap;
+/// use core::mem::MaybeUninit;
+///
+/// let mut backing_region = [MaybeUninit::uninit(); 2048];
+/// let mut arena = Arena::from(&mut backing_region[..]);
+/// 
+/// let map: ArenaListMap<'_, &'static str, u32> = arena.try_with_capacity(100).unwrap();
+/// assert!(arena.try_with_capacity::<_, ArenaListMap<'_, &'static str, u32>>(100).is_none());
+/// ```
+pub type ArenaListMap<'a, K, V, I = usize> = ListMap<K, V, ArenaStorage<'a, ListMapLayout<K, V>>, I>;
+/// An association list that stores its contents in globally allocated memory.
+/// 
+/// # Examples
+/// ```
+/// use coca::collections::AllocListMap;
+/// let mut map = AllocListMap::<&'static str, u32>::with_capacity(13);
+/// assert_eq!(map.capacity(), 13);
+/// ```
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+pub type AllocListMap<K, V, I = usize> = ListMap<K, V, crate::storage::AllocStorage<ListMapLayout<K, V>>, I>;
+/// An association list that stores its contents inline.
+/// 
+/// # Examples
+/// ```
+/// use coca::collections::InlineListMap;
+/// let mut map = InlineListMap::<&'static str, u32, 3>::new();
+/// # assert!(map.is_empty());
+/// ```
+pub type InlineListMap<K, V, const N: usize> = ListMap<K, V, list_map::InlineStorage<K, V, N>, usize>;
+/// An association list that stores its contents inline.
+/// 
+/// # Examples
+/// ```
+/// use coca::collections::TiInlineListMap;
+/// let mut map = TiInlineListMap::<&'static str, u32, u8, 3>::new();
+/// # assert!(map.is_empty());
+/// ```
+pub type TiInlineListMap<K, V, I, const N: usize> = ListMap<K, V, list_map::InlineStorage<K, V, N>, I>;
 
 /// A group of up to eight [`Option`]s with the discriminants packed into a single `u8`.
 pub type OptionGroup8<T> = OptionGroup<u8, T>;
