@@ -204,7 +204,73 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
         self.len.as_usize() == self.buf.capacity()
     }
 
-    // TODO: drain, drain_filter
+    /// Clears the map without taking ownership, and returns all key-value pairs as an iterator.
+    /// 
+    /// If the iterator is only partially consumed, or not consumed at all,
+    /// all remaining key-value pairs will still be removed.
+    /// 
+    /// It is unspecified how many pairs will be removed if a panic occurs while
+    /// dropping an element, or if the [`Drain`] value is leaked.
+    /// 
+    /// # Examples
+    /// ```
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<&'static str, u32, 4>::new();
+    /// map.insert("a", 1);
+    /// map.insert("b", 2);
+    /// 
+    /// for (k, v) in map.drain().take(1) {
+    ///     let a = k == "a" && v == 1;
+    ///     let b = k == "b" && v == 2;
+    ///     assert!(a || b);
+    /// }
+    /// 
+    /// assert!(map.is_empty());
+    /// ```
+    pub fn drain(&mut self) -> Drain<'_, K, V, S, I> {
+        Drain { map: self }
+    }
+
+    /// Creates an iterator which uses a closure to determine if an element should be removed.
+    /// 
+    /// If the closure returns `true`, the element is removed from the map and
+    /// yielded. If the closure returns `false`, or panics, the element remains
+    /// in the map and will not be yielded.
+    /// 
+    /// Note that `drain_filter` lets you mutate every value in the filter
+    /// closure, regardless of whether you choose to keep or remove it.
+    /// 
+    /// If the iterator is only partially consumed, or not consumed at all,
+    /// all remaining key-value pairs will still be subjected to the closure
+    /// and removed and dropped if it returns true.
+    /// 
+    /// It is unspecified how many pairs will be subjected to the closure if a
+    /// panic occurs in the closure, or a panic occurs while dropping an element,
+    /// or if the [`DrainFilter`] value is leaked.
+    /// 
+    /// # Examples
+    /// ```
+    /// use coca::collections::{InlineListMap, InlineVec};
+    /// 
+    /// let mut map = InlineListMap::<u32, u32, 8>::new();
+    /// (0..8).for_each(|x| { map.insert(x, x); });
+    /// let drained = map.drain_filter(|k, v| { *v = *v * *v; k % 2 == 0 });
+    /// 
+    /// let mut evens = InlineVec::<u32, 4>::new();
+    /// let mut odds = InlineVec::<u32, 4>::new();
+    /// 
+    /// evens.extend(drained.map(|(_x, x_squared)| x_squared));
+    /// evens.sort_unstable();
+    /// assert_eq!(evens, [0, 4, 16, 36]);
+    /// 
+    /// odds.extend(map.into_values());
+    /// odds.sort_unstable();
+    /// assert_eq!(odds, [1, 9, 25, 49]);
+    /// ```
+    pub fn drain_filter<F: FnMut(&K, &mut V) -> bool>(&mut self, pred: F) -> DrainFilter<'_, K, V, S, I, F> {
+        DrainFilter { map: self, should_remove: pred, front: I::from_usize(0) }
+    }
 
     /// Clears the map, removing all key-value pairs.
     /// 
@@ -539,7 +605,25 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
         }
     }
 
-    // TODO: retain
+    /// Retains only the elements specified by the predicate.
+    /// 
+    /// In other words, remove all key-value pairs `(k, v)` such that `pred(&k, &mut v)`
+    /// returns `false`. The elements are visited in arbitrary (and unspecified) order.
+    /// 
+    /// # Examples
+    /// ```
+    /// use coca::collections::InlineListMap;
+    /// 
+    /// let mut map = InlineListMap::<u32, u32, 8>::new();
+    /// (0..8).for_each(|x| { map.insert(x, x*10); });
+    /// assert_eq!(map.len(), 8);
+    /// 
+    /// map.retain(|&k, _| k % 2 == 0);
+    /// assert_eq!(map.len(), 4);
+    /// ```
+    pub fn retain<F: FnMut(&K, &mut V) -> bool>(&mut self, mut pred: F) {
+        self.drain_filter(|k, v| !(pred)(k, v)).for_each(drop);
+    }
 
     /// Creates a consuming iterator visiting all keys in arbitrary order.
     /// The map cannot be used after calling this. The iterator element type is `K`.
@@ -1275,3 +1359,126 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Iterator for IntoValues
 
 impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ExactSizeIterator for IntoValues<K, V, S, I> {}
 impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> FusedIterator for IntoValues<K, V, S, I> {}
+
+/// A draining iterator over the entries of a [`ListMap`].
+/// 
+/// This `struct` is created by the [`drain`](ListMap::drain) method on `ListMap`.
+/// See its documentation for more.
+pub struct Drain<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> {
+    map: &'a mut ListMap<K, V, S, I>,
+}
+
+impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Iterator for Drain<'a, K, V, S, I> {
+    type Item = (K, V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let len = self.map.len();
+        if len == 0 { return None; }
+
+        let new_len = len - 1;
+        self.map.len = I::from_usize(new_len);
+
+        unsafe {
+            let base_ptr = self.map.buf.get_ptr();
+            
+            let keys_ptr = base_ptr.cast::<K>();
+            let k = keys_ptr.add(new_len).read();
+
+            let values_ptr = base_ptr.add(self.map.values_offset()).cast::<V>();
+            let v = values_ptr.add(new_len).read();
+
+            Some((k, v))
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.map.len();
+        (len, Some(len))
+    }
+}
+
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ExactSizeIterator for Drain<'_, K, V, S, I> {}
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> FusedIterator for Drain<'_, K, V, S, I> {}
+
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Drop for Drain<'_, K, V, S, I> {
+    fn drop(&mut self) {
+        self.for_each(drop);
+    }
+}
+
+/// A draining, filtering iterator over the entries of a [`ListMap`].
+/// 
+/// This `struct` is created by the [`drain_filter`](ListMap::drain_filter)
+/// method on `ListMap`. See its documentation for more.
+pub struct DrainFilter<'a, K, V, S, I, F>
+where
+    S: Storage<ListMapLayout<K, V>>,
+    I: Capacity,
+    F: FnMut(&K, &mut V) -> bool,
+{
+    map: &'a mut ListMap<K, V, S, I>,
+    should_remove: F,
+    front: I,
+}
+
+impl<'a, K, V, S, I, F> Iterator for DrainFilter<'a, K, V, S, I, F>
+where
+    S: Storage<ListMapLayout<K, V>>,
+    I: Capacity,
+    F: FnMut(&K, &mut V) -> bool
+{
+    type Item = (K, V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut front = self.front.as_usize();
+        while front < self.map.len() {
+            unsafe {
+                let base_ptr = self.map.buf.get_mut_ptr();
+                let keys_ptr = base_ptr.cast::<K>();
+                let values_ptr = base_ptr.add(self.map.values_offset()).cast::<V>();
+
+                let k = keys_ptr.add(front).as_ref().unwrap();
+                let v = values_ptr.add(front).as_mut().unwrap();
+
+                if (self.should_remove)(k, v) {
+                    let new_len = self.map.len() - 1;
+                    self.map.len = I::from_usize(new_len);
+
+                    let k = keys_ptr.add(front).read();
+                    let v = values_ptr.add(front).read();
+
+                    if front < new_len {
+                        core::ptr::copy_nonoverlapping(keys_ptr.add(new_len), keys_ptr.add(front), 1);
+                        core::ptr::copy_nonoverlapping(values_ptr.add(new_len), values_ptr.add(front), 1);
+                    }
+
+                    self.front = I::from_usize(front);
+                    return Some((k, v));
+                }
+            }
+
+            front += 1;
+        }
+
+        self.front = I::from_usize(front);
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let max_len = self.map.len() - self.front.as_usize();
+        (0, Some(max_len))
+    }
+}
+
+impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity, F: FnMut(&K, &mut V) -> bool> FusedIterator for DrainFilter<'_, K, V, S, I, F> {}
+
+impl<'a, K, V, S, I, F> Drop for DrainFilter<'a, K, V, S, I, F>
+where
+    S: Storage<ListMapLayout<K, V>>,
+    I: Capacity,
+    F: FnMut(&K, &mut V) -> bool
+{
+    fn drop(&mut self) {
+        self.for_each(drop);
+    }
+}
