@@ -1,4 +1,4 @@
-29
+30
 accessor
 allocator
 deque
@@ -16,6 +16,7 @@ inlining
 io
 Lokathor
 lookups
+n²
 panics
 prepends
 reallocations

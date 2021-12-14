@@ -678,6 +678,77 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Drop for ListMap<K, V, 
     }
 }
 
+impl<K: Debug, V: Debug, S: Storage<ListMapLayout<K, V>>, I: Capacity> Debug for ListMap<K, V, S, I> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_map().entries(self.iter()).finish()
+    }
+}
+
+impl<Q, K, V, S, I> core::ops::Index<&'_ Q> for ListMap<K, V, S, I>
+where
+    Q: Eq + ?Sized,
+    K: Eq + Borrow<Q>,
+    S: Storage<ListMapLayout<K, V>>,
+    I: Capacity,
+{
+    type Output = V;
+
+    fn index(&self, key: &Q) -> &V {
+        self.get(key).expect("no entry found for key")
+    }
+}
+
+impl<K, V, S, I> Extend<(K, V)> for ListMap<K, V, S, I>
+where
+    K: Eq,
+    S: Storage<ListMapLayout<K, V>>,
+    I: Capacity
+{
+    fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
+        let iter = iter.into_iter();
+        iter.for_each(move |(k, v)| { self.insert(k, v); });
+    }
+}
+
+impl<'a, K, V, S, I> Extend<(&'a K, &'a V)> for ListMap<K, V, S, I>
+where
+    K: Clone + Eq,
+    V: Clone,
+    S: Storage<ListMapLayout<K, V>>,
+    I: Capacity
+{
+    fn extend<T: IntoIterator<Item = (&'a K, &'a V)>>(&mut self, iter: T) {
+        let iter = iter.into_iter();
+        iter.for_each(|(k, v)| {
+            self.insert(k.clone(), v.clone());
+        });
+    }
+}
+
+impl<K, V, S1, I1, S2, I2> PartialEq<ListMap<K, V, S2, I2>> for ListMap<K, V, S1, I1>
+where
+    K: Eq,
+    V: PartialEq,
+    S1: Storage<ListMapLayout<K, V>>,
+    S2: Storage<ListMapLayout<K, V>>,
+    I1: Capacity,
+    I2: Capacity,
+{
+    /// Tests for `self` and `other` to be equal, and is used by `==`.
+    /// 
+    /// Note that this is *O*(1) if the two maps have different sizes,
+    /// but *O*(*n*²) if they are the same size.
+    fn eq(&self, other: &ListMap<K, V, S2, I2>) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+
+        self.iter().all(|(key, value)| other.get(key).map_or(false, |v| *value == *v))
+    }
+}
+
+impl<K: Eq, V: Eq, S: Storage<ListMapLayout<K, V>>, I: Capacity> Eq for ListMap<K, V, S, I> {}
+
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 impl<K, V, I: Capacity> crate::collections::AllocListMap<K, V, I> {
@@ -685,6 +756,30 @@ impl<K, V, I: Capacity> crate::collections::AllocListMap<K, V, I> {
     /// with the specified capacity.
     pub fn with_capacity(capacity: usize) -> Self {
         Self::from(crate::storage::AllocStorage::with_capacity(capacity))
+    }
+}
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+impl<K: Clone, V: Clone, I: Capacity> Clone for crate::collections::AllocListMap<K, V, I> {
+    fn clone(&self) -> Self {
+        let buf = crate::storage::AllocStorage::with_capacity(self.capacity());
+        let mut result = ListMap {
+            buf, len: self.len, pairs: PhantomData
+        };
+
+        unsafe {
+            let base_ptr = result.buf.get_mut_ptr();
+            let keys_ptr = base_ptr.cast::<K>();
+            let values_ptr = base_ptr.add(result.values_offset()).cast::<V>();
+
+            for (idx, (k, v)) in self.iter().enumerate() {
+                keys_ptr.add(idx).write(k.clone());
+                values_ptr.add(idx).write(v.clone());
+            }
+        }
+
+        result
     }
 }
 
@@ -724,6 +819,32 @@ impl<K, V, I: Capacity, const N: usize> ListMap<K, V, InlineStorage<K, V, N>, I>
 impl<K, V, I: Capacity, const N: usize> Default for ListMap<K, V, InlineStorage<K, V, N>, I> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<K: Clone, V: Clone, I: Capacity, const N: usize> Clone for ListMap<K, V, InlineStorage<K, V, N>, I> {
+    fn clone(&self) -> Self {
+        let buf = unsafe { InlineStorage {
+            keys: MaybeUninit::uninit().assume_init(),
+            values: MaybeUninit::uninit().assume_init(),
+        }};
+
+        let mut result = ListMap {
+            buf, len: self.len, pairs: PhantomData,
+        };
+
+        unsafe {
+            let base_ptr = result.buf.get_mut_ptr();
+            let keys_ptr = base_ptr.cast::<K>();
+            let values_ptr = base_ptr.add(result.values_offset()).cast::<V>();
+
+            for (idx, (k, v)) in self.iter().enumerate() {
+                keys_ptr.add(idx).write(k.clone());
+                values_ptr.add(idx).write(v.clone());
+            }
+        }
+
+        result
     }
 }
 
