@@ -1,6 +1,7 @@
 //! A set implemented with a vector.
 
 use core::borrow::Borrow;
+use core::iter::FusedIterator;
 use core::slice::Iter;
 
 use crate::collections::vec::{Vec, Drain};
@@ -69,12 +70,6 @@ impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> ListSet<T, S, I> {
         ListSet { vec }
     }
 
-    /// Converts a `ListSet` into the underlying `Vec`.
-    #[inline]
-    pub fn into_vec(self) -> Vec<T, S, I> {
-        self.vec
-    }
-
     /// Returns the number of elements the set can hold.
     #[inline]
     pub fn capacity(&self) -> usize {
@@ -113,10 +108,114 @@ impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> ListSet<T, S, I> {
         self.vec.clear();
     }
 
+    /// Converts a `ListSet` into the underlying `Vec`.
+    #[inline]
+    pub fn into_vec(self) -> Vec<T, S, I> {
+        self.vec
+    }
+
+    /// Returns a slice of all elements contained in the set in arbitrary order.
+    #[inline]
+    pub fn as_slice(&self) -> &[T] {
+        self.vec.as_slice()
+    }
+
     /// An iterator visiting all elements of the set in arbitrary order. The iterator element type is `&'a T`.
     #[inline]
     pub fn iter(&self) -> Iter<'_, T> {
         self.vec.iter()
+    }
+
+    /// Returns an iterator visiting the values representing the set difference,
+    /// i.e. the values that are in `self` but not in `other`.
+    /// 
+    /// # Examples
+    /// ```
+    /// use coca::collections::InlineListSet;
+    /// let mut a = InlineListSet::<u32, 4>::new();
+    /// (1..4).for_each(|x| { a.insert(x); });
+    /// 
+    /// let mut b = InlineListSet::<u32, 4>::new();
+    /// (2..5).for_each(|x| { b.insert(x); });
+    /// 
+    /// let mut d = InlineListSet::<u32, 4>::new();
+    /// a.difference(&b).for_each(|x| { d.insert(*x); });
+    /// assert_eq!(d.as_slice(), &[1]);
+    /// 
+    /// d.clear();
+    /// b.difference(&a).for_each(|x| { d.insert(*x); });
+    /// assert_eq!(d.as_slice(), &[4]);
+    /// ```
+    #[inline]
+    pub fn difference<'a, S2: Storage<ArrayLike<T>>, I2: Capacity>(&'a self, other: &'a ListSet<T, S2, I2>) -> Difference<'a, T> {
+        Difference { this: self.as_slice(), other: other.as_slice(), front: 0 }
+    }
+
+    /// Returns an iterator visiting the values representing the symmetric difference,
+    /// i.e. the values that are in `self` or in `other`, but not both.
+    /// 
+    /// # Examples
+    /// ```
+    /// use coca::collections::{InlineListSet, InlineVec};
+    /// let mut a = InlineListSet::<u32, 4>::new();
+    /// (1..4).for_each(|x| { a.insert(x); });
+    /// 
+    /// let mut b = InlineListSet::<u32, 4>::new();
+    /// (2..5).for_each(|x| { b.insert(x); });
+    /// 
+    /// let mut d = InlineVec::<u32, 4>::new();
+    /// d.extend(a.symmetric_difference(&b).cloned());
+    /// d.sort();
+    /// 
+    /// assert_eq!(&d, &[1, 4]);
+    /// ```
+    #[inline]
+    pub fn symmetric_difference<'a, S2: Storage<ArrayLike<T>>, I2: Capacity>(&'a self, other: &'a ListSet<T, S2, I2>) -> SymmetricDifference<'a, T> {
+        SymmetricDifference { this: self.as_slice(), other: other.as_slice(), front: 0 }
+    }
+
+    /// Returns an iterator visiting the values representing the intersection,
+    /// i.e. the values that are both in `self` and `other`.
+    /// 
+    /// # Examples
+    /// ```
+    /// use coca::collections::{InlineListSet, InlineVec};
+    /// let mut a = InlineListSet::<u32, 4>::new();
+    /// (1..4).for_each(|x| { a.insert(x); });
+    /// 
+    /// let mut b = InlineListSet::<u32, 4>::new();
+    /// (2..5).for_each(|x| { b.insert(x); });
+    /// 
+    /// let mut i = InlineVec::<u32, 4>::new();
+    /// i.extend(a.intersection(&b).cloned());
+    /// i.sort();
+    /// 
+    /// assert_eq!(&i, &[2, 3]);
+    /// ```
+    #[inline]
+    pub fn intersection<'a, S2: Storage<ArrayLike<T>>, I2: Capacity>(&'a self, other: &'a ListSet<T, S2, I2>) -> Intersection<'a, T> {
+        Intersection { this: self.as_slice(), other: other.as_slice(), front: 0 }
+    }
+
+    /// Returns an iterator visiting the values representing the union,
+    /// i.e. all values in `self` or `other`, without duplicates.
+    /// 
+    /// # Examples
+    /// ```
+    /// use coca::collections::InlineListSet;
+    /// let mut a = InlineListSet::<u32, 4>::new();
+    /// (1..4).for_each(|x| { a.insert(x); });
+    /// 
+    /// let mut b = InlineListSet::<u32, 4>::new();
+    /// (2..5).for_each(|x| { b.insert(x); });
+    /// 
+    /// let mut u = InlineListSet::<u32, 4>::new();
+    /// a.union(&b).for_each(|x| { u.insert_unique_unchecked(*x); });
+    /// (1..5).for_each(|x| assert!(u.contains(&x)));
+    /// ```
+    #[inline]
+    pub fn union<'a, S2: Storage<ArrayLike<T>>, I2: Capacity>(&'a self, other: &'a ListSet<T, S2, I2>) -> Union<'a, T> {
+        Union { this: self.as_slice(), other: other.as_slice(), front: 0 }
     }
 
     /// Clears the set, returning all elements in an iterator.
@@ -482,3 +581,183 @@ impl<T, I: Capacity, const N: usize> Default for ListSet<T, InlineStorage<T, N>,
         Self::new()
     }
 }
+
+/// A lazy iterator producing elements in the difference between two [`ListSet`]s.
+/// 
+/// This `struct` is created by the [`difference`](ListSet::difference)
+/// method on `ListSet`. See its documentation for more.
+pub struct Difference<'a, T> {
+    this: &'a [T],
+    other: &'a [T],
+    front: usize,
+}
+
+impl<'a, T: Eq> Iterator for Difference<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        'outer: while self.front < self.this.len() {
+            let my_item = &self.this[self.front];
+            self.front += 1;
+
+            for their_item in self.other {
+                if my_item == their_item {
+                    continue 'outer;
+                }
+            }
+
+            return Some(my_item);
+        }
+
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let max_len = self.this.len() - self.front;
+        (0, Some(max_len))
+    }
+}
+
+impl<T: Eq> FusedIterator for Difference<'_, T> {}
+
+/// A lazy iterator producing elements in the symmetric difference of [`ListSet`]s.
+/// 
+/// This `struct` is created by the [`symmetric_difference`](ListSet::symmetric_difference)
+/// method on `ListSet`. See its documentation for more.
+pub struct SymmetricDifference<'a, T> {
+    this: &'a [T],
+    other: &'a [T],
+    front: usize,
+}
+
+impl<'a, T: Eq> Iterator for SymmetricDifference<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        'outer1: while self.front < self.this.len() {
+            let my_item = &self.this[self.front];
+            self.front += 1;
+
+            for their_item in self.other {
+                if my_item == their_item {
+                    continue 'outer1;
+                }
+            }
+
+            return Some(my_item);
+        }
+
+        'outer2: while (self.front - self.this.len()) < self.other.len() {
+            let their_item = &self.other[self.front - self.this.len()];
+            self.front += 1;
+
+            for my_item in self.this {
+                if my_item == their_item {
+                    continue 'outer2;
+                }
+            }
+
+            return Some(their_item);
+        }
+
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let max_len = if self.front < self.this.len() {
+            (self.this.len() - self.front) + self.other.len()
+        } else {
+            self.other.len() - (self.front - self.this.len())
+        };
+
+        (0, Some(max_len))
+    }
+}
+
+impl<T: Eq> FusedIterator for SymmetricDifference<'_, T> {}
+
+/// A lazy iterator producing elements in the intersection of [`ListSet`]s.
+/// 
+/// This struct is created by the [`intersection`](ListSet::intersection)
+/// method on `ListSet`. See its documentation for more.
+pub struct Intersection<'a, T> {
+    this: &'a [T],
+    other: &'a [T],
+    front: usize,
+}
+
+impl<'a, T: Eq> Iterator for Intersection<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.front < self.this.len() {
+            let my_item = &self.this[self.front];
+            self.front += 1;
+
+            for their_item in self.other {
+                if my_item == their_item {
+                    return Some(my_item);
+                }
+            }
+        }
+
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let max_len = self.this.len() - self.front;
+        (0, Some(max_len))
+    }
+}
+
+impl<T: Eq> FusedIterator for Intersection<'_, T> {}
+
+/// A lazy iterator producing elements in the union of [`ListSet`]s.
+/// 
+/// This `struct` is created by the [`union`](ListSet::union)
+/// method on `ListSet`. See its documentation for more.
+pub struct Union<'a, T> {
+    this: &'a [T],
+    other: &'a [T],
+    front: usize,
+}
+
+impl<'a, T: Eq> Iterator for Union<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.front < self.this.len() {
+            let result = &self.this[self.front];
+            self.front += 1;
+            return Some(result);
+        }
+
+        'outer: while (self.front - self.this.len()) < self.other.len() {
+            let their_item = &self.other[self.front - self.this.len()];
+            self.front += 1;
+
+            for my_item in self.this {
+                if my_item == their_item {
+                    continue 'outer;
+                }
+            }
+
+            return Some(their_item);
+        }
+
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let min_len = self.this.len().saturating_sub(self.front);
+        let max_len = if self.front < self.this.len() {
+            self.other.len() + min_len
+        } else {
+            self.other.len() - self.front
+        };
+
+        (min_len, Some(max_len))
+    }
+}
+
+impl<T: Eq> FusedIterator for Union<'_, T> {}
