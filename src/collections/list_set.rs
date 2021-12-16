@@ -559,6 +559,42 @@ impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> ListSet<T, S, I> {
     }
 }
 
+impl<T: Eq, S1, S2, I1, I2> core::ops::BitAndAssign<&'_ ListSet<T, S2, I2>> for ListSet<T, S1, I1>
+where
+    S1: Storage<ArrayLike<T>>,
+    S2: Storage<ArrayLike<T>>,
+    I1: Capacity,
+    I2: Capacity,
+{
+    fn bitand_assign(&mut self, rhs: &ListSet<T, S2, I2>) {
+        let mut i = 0;
+        while i < self.len() {
+            if rhs.contains(&self.vec.as_slice()[i]) {
+                i += 1;
+            } else {
+                self.vec.swap_remove(I1::from_usize(i));
+            }
+        }
+    }
+}
+
+impl<T, S1, S2, I1, I2> core::ops::BitOrAssign<&'_ ListSet<T, S2, I2>> for ListSet<T, S1, I1>
+where
+    T: Clone + Eq,
+    S1: Storage<ArrayLike<T>>,
+    S2: Storage<ArrayLike<T>>,
+    I1: Capacity,
+    I2: Capacity,
+{
+    fn bitor_assign(&mut self, rhs: &ListSet<T, S2, I2>) {
+        for x in rhs.iter() {
+            if !self.contains(x) {
+                self.insert_unique_unchecked(x.clone());
+            }
+        }
+    }
+}
+
 impl<T: Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for ListSet<T, S, I> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_set().entries(self.vec.as_slice()).finish()
