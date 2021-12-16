@@ -1,6 +1,7 @@
 //! A set implemented with a vector.
 
 use core::borrow::Borrow;
+use core::fmt::Debug;
 use core::iter::FusedIterator;
 use core::slice::Iter;
 
@@ -557,6 +558,57 @@ impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> ListSet<T, S, I> {
         self.vec.retain(pred);
     }
 }
+
+impl<T: Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for ListSet<T, S, I> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_set().entries(self.vec.as_slice()).finish()
+    }
+}
+
+impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> Extend<T> for ListSet<T, S, I> {
+    fn extend<It: IntoIterator<Item = T>>(&mut self, iter: It) {
+        iter.into_iter().for_each(|x| { self.insert(x); })
+    }
+}
+
+impl<'a, T: Clone + Eq, S: Storage<ArrayLike<T>>, I: Capacity> Extend<&'a T> for ListSet<T, S, I> {
+    fn extend<It: IntoIterator<Item = &'a T>>(&mut self, iter: It) {
+        iter.into_iter().for_each(|x| { self.insert(x.clone()); })
+    }
+}
+
+impl<T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for ListSet<T, S, I> {
+    type IntoIter = crate::collections::vec::IntoIterator<T, S, I>;
+    type Item = T;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.vec.into_iter()
+    }
+}
+
+impl<'a, T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for &'a ListSet<T, S, I> {
+    type Item = &'a T;
+    type IntoIter = Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.as_slice().into_iter()
+    }
+}
+
+impl<T, S1, S2, I1, I2> PartialEq<ListSet<T, S2, I2>> for ListSet<T, S1, I1>
+where
+    S1: Storage<ArrayLike<T>>,
+    S2: Storage<ArrayLike<T>>,
+    I1: Capacity,
+    I2: Capacity,
+    T: Eq,
+{
+    fn eq(&self, other: &ListSet<T, S2, I2>) -> bool {
+        self.is_subset_of(other) && self.is_superset_of(other)
+    }
+}
+
+impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> Eq for ListSet<T, S, I> {}
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
