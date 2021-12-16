@@ -24,6 +24,7 @@ representable
 rustc
 struct
 structs
+superset
 toolchain
 unsafety
 vec

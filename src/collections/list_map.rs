@@ -752,7 +752,7 @@ impl<K: Eq, V: Eq, S: Storage<ListMapLayout<K, V>>, I: Capacity> Eq for ListMap<
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 impl<K, V, I: Capacity> crate::collections::AllocListMap<K, V, I> {
-    /// Constructs a new, empty [`AllocListMap`](crate::storage::AllocListMap)
+    /// Constructs a new, empty [`AllocListMap`](crate::collections::AllocListMap)
     /// with the specified capacity.
     pub fn with_capacity(capacity: usize) -> Self {
         Self::from(crate::storage::AllocStorage::with_capacity(capacity))

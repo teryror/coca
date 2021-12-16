@@ -2,6 +2,7 @@ pub mod binary_heap;
 pub mod cache;
 pub mod deque;
 pub mod list_map;
+pub mod list_set;
 pub mod option_group;
 pub mod pool;
 pub mod vec;
@@ -12,6 +13,7 @@ use binary_heap::BinaryHeap;
 use cache::{CacheTable, UnitCache, LruCache2};
 use deque::Deque;
 use list_map::{ListMap, ListMapLayout};
+use list_set::ListSet;
 use option_group::OptionGroup;
 use pool::DefaultHandle;
 use pool::direct::{DirectPool, DirectPoolLayout};
@@ -386,6 +388,62 @@ pub type InlineListMap<K, V, const N: usize> = ListMap<K, V, list_map::InlineSto
 /// # assert!(map.is_empty());
 /// ```
 pub type TiInlineListMap<K, V, I, const N: usize> = ListMap<K, V, list_map::InlineStorage<K, V, N>, I>;
+
+/// A set based on an arena-allocated array.
+/// 
+/// # Examples
+/// ```
+/// use coca::arena::Arena;
+/// use coca::collections::ArenaListSet;
+/// use core::mem::MaybeUninit;
+///
+/// let mut backing_region = [MaybeUninit::uninit(); 2048];
+/// let mut arena = Arena::from(&mut backing_region[..]);
+/// 
+/// let map: ArenaListSet<'_, &'static str> = arena.try_with_capacity(100).unwrap();
+/// assert!(arena.try_with_capacity::<_, ArenaListSet<'_, &'static str>>(100).is_none());
+/// ```
+pub type ArenaListSet<'a, T, I = usize> = ListSet<T, ArenaStorage<'a, ArrayLike<T>>, I>;
+/// A set based on a globally allocated array.
+/// 
+/// # Examples
+/// ```
+/// use coca::collections::AllocListSet;
+/// let mut map = AllocListSet::<&'static str>::with_capacity(13);
+/// assert_eq!(map.capacity(), 13);
+/// ```
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+pub type AllocListSet<T, I = usize> = ListSet<T, crate::storage::AllocStorage<ArrayLike<T>>, I>;
+/// A set based on any mutable array slice.
+/// 
+/// # Examples
+/// ```
+/// use core::mem::MaybeUninit;
+/// let mut backing_array = [MaybeUninit::<char>::uninit(); 32];
+/// let (slice1, slice2) = (&mut backing_array[..]).split_at_mut(16);
+/// let mut set1 = coca::collections::SliceListSet::<_>::from(slice1);
+/// let mut set2 = coca::collections::SliceListSet::<_>::from(slice2);
+/// assert_eq!(set1.capacity(), 16);
+/// assert_eq!(set2.capacity(), 16);
+/// ```
+pub type SliceListSet<'a, T, I = usize> = ListSet<T, SliceStorage<'a, T>, I>;
+/// A set based on an inline array.
+/// 
+/// # Examples
+/// ```
+/// use coca::collections::InlineListSet;
+/// let mut set = InlineListSet::<&'static str, 20>::new();
+/// ```
+pub type InlineListSet<T, const N: usize> = ListSet<T, InlineStorage<T, N>, usize>;
+/// A set based on an inline array, generic over the index type.
+/// 
+/// # Examples
+/// ```
+/// use coca::collections::TiInlineListSet;
+/// let mut set = TiInlineListSet::<&'static str, u8, 20>::new();
+/// ```
+pub type TiInlineListSet<T, I, const N: usize> = ListSet<T, InlineStorage<T, N>, I>;
 
 /// A group of up to eight [`Option`]s with the discriminants packed into a single `u8`.
 pub type OptionGroup8<T> = OptionGroup<u8, T>;
