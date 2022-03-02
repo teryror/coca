@@ -429,14 +429,14 @@ impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> ListSet<T, S, I> {
     /// of the resulting set is unspecified, though it is guaranteed to be
     /// memory-safe.
     /// 
-    /// This operation is faster than regular [`insert`](ListMap::insert),
+    /// This operation is faster than regular [`insert`](ListSet::insert),
     /// because it does not perform a lookup before insertion. This is useful
     /// during initial population of the set, e.g. when constructing a set from
     /// another set, which guarantees unique values.
     /// 
     /// # Panics
     /// Panics if the set is already at capacity. See
-    /// [`try_insert_unique_unchecked`](ListMap::try_insert_unique_unchecked)
+    /// [`try_insert_unique_unchecked`](ListSet::try_insert_unique_unchecked)
     /// for a checked version that never panics.
     #[inline]
     pub fn insert_unique_unchecked(&mut self, value: T) -> &T {
@@ -453,7 +453,7 @@ impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> ListSet<T, S, I> {
     /// of the resulting set is unspecified, though it is guaranteed to be
     /// memory-safe.
     /// 
-    /// This operation is faster than regular [`try_insert`](ListMap::try_insert),
+    /// This operation is faster than regular [`try_insert`](ListSet::try_insert),
     /// because it does not perform a lookup before insertion. This is useful
     /// during initial population of the set, e.g. when constructing a set from
     /// another set, which guarantees unique values.
