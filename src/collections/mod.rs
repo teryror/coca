@@ -1,3 +1,5 @@
+//! Collection types.
+
 pub mod binary_heap;
 pub mod cache;
 pub mod deque;

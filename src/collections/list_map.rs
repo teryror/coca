@@ -43,6 +43,17 @@ impl<K, V> LayoutSpec for ListMapLayout<K, V> {
 /// As key search is the primary cost of these operations, care should be taken
 /// to avoid redundant lookups. Use the [`Entry` API](ListMap::try_entry) where
 /// applicable.
+/// 
+/// It is required that the keys implement the [`Eq`] trait, although this can
+/// frequently be achieved using `#[derive(PartialEq, Eq)]`.
+/// 
+/// It is a logic error for a key to be modified in such a way that its equality,
+/// as determined by the `Eq` trait, changes while it is in the map. This is
+/// normally only possible through [`Cell`](core::cell::Cell),
+/// [`RefCell`](core::cell::RefCell), global state, I/O, or unsafe code. The
+/// behavior resulting from such a logic error is not specified, but will not
+/// result in undefined behavior. This could include panics, incorrect results,
+/// aborts, memory leaks, and non-termination.
 pub struct ListMap<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> {
     buf: S,
     len: I,

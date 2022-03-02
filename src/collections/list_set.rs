@@ -9,6 +9,33 @@ use crate::collections::vec::{Vec, Drain};
 use crate::storage::{ArrayLike, Capacity, Storage, InlineStorage};
 
 /// A set implemented with a vector, using a linear scan to find a given value.
+/// 
+/// This is simple and cache-friendly, though algorithmically inefficient:
+/// converting an *n*-element [`Vec`] into a set requires *O*(*n*²) comparisons
+/// and looking up a value requires *O*(*n*) comparisons. Set operators such as
+/// [`difference`], [`intersection`], and [`union`] require *O*(*n* · *m*)
+/// comparisons.
+/// 
+/// [`difference`]: ListSet::difference
+/// [`intersection`]: ListSet::intersection
+/// [`union`]: ListSet::union
+/// 
+/// Newly inserted elements are appended to the internal vector, and a removed
+/// element is replaced by the last one in the list, meaning modifications have
+/// constant overhead after the initial lookup. This also means insertion order
+/// is **not** preserved.
+/// 
+/// As with the [`ListMap`](crate::collections::list_map::ListMap) type, a
+/// `ListSet` requires that the element type implements the [`Eq`] trait.
+/// This can frequently be achieved by using `#[derive(PartialEq, Eq)]`.
+/// 
+/// It is a logic error for an item to be modified in such a way that its
+/// equality, as determined by the `Eq` trait, changes while it is in the set.
+/// This is normally only possible through [`Cell`](core::cell::Cell),
+/// [`RefCell`](core::cell::RefCell), global state, I/O, or unsafe code. The
+/// behavior resulting from such a logic error is not specified, but will not
+/// result in undefined behavior. This could include panics, incorrect results,
+/// aborts, memory leaks, and non-termination.
 pub struct ListSet<T, S: Storage<ArrayLike<T>>, I: Capacity> {
     vec: Vec<T, S, I>,
 }
