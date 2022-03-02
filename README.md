@@ -50,7 +50,7 @@ Within this paradigm, direct analogs to the following types are provided:
 
 - [`alloc::vec::Vec`](https://doc.rust-lang.org/alloc/vec/struct.Vec.html)
 - [`alloc::string::String`](https://doc.rust-lang.org/alloc/string/struct.String.html)
-- [`alloc::collections::VecDeque](https://doc.rust-lang.org/alloc/collections/vec_deque/index.html)
+- [`alloc::collections::VecDeque`](https://doc.rust-lang.org/alloc/collections/vec_deque/index.html)
 - [`alloc::collections::BinaryHeap`](https://doc.rust-lang.org/alloc/collections/binary_heap/struct.BinaryHeap.html)
 - [`slotmap::{SlotMap, DenseSlotMap}`](https://docs.rs/slotmap/latest/slotmap/)
 
@@ -115,15 +115,15 @@ than `coca`.
   `Default` trait. `coca` has no such restriction, and offers equivalents to
   `tinyvec::ArrayVec` and `tinyvec::SliceVec`, but not `tinyvec::TinyVec`, which
   is a small-size optimized vector with the ability to reallocate. `coca` also
-  requires a newer rust version (min. 1.51) than tinyvec (min. 1.34).
+  requires a newer rust version (min. 1.59) than tinyvec (min. 1.34).
 - Both arrayvec and tinyvec have optional [`serde`](https://crates.io/crates/serde)
   support, while `coca` does not.
 - `coca::collections::Vec` supports more storage modes with just one implementation,
   meaning its instantiations inter-operate more easily, and you can write generic
   code to handle all of them. It is also generic over the index type, similar to
   what is offered by the [`typed_index_collections`][3] crate.
-
-[3]: (https://crates.io/crates/typed-index-collections)
+  
+  [3]: (https://crates.io/crates/typed-index-collections)
 
 ## Feature Flags
 
