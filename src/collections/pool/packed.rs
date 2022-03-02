@@ -1041,9 +1041,9 @@ impl<T: Clone, H: Handle> Clone for crate::collections::PackedAllocPool<T, H> {
 
         for i in 0..self.len() {
             unsafe {
-                let src = self.values_ptr().add(i).as_ref().unwrap();
+                let src = &*self.values_ptr().add(i);
                 let dst = result.values_mut_ptr().add(i);
-                dst.write(src.clone())
+                dst.write(src.clone());
             }
         }
 

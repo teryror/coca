@@ -9,7 +9,7 @@ use core::mem::MaybeUninit;
 
 use crate::storage::{Capacity, LayoutSpec, Storage};
 
-use self::Entry::*;
+use self::Entry::{Occupied, Vacant};
 
 /// The [`LayoutSpec`] for a [`ListMap`].
 pub struct ListMapLayout<K, V>(PhantomData<(K, V)>);
@@ -685,7 +685,7 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> ListMap<K, V, S, I> {
 
 impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Drop for ListMap<K, V, S, I> {
     fn drop(&mut self) {
-        self.clear()
+        self.clear();
     }
 }
 
@@ -931,7 +931,7 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> OccupiedEntry<'a, K
         unsafe {
             let base_ptr = self.map.buf.get_ptr();
             let values_ptr = base_ptr.add(self.map.values_offset()).cast::<V>();
-            values_ptr.add(self.idx).as_ref().unwrap()
+            &*values_ptr.add(self.idx)
         }
     }
 
@@ -964,7 +964,7 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> OccupiedEntry<'a, K
         unsafe {
             let base_ptr = self.map.buf.get_mut_ptr();
             let values_ptr = base_ptr.add(self.map.values_offset()).cast::<V>();
-            values_ptr.add(self.idx).as_mut().unwrap()
+            &mut *values_ptr.add(self.idx)
         }
     }
 
@@ -994,7 +994,7 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> OccupiedEntry<'a, K
         unsafe {
             let base_ptr = self.map.buf.get_mut_ptr();
             let values_ptr = base_ptr.add(self.map.values_offset()).cast::<V>();
-            values_ptr.add(self.idx).as_mut().unwrap()
+            &mut *values_ptr.add(self.idx)
         }
     }
 
@@ -1145,7 +1145,7 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> VacantEntry<'a, K, 
             v_ptr.write(value);
 
             self.map.len = I::from_usize(len + 1);
-            v_ptr.as_mut().unwrap()
+            &mut *v_ptr
         }
     }
 }
@@ -1263,6 +1263,7 @@ impl<'a, K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Entry<'a, K, V, S, 
     ///     .or_insert(42);
     /// assert_eq!(map.get("foobar"), Some(&38));
     /// ```
+    #[must_use]
     pub fn and_modify<F: FnOnce(&mut V)>(self, f: F) -> Self {
         match self {
             Occupied(mut entry) => {
@@ -1410,7 +1411,7 @@ impl<K, V, S: Storage<ListMapLayout<K, V>>, I: Capacity> Iterator for IntoIter<K
     type Item = (K, V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.map.len() == 0 { return None; }
+        if self.map.is_empty() { return None; }
 
         let new_len = self.map.len() - 1;
         self.map.len = I::from_usize(new_len);

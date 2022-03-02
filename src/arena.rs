@@ -465,7 +465,7 @@ impl<'src> Arena<'src> {
             assert!(end_of_meta <= end);
 
             debug_assert_eq!(align_offset(new_end, &layout), 0);
-            let meta = new_end as *mut ProfileMetaData;
+            let meta = new_end.cast::<ProfileMetaData>();
             meta.write(ProfileMetaData {
                 initial_cursor_pos: start as usize,
                 peak_cursor_pos: start as usize,
@@ -1287,7 +1287,7 @@ impl Arena<'_> {
             peak_cursor_pos,
             allocation_count,
             failed_allocations,
-        } = unsafe { (self.end as *const ProfileMetaData).as_ref().unwrap() };
+        } = unsafe { &*self.end.cast::<ProfileMetaData>() };
         UtilizationProfile {
             peak_utilization: peak_cursor_pos - initial_cursor_pos,
             allocation_count,
@@ -1300,7 +1300,7 @@ impl Arena<'_> {
     fn profile_meta_data_mut(&mut self) -> &mut ProfileMetaData {
         let layout = Layout::new::<ProfileMetaData>();
         debug_assert_eq!(align_offset(self.end, &layout), 0);
-        unsafe { (self.end as *mut ProfileMetaData).as_mut().unwrap() }
+        unsafe { &mut *self.end.cast::<ProfileMetaData>() }
     }
 }
 

@@ -90,7 +90,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     /// }
     /// ```
     pub fn into_raw_parts(self) -> (S, I, I) {
-        let ptr = &self.buf as *const S;
+        let ptr = core::ptr::addr_of!(self.buf);
         let result = (unsafe { ptr.read() }, self.front, self.len);
         core::mem::forget(self);
         result
@@ -1847,7 +1847,7 @@ impl<T: Copy, I: Capacity> crate::collections::AllocDeque<T, I> {
 impl<T: Copy, I: Capacity> Clone for crate::collections::AllocDeque<T, I> {
     fn clone(&self) -> Self {
         let mut result = Self::with_capacity(I::from_usize(self.capacity()));
-        result.extend(self.iter().cloned());
+        result.extend(self.iter().copied());
         result
     }
 }

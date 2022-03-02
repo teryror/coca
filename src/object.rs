@@ -64,10 +64,10 @@ unsafe impl<A, const N: usize> Storage<ObjectLayout> for InlineStorage<A, N> {
         N
     }
     fn get_ptr(&self) -> *const u8 {
-        unsafe { self.data.as_ptr() as _ }
+        unsafe { self.data.as_ptr().cast() }
     }
     fn get_mut_ptr(&mut self) -> *mut u8 {
-        unsafe { self.data.as_mut_ptr() as _ }
+        unsafe { self.data.as_mut_ptr().cast() }
     }
 }
 
@@ -118,7 +118,7 @@ impl<T: ?Sized + Debug, S: Storage<ObjectLayout>> Debug for Object<T, S> {
 
 impl<T: ?Sized, S: Storage<ObjectLayout>> Drop for Object<T, S> {
     fn drop(&mut self) {
-        unsafe { ((&mut **self) as *mut T).drop_in_place() };
+        unsafe { core::ptr::addr_of_mut!(**self).drop_in_place() };
     }
 }
 
@@ -141,10 +141,10 @@ impl<T: ?Sized, A, const N: usize> Object<T, InlineStorage<A, N>> {
         }
 
         if size_of::<U>() > N {
-            value_too_large(N, size_of::<U>())
+            value_too_large(N, size_of::<U>());
         }
         if align_of::<U>() > align_of::<A>() {
-            value_too_strictly_aligned(align_of::<A>(), align_of::<U>())
+            value_too_strictly_aligned(align_of::<A>(), align_of::<U>());
         }
     }
 
@@ -193,7 +193,7 @@ impl<T: ?Sized, A, const N: usize> Object<T, InlineStorage<A, N>> {
             },
         };
 
-        let ptr = result.buf.get_mut_ptr() as *mut U;
+        let ptr = result.buf.get_mut_ptr().cast::<U>();
         unsafe { ptr.write(val) };
 
         result
@@ -216,10 +216,10 @@ impl<T: ?Sized, A, const N: usize> Object<T, InlineStorage<A, N>> {
     /// ```
     pub fn set<U: Sized + Unsize<T>>(&mut self, val: U) {
         Self::check_layout::<U>();
-        unsafe { ((&mut **self) as *mut T).drop_in_place() };
+        unsafe { core::ptr::addr_of_mut!(**self).drop_in_place() };
 
         self.meta = NonNull::<U>::dangling() as NonNull<T>;
-        let ptr = self.buf.get_mut_ptr() as *mut U;
+        let ptr = self.buf.get_mut_ptr().cast::<U>();
         unsafe { ptr.write(val) };
     }
 }

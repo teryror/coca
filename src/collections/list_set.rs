@@ -54,7 +54,7 @@ impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> From<Vec<T, S, I>> for ListSe
                 let i = I::from_usize(i);
                 let j = I::from_usize(j);
 
-                if &vec[i] == &vec[j] {
+                if vec[i] == vec[j] {
                     vec.swap_remove(i);
                     continue 'outer;
                 }
@@ -630,13 +630,13 @@ impl<T: Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for ListSet<T, S, I>
 
 impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> Extend<T> for ListSet<T, S, I> {
     fn extend<It: IntoIterator<Item = T>>(&mut self, iter: It) {
-        iter.into_iter().for_each(|x| { self.insert(x); })
+        iter.into_iter().for_each(|x| { self.insert(x); });
     }
 }
 
 impl<'a, T: Clone + Eq, S: Storage<ArrayLike<T>>, I: Capacity> Extend<&'a T> for ListSet<T, S, I> {
     fn extend<It: IntoIterator<Item = &'a T>>(&mut self, iter: It) {
-        iter.into_iter().for_each(|x| { self.insert(x.clone()); })
+        iter.into_iter().for_each(|x| { self.insert(x.clone()); });
     }
 }
 
@@ -654,7 +654,7 @@ impl<'a, T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for &'a List
     type IntoIter = Iter<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.as_slice().into_iter()
+        self.as_slice().iter()
     }
 }
 
@@ -687,7 +687,7 @@ impl<T, I: Capacity> crate::collections::AllocListSet<T, I> {
 impl<T, I: Capacity, const N: usize> ListSet<T, InlineStorage<T, N>, I> {
     /// Constructs a new, empty [`InlineListSet`](crate::collections::InlineListSet).
     pub fn new() -> Self {
-        ListSet { vec: crate::collections::TiInlineVec::<T, I, N>::new() }
+        ListSet { vec: crate::collections::InlineVec::<T, N, I>::new() }
     }
 }
 

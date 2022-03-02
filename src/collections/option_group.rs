@@ -453,7 +453,7 @@ impl<F, T, const N: usize> OptionGroup<F, [T; N]> where F: Flags, [T; N]: Repres
     /// Creates a new `OptionGroup` initialized with the provided values.
     pub fn new(values: [Option<T>; N]) -> Self {
         let mut result = Self::empty();
-        for (idx, v) in core::array::IntoIter::new(values).enumerate() {
+        for (idx, v) in <[Option<T>; N] as IntoIterator>::into_iter(values).enumerate() {
             if let Some(value) = v {
                 result.replace(idx, value);
             }

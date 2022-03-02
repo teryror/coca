@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/coca.svg)](https://crates.io/crates/coca)
 [![Documentation](https://docs.rs/coca/badge.svg)](https://docs.rs/coca)
-[![Min. rustc version 1.51.0](https://img.shields.io/badge/Min.%20rustc-v1.51.0-blue)](https://img.shields.io/badge/Min%20rustc-v1.51.0-blue)
+[![Min. rustc version 1.59.0](https://img.shields.io/badge/Min.%20rustc-v1.59.0-blue)](https://img.shields.io/badge/Min%20rustc-v1.59.0-blue)
 
 Allocation-free data structures that make do with the memory they're given.
 

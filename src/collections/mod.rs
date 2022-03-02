@@ -51,28 +51,16 @@ pub type SliceHeap<'a, T, I = usize> = BinaryHeap<T, SliceStorage<'a, T>, I>;
 /// ```
 pub type ArenaHeap<'a, T, I = usize> = BinaryHeap<T, ArenaStorage<'a, ArrayLike<T>>, I>;
 
-/// A binary heap using an inline array for storage.
-///
-/// # Examples
-/// ```
-/// let mut heap = coca::collections::InlineHeap::<char, 3>::new();
-/// heap.push('a');
-/// heap.push('b');
-/// heap.push('c');
-/// assert_eq!(heap.peek(), Some(&'c'));
-/// ```
-pub type InlineHeap<T, const C: usize> = BinaryHeap<T, InlineStorage<T, C>, usize>;
-
 /// A binary heap using an inline array for storage, generic over the index type.
 ///
 /// # Examples
 /// ```
-/// let mut heap = coca::collections::TiInlineHeap::<char, u8, 3>::new();
+/// let mut heap = coca::collections::InlineHeap::<char, 3, u8>::new();
 /// heap.push('a');
 /// let vec = heap.into_vec();
 /// assert_eq!(vec[0u8], 'a');
 /// ```
-pub type TiInlineHeap<T, Index, const C: usize> = BinaryHeap<T, InlineStorage<T, C>, Index>;
+pub type InlineHeap<T, const C: usize, I = usize> = BinaryHeap<T, InlineStorage<T, C>, I>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
@@ -322,29 +310,15 @@ pub type ArenaDeque<'a, T, I = usize> = Deque<T, ArenaStorage<'a, ArrayLike<T>>,
 /// ```
 pub type AllocDeque<T, I = usize> = Deque<T, crate::storage::AllocStorage<ArrayLike<T>>, I>;
 
-/// A deque using an inline array for storage.
-///
-/// # Examples
-/// ```
-/// let mut deque = coca::collections::InlineDeque::<char, 4>::new();
-/// deque.push_front('b');
-/// deque.push_front('a');
-/// deque.push_back('c');
-/// deque.push_back('d');
-/// assert_eq!(deque, &['a', 'b', 'c', 'd']);
-/// assert_eq!(deque.try_push_back('e'), Err('e'));
-/// ```
-pub type InlineDeque<T, const C: usize> = Deque<T, InlineStorage<T, C>, usize>;
-
 /// A deque using an inline array for storage, generic over the index type.
 ///
 /// # Examples
 /// ```
-/// let mut deque = coca::collections::TiInlineDeque::<char, u8, 4>::new();
+/// let mut deque = coca::collections::InlineDeque::<char, 4, u8>::new();
 /// deque.push_front('a');
 /// assert_eq!(deque[0u8], 'a');
 /// ```
-pub type TiInlineDeque<T, I, const C: usize> = Deque<T, InlineStorage<T, C>, I>;
+pub type InlineDeque<T, const C: usize, I = usize> = Deque<T, InlineStorage<T, C>, I>;
 
 /// An association list that stores its contents in an arena-allocated memory block.
 /// 
@@ -377,19 +351,10 @@ pub type AllocListMap<K, V, I = usize> = ListMap<K, V, crate::storage::AllocStor
 /// # Examples
 /// ```
 /// use coca::collections::InlineListMap;
-/// let mut map = InlineListMap::<&'static str, u32, 3>::new();
+/// let mut map = InlineListMap::<&'static str, u32, 3, u8>::new();
 /// # assert!(map.is_empty());
 /// ```
-pub type InlineListMap<K, V, const N: usize> = ListMap<K, V, list_map::InlineStorage<K, V, N>, usize>;
-/// An association list that stores its contents inline.
-/// 
-/// # Examples
-/// ```
-/// use coca::collections::TiInlineListMap;
-/// let mut map = TiInlineListMap::<&'static str, u32, u8, 3>::new();
-/// # assert!(map.is_empty());
-/// ```
-pub type TiInlineListMap<K, V, I, const N: usize> = ListMap<K, V, list_map::InlineStorage<K, V, N>, I>;
+pub type InlineListMap<K, V, const N: usize, I = usize> = ListMap<K, V, list_map::InlineStorage<K, V, N>, I>;
 
 /// A set based on an arena-allocated array.
 /// 
@@ -430,22 +395,14 @@ pub type AllocListSet<T, I = usize> = ListSet<T, crate::storage::AllocStorage<Ar
 /// assert_eq!(set2.capacity(), 16);
 /// ```
 pub type SliceListSet<'a, T, I = usize> = ListSet<T, SliceStorage<'a, T>, I>;
-/// A set based on an inline array.
-/// 
-/// # Examples
-/// ```
-/// use coca::collections::InlineListSet;
-/// let mut set = InlineListSet::<&'static str, 20>::new();
-/// ```
-pub type InlineListSet<T, const N: usize> = ListSet<T, InlineStorage<T, N>, usize>;
 /// A set based on an inline array, generic over the index type.
 /// 
 /// # Examples
 /// ```
-/// use coca::collections::TiInlineListSet;
-/// let mut set = TiInlineListSet::<&'static str, u8, 20>::new();
+/// use coca::collections::InlineListSet;
+/// let mut set = InlineListSet::<&'static str, 20, u8>::new();
 /// ```
-pub type TiInlineListSet<T, I, const N: usize> = ListSet<T, InlineStorage<T, N>, I>;
+pub type InlineListSet<T, const N: usize, I = usize> = ListSet<T, InlineStorage<T, N>, I>;
 
 /// A group of up to eight [`Option`]s with the discriminants packed into a single `u8`.
 pub type OptionGroup8<T> = OptionGroup<u8, T>;
@@ -492,25 +449,6 @@ pub type DirectArenaPool<'src, T, H = DefaultHandle> =
 pub type DirectAllocPool<T, H = DefaultHandle> =
     DirectPool<T, crate::storage::AllocStorage<DirectPoolLayout<T, H>>, H>;
 
-/// A direct-mapped pool that stores its contents in an inline array,
-/// indexed by [`DefaultHandle`].
-///
-/// # Examples
-/// ```
-/// # use coca::collections::pool::DefaultHandle;
-/// # use coca::collections::DirectInlinePool;
-/// const A: u128 = 0x0123_4567_89AB_CDEF_0123_4567_89AB_CDEF;
-/// const B: u128 = 0xFEDC_BA98_7654_3210_FEDC_BA98_7654_3210;
-///
-/// let mut pool = DirectInlinePool::<u128, 8>::new();
-/// let a = pool.insert(A);
-/// let b = pool.insert(B);
-/// assert_eq!(pool.len(), 2);
-/// assert_eq!(pool.remove(a), Some(A));
-/// assert_eq!(pool.remove(b), Some(B));
-/// assert!(pool.is_empty());
-/// ```
-pub type DirectInlinePool<T, const N: usize> = DirectPool<T, pool::direct::InlineStorage<T, DefaultHandle, N>, DefaultHandle>;
 
 /// A direct-mapped pool that stores its contents in an inline array,
 /// indexed by the specified custom [`Handle`](pool::Handle).
@@ -518,13 +456,13 @@ pub type DirectInlinePool<T, const N: usize> = DirectPool<T, pool::direct::Inlin
 /// # Examples
 /// ```
 /// # use coca::handle_type;
-/// # use coca::collections::TiDirectInlinePool;
+/// # use coca::collections::DirectInlinePool;
 /// handle_type! { CustomHandle: 8 / 32; }
 /// 
 /// const A: u128 = 0x0123_4567_89AB_CDEF_0123_4567_89AB_CDEF;
 /// const B: u128 = 0xFEDC_BA98_7654_3210_FEDC_BA98_7654_3210;
 ///
-/// let mut pool = TiDirectInlinePool::<u128, CustomHandle, 8>::new();
+/// let mut pool = DirectInlinePool::<u128, 8, CustomHandle>::new();
 /// let a: CustomHandle = pool.insert(A);
 /// let b = pool.insert(B);
 /// assert_eq!(pool.len(), 2);
@@ -532,7 +470,7 @@ pub type DirectInlinePool<T, const N: usize> = DirectPool<T, pool::direct::Inlin
 /// assert_eq!(pool.remove(b), Some(B));
 /// assert!(pool.is_empty());
 /// ```
-pub type TiDirectInlinePool<T, H, const N: usize> = DirectPool<T, pool::direct::InlineStorage<T, H, N>, H>;
+pub type DirectInlinePool<T, const N: usize, H = DefaultHandle> = DirectPool<T, pool::direct::InlineStorage<T, H, N>, H>;
 
 /// A densely packed pool that stores its contents in a arena-allocated memory block.
 /// 
@@ -571,37 +509,18 @@ pub type PackedArenaPool<'src, T, H> = PackedPool<T, ArenaStorage<'src, PackedPo
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 pub type PackedAllocPool<T, H = DefaultHandle> = PackedPool<T, crate::storage::AllocStorage<PackedPoolLayout<T, H>>, H>;
 
-/// A densely packed pool that stores its contents inline, indexed by [`DefaultHandle`].
-/// 
-/// # Examples
-/// ```
-/// # use coca::collections::pool::DefaultHandle;
-/// # use coca::collections::PackedInlinePool;
-/// const A: u128 = 0x0123_4567_89AB_CDEF_0123_4567_89AB_CDEF;
-/// const B: u128 = 0xFEDC_BA98_7654_3210_FEDC_BA98_7654_3210;
-///
-/// let mut pool = PackedInlinePool::<u128, 8>::new();
-/// let a = pool.insert(A);
-/// let b = pool.insert(B);
-/// assert_eq!(pool.len(), 2);
-/// assert_eq!(pool.remove(a), Some(A));
-/// assert_eq!(pool.remove(b), Some(B));
-/// assert!(pool.is_empty());
-/// ```
-pub type PackedInlinePool<T, const N: usize> = PackedPool<T, pool::packed::InlineStorage<T, DefaultHandle, N>, DefaultHandle>;
-
 /// A densely packed pool that stores its contents inline, indexed by the specified custom [`Handle`](pool::Handle).
 /// 
 /// # Examples
 /// ```
 /// # use coca::handle_type;
-/// # use coca::collections::TiPackedInlinePool;
+/// # use coca::collections::PackedInlinePool;
 /// handle_type! { CustomHandle: 8 / 32; }
 /// 
 /// const A: u128 = 0x0123_4567_89AB_CDEF_0123_4567_89AB_CDEF;
 /// const B: u128 = 0xFEDC_BA98_7654_3210_FEDC_BA98_7654_3210;
 ///
-/// let mut pool = TiPackedInlinePool::<u128, CustomHandle, 8>::new();
+/// let mut pool = PackedInlinePool::<u128, 8, CustomHandle>::new();
 /// let a: CustomHandle = pool.insert(A);
 /// let b = pool.insert(B);
 /// assert_eq!(pool.len(), 2);
@@ -609,7 +528,7 @@ pub type PackedInlinePool<T, const N: usize> = PackedPool<T, pool::packed::Inlin
 /// assert_eq!(pool.remove(b), Some(B));
 /// assert!(pool.is_empty());
 /// ```
-pub type TiPackedInlinePool<T, H, const N: usize> = PackedPool<T, pool::packed::InlineStorage<T, H, N>, H>;
+pub type PackedInlinePool<T, const N: usize, H = DefaultHandle> = PackedPool<T, pool::packed::InlineStorage<T, H, N>, H>;
 
 /// A vector using any mutable slice for storage.
 ///
@@ -656,24 +575,12 @@ pub type ArenaVec<'a, T, I = usize> = Vec<T, ArenaStorage<'a, ArrayLike<T>>, I>;
 /// ```
 pub type AllocVec<T, I = usize> = Vec<T, crate::storage::AllocStorage<ArrayLike<T>>, I>;
 
-/// A vector using an inline array for storage.
-///
-/// # Examples
-/// ```
-/// let mut vec = coca::collections::InlineVec::<char, 3>::new();
-/// vec.push('a');
-/// vec.push('b');
-/// vec.push('c');
-/// assert!(vec.try_push('d').is_err());
-/// ```
-pub type InlineVec<T, const C: usize> = Vec<T, InlineStorage<T, C>, usize>;
-
 /// A vector using an inline array for storage, generic over the index type.
 ///
 /// # Examples
 /// ```
-/// let mut vec = coca::collections::TiInlineVec::<char, u8, 3>::new();
+/// let mut vec = coca::collections::InlineVec::<char, 3, u8>::new();
 /// vec.push('a');
 /// assert_eq!(vec[0u8], 'a');
 /// ```
-pub type TiInlineVec<T, Index, const C: usize> = Vec<T, InlineStorage<T, C>, Index>;
+pub type InlineVec<T, const C: usize, Index = usize> = Vec<T, InlineStorage<T, C>, Index>;

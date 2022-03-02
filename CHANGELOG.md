@@ -5,15 +5,18 @@
   see [this blog post on the design process][storage-abstraction-v2] for motivation
 - Add super traits to `Capacity` trait, add `const MAX_REPRESENTABLE`; implementors
   are no longer required to perform validation on _every_ call
-- Remove the `nightly` feature flag and the `feature(min_const_generics)` attribute,
-  raising the minimum supported compiler version to 1.51.
+- Remove the `nightly` feature flag and the `feature(min_const_generics)` attribute.
 - Rework the module hierarchy, introducing the `collections` module
-- Rename `Array{Vec, Deque, Heap}` to `Inline*` for consistency with `InlineObject`
+- Rename `Array{Vec, Deque, Heap}` to `Inline*` for consistency with `InlineObject`;
+  remove `TiArrayVec`, `TiArrayDeque`, and `TiArrayHeap` in favor of default type
+  parameters on `Inline{Vec, Deque, Heap}`, raising minimum supported compiler version
+  to 1.59.0.
 - Redefine `ArenaStorage` as a struct for compatibility with non-array-like layouts
 - Remove `HeapStorage` type alias and add `AllocStorage` struct (similar to `ArenaStorage`)
 - Rename `Arena::{collect, try_collect}` to `Arena::{collect_slice, try_collect_slice}`
 - Remove `Arena::{try_vec, try_deque, try_heap, vec, deque, heap}` in favor of
   the generic `Arena::{try_with_capacity, with_capacity}`
+- Add the `CapacityError` type, changing the return type of several fallible methods.
 
 [storage-abstraction-v2]: https://gist.github.com/teryror/7b9a23fd0cd8dcfbcb6ebd34ee2639f8
 

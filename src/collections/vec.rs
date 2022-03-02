@@ -34,10 +34,9 @@
 //! from the Rust standard library Vec, and from `tinyvec::SliceVec` (Copyright
 //! (c) 2019 by Daniel "Lokathor" Gee).
 
-use crate::storage::InlineStorage;
-
+use crate::CapacityError;
 use crate::storage::{
-    buffer_too_large_for_index_type, mut_ptr_at_index, normalize_range, ptr_at_index, ArrayLike, Capacity, Storage,
+    buffer_too_large_for_index_type, mut_ptr_at_index, normalize_range, ptr_at_index, ArrayLike, Capacity, Storage, InlineStorage,
 };
 
 use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
@@ -100,7 +99,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// }
     /// ```
     pub fn into_raw_parts(self) -> (S, I) {
-        let ptr = (&self.buf) as *const S;
+        let ptr = core::ptr::addr_of!(self.buf);
         let result = (unsafe { ptr.read() }, self.len);
         core::mem::forget(self);
         result
@@ -693,9 +692,9 @@ impl<T: Copy, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// 
     /// assert_eq!(&vec, &[1, 2, 3, 4, 5]);
     /// ```
-    pub fn try_extend_from_slice(&mut self, other: &[T]) -> Result<(), ()> {
+    pub fn try_extend_from_slice(&mut self, other: &[T]) -> crate::Result<()> {
         let new_len = self.len() + other.len();
-        if new_len > self.capacity() { return Err(()); }
+        if new_len > self.capacity() { return CapacityError::new(); }
 
         unsafe {
             let dst_ptr = self.as_mut_ptr().add(self.len());
@@ -738,13 +737,7 @@ impl<T: Copy, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// 
     /// assert_eq!(&vec, &[1, 2, 3, 4, 5, 6, 7, 8]);
     /// ```
-    pub fn try_insert_slice(&mut self, idx: I, src: &[T]) -> Result<(), ()> {
-        let count = src.len();
-        let new_len = self.len() + count;
-        if new_len > self.capacity() {
-            return Err(());
-        }
-
+    pub fn try_insert_slice(&mut self, idx: I, src: &[T]) -> crate::Result<()> {
         #[cold]
         #[inline(never)]
         fn assert_failed(idx: usize, len: usize) -> ! {
@@ -752,6 +745,12 @@ impl<T: Copy, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
                 "idx (is {}) must be less than or equal to len (is {})",
                 idx, len
             );
+        }
+
+        let count = src.len();
+        let new_len = self.len() + count;
+        if new_len > self.capacity() {
+            return CapacityError::new();
         }
 
         let idx = idx.as_usize();
@@ -796,7 +795,7 @@ impl<T: Copy, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// 
     /// # Examples
     /// ```
-    /// # fn test() -> Result<(), ()> {
+    /// # fn test() -> coca::Result<()> {
     /// let mut vec = coca::collections::InlineVec::<u32, 4>::new();
     /// vec.push(1); vec.push(2);
     /// vec.try_extend_from_within(0..1)?;
@@ -805,12 +804,12 @@ impl<T: Copy, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// # Ok(()) }
     /// # assert!(test().is_ok());
     /// ```
-    pub fn try_extend_from_within<R: RangeBounds<I>>(&mut self, src: R) -> Result<(), ()> {
+    pub fn try_extend_from_within<R: RangeBounds<I>>(&mut self, src: R) -> crate::Result<()> {
         let Range { start, end } = normalize_range(src, self.len());
         let count = end - start;
         let new_len = self.len() + count;
         if new_len > self.capacity() {
-            return Err(());
+            return CapacityError::new();
         }
 
         unsafe {
@@ -854,7 +853,7 @@ impl<T: Copy, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     /// assert!(vec.try_replace_range(.., &[1, 2, 3, 4, 5, 6, 7, 8, 9]).is_err());
     /// assert_eq!(&vec, &[1, 4, 1, 4, 1, 4]);
     /// ```
-    pub fn try_replace_range<R: RangeBounds<I>>(&mut self, range: R, replace_with: &[T]) -> Result<(), ()> {
+    pub fn try_replace_range<R: RangeBounds<I>>(&mut self, range: R, replace_with: &[T]) -> crate::Result<()> {
         let Range { start, end } = normalize_range(range, self.len());
         let dst_count = end - start;
         let src_count = replace_with.len();
@@ -875,7 +874,7 @@ impl<T: Copy, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
         } else {
             let extra_space_needed = src_count - dst_count;
             if self.len() + extra_space_needed > self.capacity() {
-                return Err(());
+                return CapacityError::new();
             }
 
             unsafe {
@@ -1176,7 +1175,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIter for Vec<T, S, I> {
 
     fn into_iter(self) -> Self::IntoIter {
         let end = self.len;
-        let buf = unsafe { (&self.buf as *const S).read() };
+        let buf = unsafe { core::ptr::addr_of!(self.buf).read() };
         core::mem::forget(self);
 
         IntoIterator {
@@ -1425,13 +1424,12 @@ impl<T: Clone, I: Capacity, const C: usize> From<&[T]> for Vec<T, InlineStorage<
             buffer_too_large_for_index_type::<I>();
         }
 
-        if source.len() > C {
-            panic!(
-                "source should not have more than {} elements (has {})",
-                C,
-                source.len()
-            );
-        }
+        assert!(
+            source.len() <= C,
+            "source should not have more than {} elements (has {})",
+            C,
+            source.len()
+        );
 
         let mut ret = Self::new();
         for next in source {
@@ -1447,13 +1445,12 @@ impl<T: Clone, I: Capacity, const C: usize> From<&mut [T]> for Vec<T, InlineStor
             buffer_too_large_for_index_type::<I>();
         }
 
-        if source.len() > C {
-            panic!(
-                "source should not have more than {} elements (has {})",
-                C,
-                source.len()
-            );
-        }
+        assert!(
+            source.len() <= C,
+            "source should not have more than {} elements (has {})",
+            C,
+            source.len()
+        );
 
         let mut ret = Self::new();
         for next in source {
@@ -1504,7 +1501,7 @@ impl<T, I: Capacity, const C: usize> core::iter::FromIterator<T>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collections::{ArenaVec, InlineVec, SliceVec, TiInlineVec};
+    use crate::collections::{ArenaVec, InlineVec, SliceVec};
 
     #[test]
     #[should_panic]
@@ -1524,7 +1521,7 @@ mod tests {
         assert_eq!(size_of::<crate::collections::AllocVec<u64, usize>>(), 3 * size_of::<usize>());
 
         assert_eq!(size_of::<InlineVec<u8, 8>>(), size_of::<usize>() + 8);
-        assert_eq!(size_of::<TiInlineVec<u8, u8, 99>>(), 100);
+        assert_eq!(size_of::<InlineVec<u8, 99, u8>>(), 100);
         assert_eq!(
             size_of::<Vec<u32, &mut [MaybeUninit<u32>; 1000], usize>>(),
             2 * size_of::<usize>()

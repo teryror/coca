@@ -89,24 +89,45 @@ pub type ArenaString<'a, I = usize> = String<ArenaStorage<'a, ArrayLike<u8>>, I>
 /// ```
 pub type AllocString<I = usize> = String<crate::storage::AllocStorage<ArrayLike<u8>>, I>;
 
-/// A string using an inline array for storage.
-/// 
-/// # Examples
-/// ```
-/// let mut s = coca::InlineString::<8>::new();
-/// assert_eq!(s.capacity(), 8);
-/// assert!(s.is_empty());
-/// ```
-pub type InlineString<const C: usize> = String<InlineStorage<u8, C>, usize>;
 /// A string using an inline array for storage, generic over the index type.
 /// 
 /// # Examples
 /// ```
-/// let mut s = coca::TiInlineString::<u8, 255>::new();
+/// let mut s = coca::InlineString::<255, u8>::new();
 /// assert_eq!(s.capacity(), 255);
 /// assert!(s.is_empty());
 /// ```
-pub type TiInlineString<I, const C: usize> = String<InlineStorage<u8, C>, I>;
+pub type InlineString<const C: usize, I = usize> = String<InlineStorage<u8, C>, I>;
+
+/// The error type for many operations on data structures with constant capacity.
+/// 
+/// When working with data structures of limited capacity, insertions may fail
+/// due to insufficient remaining space. In `coca`, insertion methods generally
+/// have a name starting with `try`, and return a [`Result`](core::result::Result).
+/// For convenience, panicking wrappers without the `try` prefix are also provided.
+/// 
+/// In many cases, such as e.g. [`Vec::try_push`](crate::collections::vec::Vec::try_push),
+/// the value to be inserted is returned back to the caller when the operation fails;
+/// in some cases, this is unnecessary (e.g. when ownership is not transferred, as with
+/// [`Vec::try_extend_from_slice`](crate::collections::vec::Vec::try_extend_from_slice))
+/// or would result in unwieldy type signatures. Such methods use this unit error type
+/// instead.
+#[derive(Copy, Clone, Debug, Default)]
+pub struct CapacityError;
+
+impl CapacityError {
+    #[inline(always)]
+    pub(crate) fn new<T>() -> core::result::Result<T, CapacityError> {
+        Err(Self)
+    }
+}
+
+/// A specialized [`Result`](core::result::Result) type for operations on data structures with constant capacity.
+/// 
+/// This type is broadly used across `coca` for most operations which grow a data structure.
+/// 
+/// This type definition is generally used to avoid writing out [`CapacityError`] directly and is otherwise a direct mapping to [`core::result::Result`].
+pub type Result<T> = core::result::Result<T, CapacityError>;
 
 #[cfg(test)]
 mod test_utils {

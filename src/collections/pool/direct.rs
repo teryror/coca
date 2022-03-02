@@ -1102,8 +1102,8 @@ impl<T: Clone, H: Handle> Clone for crate::collections::DirectAllocPool<T, H> {
             unsafe {
                 let generation = dst_counts.add(i).read();
                 if generation % 2 == 1 {
-                    let item = (src_slots.add(i) as *const T).as_ref().unwrap();
-                    (dst_slots.add(i) as *mut T).write(item.clone());
+                    let item = src_slots.add(i).cast::<T>().as_ref().unwrap();
+                    dst_slots.add(i).cast::<T>().write(item.clone());
                 } else {
                     let next_free_slot = (*src_slots.add(i)).next_free_slot;
                     (*dst_slots.add(i)).next_free_slot = next_free_slot;
