@@ -60,6 +60,17 @@ jobs:
 
   test-miri:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - features: --no-default-features
+          - features: --features=alloc
+          - features: --features=profile
+          - features: --features=unstable
+          - features: --features=alloc,profile
+          - features: --features=alloc,unstable
+          - features: --features=profile,unstable
+          - features: --all-features
     steps:
       - uses: actions/checkout@v2
       - name: Install toolchain
@@ -67,16 +78,19 @@ jobs:
           MIRI_NIGHTLY=nightly-$(curl -s https://rust-lang.github.io/rustup-components-history/x86_64-unknown-linux-gnu/miri)
           rustup default "$MIRI_NIGHTLY"
           rustup component add miri
-      - name: Test all features
+      - name: Run all tests
         run: |
-          cargo miri test --no-default-features
-          cargo miri test --features=alloc
-          cargo miri test --features=profile
-          cargo miri test --features=unstable
-          cargo miri test --features=alloc,profile
-          cargo miri test --features=alloc,unstable
-          cargo miri test --features=profile,unstable
-          cargo miri test --all-features
+          cargo miri test ${{ matrix.features }}
+  
+  test-example-programs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install toolchain
+        run: |
+          MIRI_NIGHTLY=nightly-$(curl -s https://rust-lang.github.io/rustup-components-history/x86_64-unknown-linux-gnu/miri)
+          rustup default "$MIRI_NIGHTLY"
+          rustup component add miri
       - name: Run example programs
         run: |
           cargo miri run --example huffman
