@@ -1285,18 +1285,18 @@ mod tests {
 
         for _ in 0..1000 {
             let remaining_slots = pool.capacity() - pool.len();
-            let to_be_inserted = (rng.next_u32() as u64 * remaining_slots as u64) >> 32;
+            let to_be_inserted = (u64::from(rng.next_u32()) * remaining_slots as u64) >> 32;
             for _ in 0..to_be_inserted {
                 pool.insert(drop_count.new_droppable(()));
             }
             inserted += to_be_inserted;
 
-            let _ = pool.drain_filter(|_, _| rng.next_u32().count_ones() >= 16);
+            let _ret = pool.drain_filter(|_, _| rng.next_u32().count_ones() >= 16);
         }
 
         assert_eq!(drop_count.dropped() as u64, inserted - pool.len() as u64);
 
         pool.drain();
-        assert_eq!(drop_count.dropped() as u64, inserted)
+        assert_eq!(drop_count.dropped() as u64, inserted);
     }
 }

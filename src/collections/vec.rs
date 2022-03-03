@@ -1507,7 +1507,7 @@ mod tests {
     #[should_panic]
     fn from_panics_for_too_large_inputs() {
         let mut backing_array = [core::mem::MaybeUninit::<char>::uninit(); 300];
-        let _ = SliceVec::<char, u8>::from(&mut backing_array[..]);
+        let _ret = SliceVec::<char, u8>::from(&mut backing_array[..]);
     }
 
     #[test]

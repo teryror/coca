@@ -341,7 +341,7 @@ macro_rules! impl_tuple_accessors {
                 if self.is_none($idx) {
                     None
                 } else {
-                    unsafe { (<T as Compound>::get_ptr(&self.value, $idx) as *const <T as Tuple<$idx>>::TX).as_ref() }
+                    unsafe { <T as Compound>::get_ptr(&self.value, $idx).cast::<<T as Tuple<$idx>>::TX>().as_ref() }
                 }
             }
 
@@ -357,7 +357,7 @@ macro_rules! impl_tuple_accessors {
             #[inline(always)]
             #[allow(clippy::missing_safety_doc)]
             pub unsafe fn $get_mut_unchecked(&mut self) -> &mut <T as Tuple<$idx>>::TX {
-                &mut *(<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as Tuple<$idx>>::TX)
+                &mut *<T as Compound>::get_mut_ptr(&mut self.value, $idx).cast::<<T as Tuple<$idx>>::TX>()
             }
 
             #[inline(always)]
@@ -388,14 +388,14 @@ macro_rules! impl_tuple_accessors {
                     None
                 } else {
                     self.flags.clear($idx);
-                    unsafe { Some((<T as Compound>::get_ptr(&self.value, $idx) as *const <T as Tuple<$idx>>::TX).read()) }
+                    unsafe { Some(<T as Compound>::get_ptr(&self.value, $idx).cast::<<T as Tuple<$idx>>::TX>().read()) }
                 }
             }
 
             #[inline(always)]
             pub fn $replace(&mut self, value: <T as Tuple<$idx>>::TX) -> Option<<T as Tuple<$idx>>::TX> {
                 let result = self.$take();
-                unsafe { (<T as Compound>::get_mut_ptr(&mut self.value, $idx) as *mut <T as Tuple<$idx>>::TX ).write(value) };
+                unsafe { <T as Compound>::get_mut_ptr(&mut self.value, $idx).cast::<<T as Tuple<$idx>>::TX>().write(value) };
                 self.flags.set($idx);
                 result
             }

@@ -1431,15 +1431,15 @@ mod tests {
 
     #[test]
     fn format_boxed_debug_struct() {
-        let mut backing_region = [MaybeUninit::uninit(); 256];
-        let mut arena = Arena::from(&mut backing_region[..]);
-
         #[allow(dead_code)] // false positive: fields are read by derived Default impl!
         #[derive(Debug)]
         struct LinkedList<'a> {
             val: i64,
             next: Option<Box<'a, LinkedList<'a>>>,
         }
+
+        let mut backing_region = [MaybeUninit::uninit(); 256];
+        let mut arena = Arena::from(&mut backing_region[..]);
 
         let a = arena.alloc(LinkedList { val: 0, next: None });
         let b = arena.alloc(LinkedList {

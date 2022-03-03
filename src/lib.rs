@@ -10,7 +10,7 @@
     clippy::missing_errors_doc,
     clippy::module_name_repetitions,
     clippy::must_use_candidate,
-    clippy::shadow_unrelated
+    clippy::wildcard_imports,
 )]
 
 //! Allocation-free data structures with constant capacity.
