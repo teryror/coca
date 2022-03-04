@@ -1,5 +1,5 @@
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/coca/0.2.0")]
+#![doc(html_root_url = "https://docs.rs/coca/0.3.0")]
 #![cfg_attr(docs_rs, feature(doc_cfg))]
 #![cfg_attr(feature = "unstable", feature(unsize))]
 #![cfg_attr(feature = "unstable", feature(set_ptr_value))]

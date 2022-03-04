@@ -1,6 +1,6 @@
 [package]
 name = "coca"
-version = "0.2.0" # When updating this, remember to update install instructions in README and html_root_url in lib.rs
+version = "0.3.0" # When updating this, remember to update install instructions in README and html_root_url in lib.rs
 authors = ["Tristan Dannenberg <dtristan@hotmail.de>"]
 edition = "2018"
 license = "Zlib OR Apache-2.0"

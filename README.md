@@ -8,7 +8,7 @@ Allocation-free data structures that make do with the memory they're given.
 
 ```toml
 [dependencies]
-coca = "0.2"
+coca = "0.3"
 ```
 
 ## Overview

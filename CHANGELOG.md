@@ -1,4 +1,4 @@
-# 0.3.0 (WIP)
+# 0.3.0 (2022-03-04)
 ## Breaking Changes
 
 - Rename `ContiguousStorage<T>` to `Storage<R>` and overhaul the interface;
