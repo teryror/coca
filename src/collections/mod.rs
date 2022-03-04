@@ -51,7 +51,7 @@ pub type SliceHeap<'a, T, I = usize> = BinaryHeap<T, SliceStorage<'a, T>, I>;
 /// ```
 pub type ArenaHeap<'a, T, I = usize> = BinaryHeap<T, ArenaStorage<'a, ArrayLike<T>>, I>;
 
-/// A binary heap using an inline array for storage, generic over the index type.
+/// A binary heap using an inline array for storage.
 ///
 /// # Examples
 /// ```
@@ -310,7 +310,7 @@ pub type ArenaDeque<'a, T, I = usize> = Deque<T, ArenaStorage<'a, ArrayLike<T>>,
 /// ```
 pub type AllocDeque<T, I = usize> = Deque<T, crate::storage::AllocStorage<ArrayLike<T>>, I>;
 
-/// A deque using an inline array for storage, generic over the index type.
+/// A deque using an inline array for storage.
 ///
 /// # Examples
 /// ```
@@ -395,7 +395,7 @@ pub type AllocListSet<T, I = usize> = ListSet<T, crate::storage::AllocStorage<Ar
 /// assert_eq!(set2.capacity(), 16);
 /// ```
 pub type SliceListSet<'a, T, I = usize> = ListSet<T, SliceStorage<'a, T>, I>;
-/// A set based on an inline array, generic over the index type.
+/// A set based on an inline array.
 /// 
 /// # Examples
 /// ```
@@ -575,7 +575,7 @@ pub type ArenaVec<'a, T, I = usize> = Vec<T, ArenaStorage<'a, ArrayLike<T>>, I>;
 /// ```
 pub type AllocVec<T, I = usize> = Vec<T, crate::storage::AllocStorage<ArrayLike<T>>, I>;
 
-/// A vector using an inline array for storage, generic over the index type.
+/// A vector using an inline array for storage.
 ///
 /// # Examples
 /// ```

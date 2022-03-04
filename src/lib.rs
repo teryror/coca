@@ -13,21 +13,106 @@
     clippy::wildcard_imports,
 )]
 
-//! Allocation-free data structures with constant capacity.
-//!
-//! Designed for use in memory-constrained embedded systems that cannot use
-//! growable structures, and in soft real-time applications that cannot tolerate
-//! latency spikes caused by reallocations.
-//!
-//! These generally require the user to supply memory to work with.
-//!
-//! # Features
-//! - `profile`: Enables memory profiling in arenas; see the
+//! The `coca` crate provides collection types and other facilities for managing
+//! memory without using the [`alloc` crate](https://doc.rust-lang.org/alloc/index.html).
+//! 
+//! ## Data Structures with Constant Capacity
+//! 
+//! Typical container implementations manage their own memory behind the scenes,
+//! calling the global allocator (or a user-provided one, using the as yet
+//! unstable [`Allocator` API](alloc::alloc::Allocator)) as needed when they
+//! are modified.
+//! 
+//! This is convenient, but it does have some drawbacks to be aware of:
+//! 
+//! * reallocation may be slow, especially if the data structure is large and
+//!   a lot of data has to be moved around,
+//! * memory usage is essentially unbounded and must be carefully managed, should
+//!   this pose a problem,
+//! * such implementations simply cannot be used when no allocator is available,
+//!   as may be the case in embedded systems.
+//! 
+//! In contrast, the data structures provided by `coca` do **not** work this way.
+//! They operate on a given block of memory, and never reallocate. This means
+//! that operations that grow a data structure may fail if the available space
+//! is insufficient. For all such operations, two methods are provided: one,
+//! returning a [`Result`](core::result::Result), has its name prefixed with
+//! `try_`, the other, without the name prefix, being a wrapper that panics in
+//! the error case.
+//! 
+//! Client code, then, has to either guarantee that the given memory block's
+//! capacity will never be exceeded, or handle the failure case gracefully.
+//! 
+//! ## The `Storage` Abstraction
+//! 
+//! In `coca`, there is no single way of supplying a data structure with working
+//! memory. Instead, most containers have a generic type parameter `S` bound by
+//! the [`Storage` trait](storage::Storage), which is the type of the memory
+//! block to be used. `Storage`, in turn, has a type parameter `R`, bound by
+//! the [`LayoutSpec` trait](storage::LayoutSpec), which is used to describe
+//! the memory [`Layout`](core::alloc::Layout) required by that container.
+//! 
+//! For instance, data structures built on an array (such as [`Vec`](collections::vec::Vec)
+//! or [`String`](string::String)) require `S: Storage<ArrayLike<T>>`, which is
+//! implemented for standard arrays and slices, among others, while more complex
+//! data structures (such as [`DirectPool`](collections::pool::direct::DirectPool))
+//! have unique layout requirements (in this case `S: Storage<DirectPoolLayout<T, H>>`)
+//! which are only fulfilled by purpose-built types.
+//! 
+//! No matter the layout requirements, for each data structure, the following
+//! storage strategies are available:
+//! 
+//! * `InlineStorage`, defined as a [partially initialized array](storage::InlineStorage)
+//!   or as purpose-built `struct`s for non-array-like data structures (e.g.
+//!   [`collections::pool::direct::InlineStorage`]), requires the capacity to
+//!   be truly `const`, i.e. statically known at compile time; this allows
+//!   storing the contents inline with the top-level `struct` type, with no
+//!   indirection, and thus entirely on the stack, for example.
+//! * [`ArenaStorage`] is a (pointer, capacity) pair referencing an
+//!   [arena-allocated](arena) block of memory, bounding the lifetime of the
+//!   data structure to the lifetime of the `Arena`, but supports dynamically
+//!   chosen capacities.
+//! * Likewise, [`AllocStorage`](storage::AllocStorage) references a block of
+//!   memory from the global allocator, requiring the `alloc` crate.
+//! 
+//! Note that, depending on the choice of storage type, available functionality
+//! may differ slightly. For example, the [`Clone`] trait is only implemented
+//! on data structures using `InlineStorage` or `AllocStorage`, but not
+//! `ArenaStorage`.
+//! 
+//! Since concrete type names quickly become unwieldy in this scheme, `coca`
+//! provides type aliases such as [`InlineVec`](collections::InlineVec),
+//! [`ArenaVec`](collections::ArenaVec), and [`AllocVec`](collections::AllocVec)
+//! for all of its data structures.
+//! 
+//! ## The `Capacity` Trait
+//! 
+//! Compared to the standard implementations, most of `coca`'s data structures
+//! have one more additional type parameter, which is bound by the
+//! [`Capacity` trait](storage::Capacity). This type used to index into the
+//! data structure and to represent its size at runtime. It generally defaults
+//! to `usize`, but `Capacity` is also implemented for `u8`, `u16`, `u32` and
+//! `u64`.
+//! 
+//! This gives client code even more control over the exact size of the data
+//! structure, but it has one additional advantage: using the [`index_type`]
+//! macro, new types implementing the `Capacity` trait can be generated, which
+//! then allows using different index types with different collections,
+//! potentially preventing accidental use of the wrong index.
+//! 
+//! ## Cargo Features
+//! 
+//! - `alloc`: Enables an optional dependency on the `alloc` crate and adds
+//!   the [`AllocStorage`](storage::AllocStorage) type, as well as other trait
+//!   implementations and convenience functions for using the global allocator.
+//! - `unstable`: Adds the [`object`] module providing a statically-sized
+//!   container for dynamically-sized types. This relies on the unstable
+//!   `feature(unsize)` and `feature(set_ptr_value)` and thus requires a nightly
+//!   compiler.
+//! - `profile`: Adds memory profiling in arena allocators. See the
 //!   [module-level documentation](arena#memory-profiling) for details.
-//! - `alloc`: Adds trait implementations and convenience functions for working
-//!   with heap allocated memory.
-//! - `unstable`: Enables the [`object`] module, which relies on unstable features,
-//!   namely `feature(unsize)` and `feature(set_ptr_value)`.
+//! 
+//! None of these features are enabled by default.
 
 #[cfg(feature = "alloc")]
 #[doc(hidden)]
@@ -89,7 +174,7 @@ pub type ArenaString<'a, I = usize> = String<ArenaStorage<'a, ArrayLike<u8>>, I>
 /// ```
 pub type AllocString<I = usize> = String<crate::storage::AllocStorage<ArrayLike<u8>>, I>;
 
-/// A string using an inline array for storage, generic over the index type.
+/// A string using an inline array for storage.
 /// 
 /// # Examples
 /// ```

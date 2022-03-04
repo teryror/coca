@@ -3,31 +3,6 @@
 //! Bounded vectors have O(1) indexing, push and pop (from the end), as well as
 //! unordered removal.
 //!
-//! Unlike `alloc::Vec`, [`coca::collections::Vec`](Vec) is not only generic over the element type,
-//! but also the underlying storage mechanism and index type (which defaults to
-//! `usize`).
-//!
-//! With no optional features enabled, the only supported storage types are
-//! [references to slices](crate::collections::SliceVec),
-//! [arena-allocated slices](crate::collections::ArenaVec),
-//! [arrays inlined in the `Vec`](crate::collections::InlineVec), as well as
-//! referenced and (arena-)boxed arrays, which do not require a run-time
-//! representation of their capacity.
-//!
-//! The `alloc` feature allows using [owned slices](crate::collections::AllocVec)
-//! for storage. Note that such a vector still does not reallocate - this may
-//! be useful in cases where domain logic dictates a length limit on a list.
-//!
-//! Specifying an index type smaller than `usize`, such as `u16` or even `u8`,
-//! can aid in struct size optimization, especially with `InlineVec`. It's also
-//! possible to [declare new types](index_type!) for this purpose, leveraging
-//! the type system to avoid using the wrong kind of index.
-//!
-//! Because the capacity is constant, operations that grow the vector,
-//! such as [`push`](Vec::push) and [`insert`](Vec::insert), may fail.
-//! Checked versions of these methods are provided ([`try_push`](Vec::try_push),
-//! [`try_insert`](Vec::try_insert)).
-//!
 //! ---
 //!
 //! Parts of the implementation and documentation of this module were adapted
