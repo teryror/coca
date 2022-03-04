@@ -11,7 +11,7 @@
 
 use crate::CapacityError;
 use crate::storage::{
-    buffer_too_large_for_index_type, mut_ptr_at_index, normalize_range, ptr_at_index, ArrayLike, Capacity, Storage, InlineStorage,
+    buffer_too_large_for_index_type, mut_ptr_at_index, normalize_range, ptr_at_index, ArrayLayout, Capacity, Storage, InlineStorage,
 };
 
 use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
@@ -28,13 +28,13 @@ use core::ptr;
 /// Generic over the storage buffer type `S` and the index type `I`.
 ///
 /// See the [module-level documentation](crate::collections::vec) for more.
-pub struct Vec<T, S: Storage<ArrayLike<T>>, I: Capacity = usize> {
+pub struct Vec<T, S: Storage<ArrayLayout<T>>, I: Capacity = usize> {
     len: I,
     buf: S,
     elem: PhantomData<T>,
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for Vec<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> From<S> for Vec<T, S, I> {
     /// Converts a contiguous block of memory into an empty vector.
     ///
     /// # Panics
@@ -52,7 +52,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for Vec<T, S, I> {
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     /// Decomposes a `Vec<T, S, I>` into its raw parts.
     ///
     /// Returns the raw storage type and the length of the vector in elements.
@@ -649,7 +649,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     }
 }
 
-impl<T: Copy, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
+impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     /// Copies and appends all elements in a slice to the `Vec`.
     /// 
     /// Returns [`Err`] if the remaining space is insufficient.
@@ -882,7 +882,7 @@ impl<T: Copy, S: Storage<ArrayLike<T>>, I: Capacity> Vec<T, S, I> {
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::Deref for Vec<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> core::ops::Deref for Vec<T, S, I> {
     type Target = [T];
     fn deref(&self) -> &[T] {
         unsafe {
@@ -892,7 +892,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::Deref for Vec<T, S, I>
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::DerefMut for Vec<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> core::ops::DerefMut for Vec<T, S, I> {
     fn deref_mut(&mut self) -> &mut [T] {
         unsafe {
             let ptr = self.buf.get_mut_ptr().cast::<T>();
@@ -901,14 +901,14 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::DerefMut for Vec<T, S,
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::Index<I> for Vec<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> core::ops::Index<I> for Vec<T, S, I> {
     type Output = T;
     fn index(&self, index: I) -> &Self::Output {
         self.get(index).unwrap()
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::IndexMut<I> for Vec<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> core::ops::IndexMut<I> for Vec<T, S, I> {
     fn index_mut(&mut self, index: I) -> &mut Self::Output {
         self.get_mut(index).unwrap()
     }
@@ -916,7 +916,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::IndexMut<I> for Vec<T,
 
 macro_rules! _impl_idx_range {
     ($self:ident, $idx:ident: $r:ty, $lo:expr, $hi:expr) => {
-        impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::Index<$r> for Vec<T, S, I> {
+        impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> core::ops::Index<$r> for Vec<T, S, I> {
             type Output = [T];
             #[allow(unused_variables)]
             fn index(&self, $idx: $r) -> &Self::Output {
@@ -927,7 +927,7 @@ macro_rules! _impl_idx_range {
             }
         }
 
-        impl<T, S: Storage<ArrayLike<T>>, I: Capacity + PartialOrd> core::ops::IndexMut<$r>
+        impl<T, S: Storage<ArrayLayout<T>>, I: Capacity + PartialOrd> core::ops::IndexMut<$r>
             for Vec<T, S, I>
         {
             #[allow(unused_variables)]
@@ -949,19 +949,19 @@ _impl_idx_range! { s, index: core::ops::RangeInclusive<I>, index.start().as_usiz
 _impl_idx_range! { s, index: core::ops::RangeTo<I>, 0, index.end.as_usize() }
 _impl_idx_range! { s, index: core::ops::RangeToInclusive<I>, 0, index.end.as_usize().saturating_add(1) }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::convert::AsRef<[T]> for Vec<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> core::convert::AsRef<[T]> for Vec<T, S, I> {
     fn as_ref(&self) -> &[T] {
         self
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::convert::AsMut<[T]> for Vec<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> core::convert::AsMut<[T]> for Vec<T, S, I> {
     fn as_mut(&mut self) -> &mut [T] {
         self
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::Drop for Vec<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> core::ops::Drop for Vec<T, S, I> {
     fn drop(&mut self) {
         unsafe {
             let ptr = self.buf.get_mut_ptr().cast::<T>();
@@ -970,7 +970,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::ops::Drop for Vec<T, S, I> 
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> core::fmt::Debug for Vec<T, S, I>
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> core::fmt::Debug for Vec<T, S, I>
 where
     T: core::fmt::Debug,
 {
@@ -979,7 +979,7 @@ where
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Hash for Vec<T, S, I>
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Hash for Vec<T, S, I>
 where
     T: Hash,
 {
@@ -992,8 +992,8 @@ where
 impl<AT, AS, AI, BT, BS, BI> PartialEq<Vec<BT, BS, BI>> for Vec<AT, AS, AI>
 where
     AT: PartialEq<BT>,
-    AS: Storage<ArrayLike<AT>>,
-    BS: Storage<ArrayLike<BT>>,
+    AS: Storage<ArrayLayout<AT>>,
+    BS: Storage<ArrayLayout<BT>>,
     AI: Capacity,
     BI: Capacity,
 {
@@ -1003,16 +1003,16 @@ where
     }
 }
 
-impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> Eq for Vec<T, S, I> {}
+impl<T: Eq, S: Storage<ArrayLayout<T>>, I: Capacity> Eq for Vec<T, S, I> {}
 
-impl<V, T: PartialEq<V>, S: Storage<ArrayLike<T>>, I: Capacity> PartialEq<&[V]> for Vec<T, S, I> {
+impl<V, T: PartialEq<V>, S: Storage<ArrayLayout<T>>, I: Capacity> PartialEq<&[V]> for Vec<T, S, I> {
     #[inline]
     fn eq(&self, other: &&[V]) -> bool {
         self.as_slice() == &other[..]
     }
 }
 
-impl<V, T, S: Storage<ArrayLike<T>>, I: Capacity> PartialEq<&mut [V]> for Vec<T, S, I>
+impl<V, T, S: Storage<ArrayLayout<T>>, I: Capacity> PartialEq<&mut [V]> for Vec<T, S, I>
 where
     T: PartialEq<V>,
 {
@@ -1022,14 +1022,14 @@ where
     }
 }
 
-impl<V: PartialEq<T>, T, S: Storage<ArrayLike<T>>, I: Capacity> PartialEq<Vec<T, S, I>> for &[V] {
+impl<V: PartialEq<T>, T, S: Storage<ArrayLayout<T>>, I: Capacity> PartialEq<Vec<T, S, I>> for &[V] {
     #[inline]
     fn eq(&self, other: &Vec<T, S, I>) -> bool {
         &self[..] == other.as_slice()
     }
 }
 
-impl<V, T, S: Storage<ArrayLike<T>>, I: Capacity> PartialEq<Vec<T, S, I>> for &mut [V]
+impl<V, T, S: Storage<ArrayLayout<T>>, I: Capacity> PartialEq<Vec<T, S, I>> for &mut [V]
 where
     V: PartialEq<T>,
 {
@@ -1039,20 +1039,20 @@ where
     }
 }
 
-impl<T: PartialOrd, S: Storage<ArrayLike<T>>, I: Capacity> PartialOrd for Vec<T, S, I> {
+impl<T: PartialOrd, S: Storage<ArrayLayout<T>>, I: Capacity> PartialOrd for Vec<T, S, I> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.as_slice().partial_cmp(other.as_slice())
     }
 }
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Ord for Vec<T, S, I> {
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> Ord for Vec<T, S, I> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.as_slice().cmp(other.as_slice())
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, Idx: Capacity> core::iter::Extend<T> for Vec<T, S, Idx> {
+impl<T, S: Storage<ArrayLayout<T>>, Idx: Capacity> core::iter::Extend<T> for Vec<T, S, Idx> {
     fn extend<I: core::iter::IntoIterator<Item = T>>(&mut self, iter: I) {
         for element in iter {
             self.push(element);
@@ -1060,7 +1060,7 @@ impl<T, S: Storage<ArrayLike<T>>, Idx: Capacity> core::iter::Extend<T> for Vec<T
     }
 }
 
-impl<'a, T, S: Storage<ArrayLike<T>>, Idx: Capacity> core::iter::Extend<&'a T> for Vec<T, S, Idx>
+impl<'a, T, S: Storage<ArrayLayout<T>>, Idx: Capacity> core::iter::Extend<&'a T> for Vec<T, S, Idx>
 where
     T: 'a + Clone,
 {
@@ -1086,14 +1086,14 @@ where
 /// # assert_eq!(iter.next(), Some(2));
 /// # assert_eq!(iter.next(), None);
 /// ```
-pub struct IntoIterator<T, S: Storage<ArrayLike<T>>, I: Capacity> {
+pub struct IntoIterator<T, S: Storage<ArrayLayout<T>>, I: Capacity> {
     start: I,
     end: I,
     buf: S,
     elems: PhantomData<T>,
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for IntoIterator<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Iterator for IntoIterator<T, S, I> {
     type Item = T;
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -1117,7 +1117,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for IntoIterator<T, S, I
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator for IntoIterator<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> DoubleEndedIterator for IntoIterator<T, S, I> {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         let start = self.start.as_usize();
@@ -1135,16 +1135,16 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator for IntoItera
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> ExactSizeIterator for IntoIterator<T, S, I> {}
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for IntoIterator<T, S, I> {}
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> ExactSizeIterator for IntoIterator<T, S, I> {}
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> FusedIterator for IntoIterator<T, S, I> {}
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for IntoIterator<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Drop for IntoIterator<T, S, I> {
     fn drop(&mut self) {
         self.for_each(drop);
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIter for Vec<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> IntoIter for Vec<T, S, I> {
     type Item = T;
     type IntoIter = IntoIterator<T, S, I>;
 
@@ -1162,7 +1162,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIter for Vec<T, S, I> {
     }
 }
 
-impl<'a, T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIter for &'a Vec<T, S, I> {
+impl<'a, T, S: Storage<ArrayLayout<T>>, I: Capacity> IntoIter for &'a Vec<T, S, I> {
     type Item = &'a T;
     type IntoIter = core::slice::Iter<'a, T>;
 
@@ -1171,7 +1171,7 @@ impl<'a, T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIter for &'a Vec<T, S, I>
     }
 }
 
-impl<'a, T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIter for &'a mut Vec<T, S, I> {
+impl<'a, T, S: Storage<ArrayLayout<T>>, I: Capacity> IntoIter for &'a mut Vec<T, S, I> {
     type Item = &'a mut T;
     type IntoIter = core::slice::IterMut<'a, T>;
 
@@ -1183,7 +1183,7 @@ impl<'a, T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIter for &'a mut Vec<T, S
 /// A draining iterator for `Vec<T>`.
 ///
 /// This `struct` is created by [`Vec::drain`]. See its documentation for more.
-pub struct Drain<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> {
+pub struct Drain<'p, T, S: Storage<ArrayLayout<T>>, I: Capacity> {
     parent: &'p mut Vec<T, S, I>,
     original_len: usize,
     target_start: usize,
@@ -1192,7 +1192,7 @@ pub struct Drain<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> {
     target_end: usize,
 }
 
-impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for Drain<'p, T, S, I> {
+impl<'p, T, S: Storage<ArrayLayout<T>>, I: Capacity> Iterator for Drain<'p, T, S, I> {
     type Item = T;
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -1211,7 +1211,7 @@ impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for Drain<'p, T, S, 
     }
 }
 
-impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator for Drain<'p, T, S, I> {
+impl<'p, T, S: Storage<ArrayLayout<T>>, I: Capacity> DoubleEndedIterator for Drain<'p, T, S, I> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.front_index == self.back_index {
             return None;
@@ -1222,10 +1222,10 @@ impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator for Drain
     }
 }
 
-impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> ExactSizeIterator for Drain<'p, T, S, I> {}
-impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for Drain<'p, T, S, I> {}
+impl<'p, T, S: Storage<ArrayLayout<T>>, I: Capacity> ExactSizeIterator for Drain<'p, T, S, I> {}
+impl<'p, T, S: Storage<ArrayLayout<T>>, I: Capacity> FusedIterator for Drain<'p, T, S, I> {}
 
-impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Drain<'p, T, S, I> {
+impl<'p, T, S: Storage<ArrayLayout<T>>, I: Capacity> Drop for Drain<'p, T, S, I> {
     fn drop(&mut self) {
         self.for_each(drop);
 
@@ -1243,7 +1243,7 @@ impl<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Drain<'p, T, S, I> {
 /// An iterator which uses a closure to determine if an element should be removed.
 /// 
 /// This struct is created by [`Vec::drain_filter`]. See its documentation for more.
-pub struct DrainFilter<'p, T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> {
+pub struct DrainFilter<'p, T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> {
     parent: &'p mut Vec<T, S, I>,
     filter_fn: F,
     original_len: usize,
@@ -1253,7 +1253,7 @@ pub struct DrainFilter<'p, T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I,
     target_end: usize,
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Iterator for DrainFilter<'_, T, S, I, F> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Iterator for DrainFilter<'_, T, S, I, F> {
     type Item = T;
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -1278,7 +1278,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Iter
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> DoubleEndedIterator for DrainFilter<'_, T, S, I, F> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> DoubleEndedIterator for DrainFilter<'_, T, S, I, F> {
     fn next_back(&mut self) -> Option<Self::Item> {
         while self.front_index != self.back_index {
             self.back_index -= 1;
@@ -1296,9 +1296,9 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Doub
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> FusedIterator for DrainFilter<'_, T, S, I, F> {}
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> FusedIterator for DrainFilter<'_, T, S, I, F> {}
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Drop for DrainFilter<'_, T, S, I, F> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Drop for DrainFilter<'_, T, S, I, F> {
     fn drop(&mut self) {
         self.for_each(drop);
         
@@ -1438,7 +1438,7 @@ impl<T: Clone, I: Capacity, const C: usize> From<&mut [T]> for Vec<T, InlineStor
 impl<V, T, S, I, const N: usize> PartialEq<Vec<T, S, I>> for [V; N]
 where
     V: PartialEq<T>,
-    S: Storage<ArrayLike<T>>,
+    S: Storage<ArrayLayout<T>>,
     I: Capacity,
 {
     #[inline]
@@ -1450,7 +1450,7 @@ where
 impl<V, T, S, I, const N: usize> PartialEq<[V; N]> for Vec<T, S, I>
 where
     T: PartialEq<V>,
-    S: Storage<ArrayLike<T>>,
+    S: Storage<ArrayLayout<T>>,
     I: Capacity,
 {
     #[inline]

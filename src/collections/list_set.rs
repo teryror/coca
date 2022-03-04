@@ -6,7 +6,7 @@ use core::iter::FusedIterator;
 use core::slice::Iter;
 
 use crate::collections::vec::{Vec, Drain};
-use crate::storage::{ArrayLike, Capacity, Storage, InlineStorage};
+use crate::storage::{ArrayLayout, Capacity, Storage, InlineStorage};
 
 /// A set implemented with a vector, using a linear scan to find a given value.
 /// 
@@ -36,17 +36,17 @@ use crate::storage::{ArrayLike, Capacity, Storage, InlineStorage};
 /// behavior resulting from such a logic error is not specified, but will not
 /// result in undefined behavior. This could include panics, incorrect results,
 /// aborts, memory leaks, and non-termination.
-pub struct ListSet<T, S: Storage<ArrayLike<T>>, I: Capacity> {
+pub struct ListSet<T, S: Storage<ArrayLayout<T>>, I: Capacity> {
     vec: Vec<T, S, I>,
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for ListSet<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> From<S> for ListSet<T, S, I> {
     fn from(buf: S) -> Self {
         ListSet { vec: Vec::from(buf) }
     }
 }
 
-impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> From<Vec<T, S, I>> for ListSet<T, S, I> {
+impl<T: Eq, S: Storage<ArrayLayout<T>>, I: Capacity> From<Vec<T, S, I>> for ListSet<T, S, I> {
     fn from(mut vec: Vec<T, S, I>) -> Self {
         let mut i = 1;
         'outer: while i < vec.len() {
@@ -67,7 +67,7 @@ impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> From<Vec<T, S, I>> for ListSe
     }
 }
 
-impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> ListSet<T, S, I> {
+impl<T: Eq, S: Storage<ArrayLayout<T>>, I: Capacity> ListSet<T, S, I> {
     /// Constructs a `ListSet` from a `Vec` without checking for duplicate elements.
     /// 
     /// It is a logic error to pass a vector containing elements that compare
@@ -175,7 +175,7 @@ impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> ListSet<T, S, I> {
     /// assert_eq!(d.as_slice(), &[4]);
     /// ```
     #[inline]
-    pub fn difference<'a, S2: Storage<ArrayLike<T>>, I2: Capacity>(&'a self, other: &'a ListSet<T, S2, I2>) -> Difference<'a, T> {
+    pub fn difference<'a, S2: Storage<ArrayLayout<T>>, I2: Capacity>(&'a self, other: &'a ListSet<T, S2, I2>) -> Difference<'a, T> {
         Difference { this: self.as_slice(), other: other.as_slice(), front: 0 }
     }
 
@@ -198,7 +198,7 @@ impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> ListSet<T, S, I> {
     /// assert_eq!(&d, &[1, 4]);
     /// ```
     #[inline]
-    pub fn symmetric_difference<'a, S2: Storage<ArrayLike<T>>, I2: Capacity>(&'a self, other: &'a ListSet<T, S2, I2>) -> SymmetricDifference<'a, T> {
+    pub fn symmetric_difference<'a, S2: Storage<ArrayLayout<T>>, I2: Capacity>(&'a self, other: &'a ListSet<T, S2, I2>) -> SymmetricDifference<'a, T> {
         SymmetricDifference { this: self.as_slice(), other: other.as_slice(), front: 0 }
     }
 
@@ -221,7 +221,7 @@ impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> ListSet<T, S, I> {
     /// assert_eq!(&i, &[2, 3]);
     /// ```
     #[inline]
-    pub fn intersection<'a, S2: Storage<ArrayLike<T>>, I2: Capacity>(&'a self, other: &'a ListSet<T, S2, I2>) -> Intersection<'a, T> {
+    pub fn intersection<'a, S2: Storage<ArrayLayout<T>>, I2: Capacity>(&'a self, other: &'a ListSet<T, S2, I2>) -> Intersection<'a, T> {
         Intersection { this: self.as_slice(), other: other.as_slice(), front: 0 }
     }
 
@@ -242,7 +242,7 @@ impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> ListSet<T, S, I> {
     /// (1..5).for_each(|x| assert!(u.contains(&x)));
     /// ```
     #[inline]
-    pub fn union<'a, S2: Storage<ArrayLike<T>>, I2: Capacity>(&'a self, other: &'a ListSet<T, S2, I2>) -> Union<'a, T> {
+    pub fn union<'a, S2: Storage<ArrayLayout<T>>, I2: Capacity>(&'a self, other: &'a ListSet<T, S2, I2>) -> Union<'a, T> {
         Union { this: self.as_slice(), other: other.as_slice(), front: 0 }
     }
 
@@ -319,7 +319,7 @@ impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> ListSet<T, S, I> {
     /// b.insert(1);
     /// assert_eq!(a.is_disjoint(&b), false);
     /// ```
-    pub fn is_disjoint<S2: Storage<ArrayLike<T>>, I2: Capacity>(&self, other: &ListSet<T, S2, I2>) -> bool {
+    pub fn is_disjoint<S2: Storage<ArrayLayout<T>>, I2: Capacity>(&self, other: &ListSet<T, S2, I2>) -> bool {
         for item in other.iter() {
             if self.contains(item) { return false; }
         }
@@ -346,7 +346,7 @@ impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> ListSet<T, S, I> {
     /// set.insert(5);
     /// assert_eq!(set.is_subset_of(&sup), false)
     /// ```
-    pub fn is_subset_of<S2: Storage<ArrayLike<T>>, I2: Capacity>(&self, other: &ListSet<T, S2, I2>) -> bool {
+    pub fn is_subset_of<S2: Storage<ArrayLayout<T>>, I2: Capacity>(&self, other: &ListSet<T, S2, I2>) -> bool {
         for item in self.iter() {
             if !other.contains(item) { return false; }
         }
@@ -375,7 +375,7 @@ impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> ListSet<T, S, I> {
     /// assert_eq!(set.is_superset_of(&sub), true);
     /// ```
     #[inline]
-    pub fn is_superset_of<S2: Storage<ArrayLike<T>>, I2: Capacity>(&self, other: &ListSet<T, S2, I2>) -> bool {
+    pub fn is_superset_of<S2: Storage<ArrayLayout<T>>, I2: Capacity>(&self, other: &ListSet<T, S2, I2>) -> bool {
         other.is_subset_of(self)
     }
 
@@ -588,8 +588,8 @@ impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> ListSet<T, S, I> {
 
 impl<T: Eq, S1, S2, I1, I2> core::ops::BitAndAssign<&'_ ListSet<T, S2, I2>> for ListSet<T, S1, I1>
 where
-    S1: Storage<ArrayLike<T>>,
-    S2: Storage<ArrayLike<T>>,
+    S1: Storage<ArrayLayout<T>>,
+    S2: Storage<ArrayLayout<T>>,
     I1: Capacity,
     I2: Capacity,
 {
@@ -608,8 +608,8 @@ where
 impl<T, S1, S2, I1, I2> core::ops::BitOrAssign<&'_ ListSet<T, S2, I2>> for ListSet<T, S1, I1>
 where
     T: Clone + Eq,
-    S1: Storage<ArrayLike<T>>,
-    S2: Storage<ArrayLike<T>>,
+    S1: Storage<ArrayLayout<T>>,
+    S2: Storage<ArrayLayout<T>>,
     I1: Capacity,
     I2: Capacity,
 {
@@ -622,25 +622,25 @@ where
     }
 }
 
-impl<T: Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for ListSet<T, S, I> {
+impl<T: Debug, S: Storage<ArrayLayout<T>>, I: Capacity> Debug for ListSet<T, S, I> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_set().entries(self.vec.as_slice()).finish()
     }
 }
 
-impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> Extend<T> for ListSet<T, S, I> {
+impl<T: Eq, S: Storage<ArrayLayout<T>>, I: Capacity> Extend<T> for ListSet<T, S, I> {
     fn extend<It: IntoIterator<Item = T>>(&mut self, iter: It) {
         iter.into_iter().for_each(|x| { self.insert(x); });
     }
 }
 
-impl<'a, T: Clone + Eq, S: Storage<ArrayLike<T>>, I: Capacity> Extend<&'a T> for ListSet<T, S, I> {
+impl<'a, T: Clone + Eq, S: Storage<ArrayLayout<T>>, I: Capacity> Extend<&'a T> for ListSet<T, S, I> {
     fn extend<It: IntoIterator<Item = &'a T>>(&mut self, iter: It) {
         iter.into_iter().for_each(|x| { self.insert(x.clone()); });
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for ListSet<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> IntoIterator for ListSet<T, S, I> {
     type IntoIter = crate::collections::vec::IntoIterator<T, S, I>;
     type Item = T;
 
@@ -649,7 +649,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for ListSet<T, S, I>
     }
 }
 
-impl<'a, T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for &'a ListSet<T, S, I> {
+impl<'a, T: Eq, S: Storage<ArrayLayout<T>>, I: Capacity> IntoIterator for &'a ListSet<T, S, I> {
     type Item = &'a T;
     type IntoIter = Iter<'a, T>;
 
@@ -660,8 +660,8 @@ impl<'a, T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for &'a List
 
 impl<T, S1, S2, I1, I2> PartialEq<ListSet<T, S2, I2>> for ListSet<T, S1, I1>
 where
-    S1: Storage<ArrayLike<T>>,
-    S2: Storage<ArrayLike<T>>,
+    S1: Storage<ArrayLayout<T>>,
+    S2: Storage<ArrayLayout<T>>,
     I1: Capacity,
     I2: Capacity,
     T: Eq,
@@ -671,7 +671,7 @@ where
     }
 }
 
-impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> Eq for ListSet<T, S, I> {}
+impl<T: Eq, S: Storage<ArrayLayout<T>>, I: Capacity> Eq for ListSet<T, S, I> {}
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]

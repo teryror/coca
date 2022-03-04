@@ -10,7 +10,7 @@ use core::hash::{BuildHasher, BuildHasherDefault, Hash, Hasher};
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 
-use crate::storage::{ArrayLike, InlineStorage, Storage};
+use crate::storage::{ArrayLayout, InlineStorage, Storage};
 
 // TODO: wider cache line types!
 
@@ -388,7 +388,7 @@ impl<K, V> Drop for LruCache2<K, V> {
 /// are provided. Otherwise, use [`with_hasher`](CacheTable::with_hasher),
 /// [`with_capacity_and_hasher`](CacheTable::with_capacity_and_hasher) or
 /// [`Arena::try_cache_with_hasher`](crate::arena::Arena::try_cache_with_hasher).
-pub struct CacheTable<K: Eq, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H> {
+pub struct CacheTable<K: Eq, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H> {
     buf: S,
     hash_builder: H,
     lines: PhantomData<L>,
@@ -396,7 +396,7 @@ pub struct CacheTable<K: Eq, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H>
     values: PhantomData<V>,
 }
 
-impl<K: Eq, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H: Default> From<S> for CacheTable<K, V, S, L, H> {
+impl<K: Eq, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H: Default> From<S> for CacheTable<K, V, S, L, H> {
     fn from(buf: S) -> Self {
         let mut result = CacheTable {
             buf, hash_builder: H::default(), lines: PhantomData, keys: PhantomData, values: PhantomData,
@@ -406,7 +406,7 @@ impl<K: Eq, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H: Default> From<S>
     }
 }
 
-impl<K: Eq, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H> CacheTable<K, V, S, L, H> {
+impl<K: Eq, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H> CacheTable<K, V, S, L, H> {
     fn init_cache_lines(&mut self) {
         let line_ptr = self.buf.get_mut_ptr().cast::<L>();
         for i in 0..self.buf.capacity() {
@@ -456,7 +456,7 @@ impl<K: Eq, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H> CacheTable<K, V,
     }
 }
 
-impl<K: Eq + Hash, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H: BuildHasher> CacheTable<K, V, S, L, H> {
+impl<K: Eq + Hash, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H: BuildHasher> CacheTable<K, V, S, L, H> {
     /// Constructs a new cache table using the specified storage and hash builder.
     pub fn from_storage_and_hasher(buf: S, hash_builder: H) -> Self {
         let mut result = CacheTable {
@@ -564,7 +564,7 @@ impl<K: Eq + Hash, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H: BuildHash
     }
 }
 
-impl<K: Eq, V, S: Storage<ArrayLike<L>>, L: CacheLine<K, V>, H> Drop for CacheTable<K, V, S, L, H> {
+impl<K: Eq, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H> Drop for CacheTable<K, V, S, L, H> {
     fn drop(&mut self) {
         self.clear();
     }
@@ -628,7 +628,7 @@ impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: Hasher + Default, const N: usize> D
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: BuildHasher> CacheTable<K, V, crate::storage::AllocStorage<ArrayLike<L>>, L, H> {
+impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: BuildHasher> CacheTable<K, V, crate::storage::AllocStorage<ArrayLayout<L>>, L, H> {
     /// Constructs a new, empty `CacheTable` with the specified [`BuildHasher`]
     /// and heap-allocated storage of the specified capacity, rounded up to the
     /// next largest multiple of `L::CAPACITY`.
@@ -650,7 +650,7 @@ impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: BuildHasher> CacheTable<K, V, crate
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: Hasher + Default> CacheTable<K, V, crate::storage::AllocStorage<ArrayLike<L>>, L, BuildHasherDefault<H>> {
+impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: Hasher + Default> CacheTable<K, V, crate::storage::AllocStorage<ArrayLayout<L>>, L, BuildHasherDefault<H>> {
     /// Constructs a new, empty `CacheTable` with the default [`BuildHasherDefault`]
     /// and heap-allocated storage the specified capacity, rounded up to the next
     /// largest multiple of `L::CAPACITY`.

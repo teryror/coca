@@ -9,7 +9,7 @@ pub mod option_group;
 pub mod pool;
 pub mod vec;
 
-use crate::storage::{ArenaStorage, ArrayLike, InlineStorage, SliceStorage};
+use crate::storage::{ArenaStorage, ArrayLayout, InlineStorage, SliceStorage};
 
 use binary_heap::BinaryHeap;
 use cache::{CacheTable, UnitCache, LruCache2};
@@ -49,7 +49,7 @@ pub type SliceHeap<'a, T, I = usize> = BinaryHeap<T, SliceStorage<'a, T>, I>;
 /// let heap: ArenaHeap<'_, i64, usize> = arena.try_with_capacity(100).unwrap();
 /// assert!(arena.try_with_capacity::<_, ArenaHeap<'_, i64, usize>>(100).is_none());
 /// ```
-pub type ArenaHeap<'a, T, I = usize> = BinaryHeap<T, ArenaStorage<'a, ArrayLike<T>>, I>;
+pub type ArenaHeap<'a, T, I = usize> = BinaryHeap<T, ArenaStorage<'a, ArrayLayout<T>>, I>;
 
 /// A binary heap using an inline array for storage.
 ///
@@ -76,7 +76,7 @@ pub type InlineHeap<T, const C: usize, I = usize> = BinaryHeap<T, InlineStorage<
 /// heap.push('c');
 /// assert!(heap.try_push('d').is_err());
 /// ```
-pub type AllocHeap<T, I = usize> = BinaryHeap<T, crate::storage::AllocStorage<ArrayLike<T>>, I>;
+pub type AllocHeap<T, I = usize> = BinaryHeap<T, crate::storage::AllocStorage<ArrayLayout<T>>, I>;
 
 /// A direct-mapped cache using an arena-allocated slice for storage.
 /// 
@@ -97,7 +97,7 @@ pub type AllocHeap<T, I = usize> = BinaryHeap<T, crate::storage::AllocStorage<Ar
 /// # }
 /// # assert!(test().is_some());
 /// ```
-pub type ArenaDirectMappedCache<'src, K, V, H> = CacheTable<K, V, ArenaStorage<'src, ArrayLike<UnitCache<K, V>>>, UnitCache<K, V>, H>;
+pub type ArenaDirectMappedCache<'src, K, V, H> = CacheTable<K, V, ArenaStorage<'src, ArrayLayout<UnitCache<K, V>>>, UnitCache<K, V>, H>;
 /// A 2-way set-associative cache with a least recently used eviction policy,
 /// using an arena-allocated slice for storage.
 /// 
@@ -118,7 +118,7 @@ pub type ArenaDirectMappedCache<'src, K, V, H> = CacheTable<K, V, ArenaStorage<'
 /// # }
 /// # assert!(test().is_some());
 /// ```
-pub type Arena2WayLruCache<'src, K, V, H> = CacheTable<K, V, ArenaStorage<'src, ArrayLike<LruCache2<K, V>>>, LruCache2<K, V>, H>;
+pub type Arena2WayLruCache<'src, K, V, H> = CacheTable<K, V, ArenaStorage<'src, ArrayLayout<LruCache2<K, V>>>, LruCache2<K, V>, H>;
 
 /// A direct-mapped cache using an inline array for storage.
 /// 
@@ -216,7 +216,7 @@ pub type Inline2WayLruCache<K, V, H, const N: usize> = CacheTable<K, V, InlineSt
 /// ```
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-pub type AllocDirectMappedCache<K, V, H> = CacheTable<K, V, crate::storage::AllocStorage<ArrayLike<UnitCache<K, V>>>, UnitCache<K, V>, H>;
+pub type AllocDirectMappedCache<K, V, H> = CacheTable<K, V, crate::storage::AllocStorage<ArrayLayout<UnitCache<K, V>>>, UnitCache<K, V>, H>;
 
 /// A 2-way set-associative cache with a least recently used eviction policy,
 /// using a heap-allocated array for storage.
@@ -249,7 +249,7 @@ pub type AllocDirectMappedCache<K, V, H> = CacheTable<K, V, crate::storage::Allo
 /// ```
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-pub type Alloc2WayLruCache<K, V, H> = CacheTable<K, V, crate::storage::AllocStorage<ArrayLike<LruCache2<K, V>>>, LruCache2<K, V>, H>;
+pub type Alloc2WayLruCache<K, V, H> = CacheTable<K, V, crate::storage::AllocStorage<ArrayLayout<LruCache2<K, V>>>, LruCache2<K, V>, H>;
 
 /// A double-ended queue using any mutable slice for storage.
 ///
@@ -288,7 +288,7 @@ pub type SliceDeque<'a, T, I = usize> = Deque<T, SliceStorage<'a, T>, I>;
 /// # }
 /// # assert!(test().is_some());
 /// ```
-pub type ArenaDeque<'a, T, I = usize> = Deque<T, ArenaStorage<'a, ArrayLike<T>>, I>;
+pub type ArenaDeque<'a, T, I = usize> = Deque<T, ArenaStorage<'a, ArrayLayout<T>>, I>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
@@ -308,7 +308,7 @@ pub type ArenaDeque<'a, T, I = usize> = Deque<T, ArenaStorage<'a, ArrayLike<T>>,
 /// assert_eq!(deque, &['a', 'b', 'c', 'd']);
 /// assert_eq!(deque.try_push_back('e'), Err('e'));
 /// ```
-pub type AllocDeque<T, I = usize> = Deque<T, crate::storage::AllocStorage<ArrayLike<T>>, I>;
+pub type AllocDeque<T, I = usize> = Deque<T, crate::storage::AllocStorage<ArrayLayout<T>>, I>;
 
 /// A deque using an inline array for storage.
 ///
@@ -370,7 +370,7 @@ pub type InlineListMap<K, V, const N: usize, I = usize> = ListMap<K, V, list_map
 /// let map: ArenaListSet<'_, &'static str> = arena.try_with_capacity(100).unwrap();
 /// assert!(arena.try_with_capacity::<_, ArenaListSet<'_, &'static str>>(100).is_none());
 /// ```
-pub type ArenaListSet<'a, T, I = usize> = ListSet<T, ArenaStorage<'a, ArrayLike<T>>, I>;
+pub type ArenaListSet<'a, T, I = usize> = ListSet<T, ArenaStorage<'a, ArrayLayout<T>>, I>;
 /// A set based on a globally allocated array.
 /// 
 /// # Examples
@@ -381,7 +381,7 @@ pub type ArenaListSet<'a, T, I = usize> = ListSet<T, ArenaStorage<'a, ArrayLike<
 /// ```
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-pub type AllocListSet<T, I = usize> = ListSet<T, crate::storage::AllocStorage<ArrayLike<T>>, I>;
+pub type AllocListSet<T, I = usize> = ListSet<T, crate::storage::AllocStorage<ArrayLayout<T>>, I>;
 /// A set based on any mutable array slice.
 /// 
 /// # Examples
@@ -557,7 +557,7 @@ pub type SliceVec<'a, T, I = usize> = Vec<T, SliceStorage<'a, T>, I>;
 /// let v: ArenaVec<'_, i64, usize> = arena.try_with_capacity(100).unwrap();
 /// assert!(arena.try_with_capacity::<_, ArenaVec<'_, i64, usize>>(100).is_none());
 /// ```
-pub type ArenaVec<'a, T, I = usize> = Vec<T, ArenaStorage<'a, ArrayLike<T>>, I>;
+pub type ArenaVec<'a, T, I = usize> = Vec<T, ArenaStorage<'a, ArrayLayout<T>>, I>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
@@ -573,7 +573,7 @@ pub type ArenaVec<'a, T, I = usize> = Vec<T, ArenaStorage<'a, ArrayLike<T>>, I>;
 /// vec.push('c');
 /// assert!(vec.try_push('d').is_err());
 /// ```
-pub type AllocVec<T, I = usize> = Vec<T, crate::storage::AllocStorage<ArrayLike<T>>, I>;
+pub type AllocVec<T, I = usize> = Vec<T, crate::storage::AllocStorage<ArrayLayout<T>>, I>;
 
 /// A vector using an inline array for storage.
 ///

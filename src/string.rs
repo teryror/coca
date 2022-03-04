@@ -6,7 +6,7 @@ use core::str::{self, Utf8Error, FromStr};
 
 use crate::CapacityError;
 use crate::collections::vec::Vec;
-use crate::storage::{ArrayLike, Storage, Capacity, InlineStorage, ArenaStorage, normalize_range};
+use crate::storage::{ArrayLayout, Storage, Capacity, InlineStorage, ArenaStorage, normalize_range};
 
 /// A possible error value when converting a UTF-8 byte vector into a [`String`].
 /// 
@@ -14,12 +14,12 @@ use crate::storage::{ArrayLike, Storage, Capacity, InlineStorage, ArenaStorage, 
 /// 
 /// [`from_utf8`]: String::from_utf8
 #[derive(Debug, PartialEq, Eq)]
-pub struct FromUtf8Error<S: Storage<ArrayLike<u8>>, I: Capacity> {
+pub struct FromUtf8Error<S: Storage<ArrayLayout<u8>>, I: Capacity> {
     bytes: Vec<u8, S, I>,
     error: Utf8Error,
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> FromUtf8Error<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> FromUtf8Error<S, I> {
     /// Returns a slice of bytes that were attempted to convert to a [`String`].
     pub fn as_bytes(&self) -> &[u8] {
         self.bytes.as_slice()
@@ -36,7 +36,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> FromUtf8Error<S, I> {
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> Clone for FromUtf8Error<S, I> where Vec<u8, S, I>: Clone {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> Clone for FromUtf8Error<S, I> where Vec<u8, S, I>: Clone {
     fn clone(&self) -> Self {
         FromUtf8Error {
             bytes: self.bytes.clone(),
@@ -45,7 +45,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> Clone for FromUtf8Error<S, I> where
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> Display for FromUtf8Error<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> Display for FromUtf8Error<S, I> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.error, f)
     }
@@ -54,17 +54,17 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> Display for FromUtf8Error<S, I> {
 /// A UTF-8 encoded, growable string.
 /// 
 /// Generic over the storage buffer type `S` and the index type `I`.
-pub struct String<S: Storage<ArrayLike<u8>>, I: Capacity = usize> {
+pub struct String<S: Storage<ArrayLayout<u8>>, I: Capacity = usize> {
     vec: Vec<u8, S, I>,
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> From<S> for String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> From<S> for String<S, I> {
     fn from(buf: S) -> Self {
         String { vec: Vec::from(buf) }
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> String<S, I> {
     /// Converts a vector of bytes into a `String` without copying.
     /// 
     /// If you are sure that the byte vector is valid UTF-8, and don't want to
@@ -683,7 +683,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> String<S, I> {
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::ops::Deref for String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> core::ops::Deref for String<S, I> {
     type Target = str;
 
     #[inline]
@@ -692,42 +692,42 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::ops::Deref for String<S, I> {
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::ops::DerefMut for String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> core::ops::DerefMut for String<S, I> {
     #[inline]
     fn deref_mut(&mut self) -> &mut str {
         unsafe { str::from_utf8_unchecked_mut(&mut *self.vec) }
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::convert::AsRef<str> for String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> core::convert::AsRef<str> for String<S, I> {
     #[inline]
     fn as_ref(&self) -> &str {
         self.as_str()
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::convert::AsMut<str> for String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> core::convert::AsMut<str> for String<S, I> {
     #[inline]
     fn as_mut(&mut self) -> &mut str {
         self.as_mut_str()
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::convert::AsRef<[u8]> for String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> core::convert::AsRef<[u8]> for String<S, I> {
     #[inline]
     fn as_ref(&self) -> &[u8] {
         self.vec.as_slice()
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> Clone for String<S, I> where Vec<u8, S, I>: Clone {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> Clone for String<S, I> where Vec<u8, S, I>: Clone {
     #[inline]
     fn clone(&self) -> Self {
         String { vec: self.vec.clone() }
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::iter::Extend<char> for String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> core::iter::Extend<char> for String<S, I> {
     #[inline]
     fn extend<It: IntoIterator<Item = char>>(&mut self, iter: It) {
         for ch in iter {
@@ -736,7 +736,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::iter::Extend<char> for String
     }
 }
 
-impl<'a, S: Storage<ArrayLike<u8>>, I: Capacity> core::iter::Extend<&'a char> for String<S, I> {
+impl<'a, S: Storage<ArrayLayout<u8>>, I: Capacity> core::iter::Extend<&'a char> for String<S, I> {
     #[inline]
     fn extend<It: IntoIterator<Item = &'a char>>(&mut self, iter: It) {
         for ch in iter {
@@ -745,7 +745,7 @@ impl<'a, S: Storage<ArrayLike<u8>>, I: Capacity> core::iter::Extend<&'a char> fo
     }
 }
 
-impl<'a, S: Storage<ArrayLike<u8>>, I: Capacity> core::iter::Extend<&'a str> for String<S, I> {
+impl<'a, S: Storage<ArrayLayout<u8>>, I: Capacity> core::iter::Extend<&'a str> for String<S, I> {
     #[inline]
     fn extend<It: IntoIterator<Item = &'a str>>(&mut self, iter: It) {
         for s in iter {
@@ -754,58 +754,58 @@ impl<'a, S: Storage<ArrayLike<u8>>, I: Capacity> core::iter::Extend<&'a str> for
     }
 }
 
-impl<S1: Storage<ArrayLike<u8>>, I1: Capacity, S2: Storage<ArrayLike<u8>>, I2: Capacity> PartialEq<String<S2, I2>> for String<S1, I1> {
+impl<S1: Storage<ArrayLayout<u8>>, I1: Capacity, S2: Storage<ArrayLayout<u8>>, I2: Capacity> PartialEq<String<S2, I2>> for String<S1, I1> {
     #[inline]
     fn eq(&self, other: &String<S2, I2>) -> bool {
         self.as_str() == other.as_str()
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> Eq for String<S, I> {}
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> Eq for String<S, I> {}
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> PartialEq<str> for String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> PartialEq<str> for String<S, I> {
     #[inline]
     fn eq(&self, other: &str) -> bool {
         self.as_str() == other
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> PartialEq<&str> for String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> PartialEq<&str> for String<S, I> {
     #[inline]
     fn eq(&self, other: &&str) -> bool {
         self.as_str() == *other
     }
 }
 
-impl<S1: Storage<ArrayLike<u8>>, I1: Capacity, S2: Storage<ArrayLike<u8>>, I2: Capacity> PartialOrd<String<S2, I2>> for String<S1, I1> {
+impl<S1: Storage<ArrayLayout<u8>>, I1: Capacity, S2: Storage<ArrayLayout<u8>>, I2: Capacity> PartialOrd<String<S2, I2>> for String<S1, I1> {
     #[inline]
     fn partial_cmp(&self, other: &String<S2, I2>) -> Option<core::cmp::Ordering> {
         self.as_str().partial_cmp(other.as_str())
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> Ord for String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> Ord for String<S, I> {
     #[inline]
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.as_str().cmp(other.as_str())
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> fmt::Display for String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> fmt::Display for String<S, I> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&**self, f)
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> fmt::Debug for String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> fmt::Debug for String<S, I> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> fmt::Write for String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> fmt::Write for String<S, I> {
     #[inline]
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.try_push_str(s).map_err(|_| fmt::Error)
@@ -817,14 +817,14 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> fmt::Write for String<S, I> {
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::hash::Hash for String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> core::hash::Hash for String<S, I> {
     #[inline]
     fn hash<H: core::hash::Hasher>(&self, hasher: &mut H) {
         (**self).hash(hasher);
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::ops::Add<&str> for String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> core::ops::Add<&str> for String<S, I> {
     type Output = Self;
 
     #[inline]
@@ -834,7 +834,7 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::ops::Add<&str> for String<S, 
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::ops::AddAssign<&str> for String<S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> core::ops::AddAssign<&str> for String<S, I> {
     #[inline]
     fn add_assign(&mut self, rhs: &str) {
         self.push_str(rhs);
@@ -901,7 +901,7 @@ impl<'a, I: Capacity> crate::ArenaString<'a, I> {
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<I: Capacity> FromStr for String::<crate::storage::AllocStorage<ArrayLike<u8>>, I> {
+impl<I: Capacity> FromStr for String::<crate::storage::AllocStorage<ArrayLayout<u8>>, I> {
     type Err = core::convert::Infallible;
 
     /// Creates a new `AllocString` with the given contents, and zero excess capacity.
@@ -921,7 +921,7 @@ impl<I: Capacity> FromStr for String::<crate::storage::AllocStorage<ArrayLike<u8
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<I: Capacity> String<crate::storage::AllocStorage<ArrayLike<u8>>, I> {
+impl<I: Capacity> String<crate::storage::AllocStorage<ArrayLayout<u8>>, I> {
     /// Creates a new, empty `AllocString` with the specified capacity.
     pub fn with_capacity(capacity: I) -> Self {
         Self::from(crate::storage::AllocStorage::with_capacity(capacity.as_usize()))
@@ -1002,38 +1002,38 @@ impl<I: Capacity, const C: usize> Default for String<InlineStorage<u8, C>, I> {
 /// 
 /// This struct is created by the [`drain`](String::drain) method on `String`.
 /// See its documentation for more.
-pub struct Drain<'a, S: Storage<ArrayLike<u8>>, I: Capacity> {
+pub struct Drain<'a, S: Storage<ArrayLayout<u8>>, I: Capacity> {
     parent: *mut String<S, I>,
     target_range: Range<I>,
     iter: str::Chars<'a>,
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> Drain<'_, S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> Drain<'_, S, I> {
     /// Returns the remaining (sub)string of this iterator as a slice.
     pub fn as_str(&self) -> &str {
         self.iter.as_str()
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> fmt::Debug for Drain<'_, S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> fmt::Debug for Drain<'_, S, I> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Drain").field(&self.as_str()).finish()
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> AsRef<str> for Drain<'_, S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> AsRef<str> for Drain<'_, S, I> {
     fn as_ref(&self) -> &str {
         self.as_str()
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> AsRef<[u8]> for Drain<'_, S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> AsRef<[u8]> for Drain<'_, S, I> {
     fn as_ref(&self) -> &[u8] {
         self.iter.as_str().as_bytes()
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> Iterator for Drain<'_, S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> Iterator for Drain<'_, S, I> {
     type Item = char;
 
     #[inline]
@@ -1052,16 +1052,16 @@ impl<S: Storage<ArrayLike<u8>>, I: Capacity> Iterator for Drain<'_, S, I> {
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> DoubleEndedIterator for Drain<'_, S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> DoubleEndedIterator for Drain<'_, S, I> {
     #[inline]
     fn next_back(&mut self) -> Option<char> {
         self.iter.next_back()
     }
 }
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> core::iter::FusedIterator for Drain<'_, S, I> {}
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> core::iter::FusedIterator for Drain<'_, S, I> {}
 
-impl<S: Storage<ArrayLike<u8>>, I: Capacity> Drop for Drain<'_, S, I> {
+impl<S: Storage<ArrayLayout<u8>>, I: Capacity> Drop for Drain<'_, S, I> {
     fn drop(&mut self) {
         unsafe {
             let vec = (*self.parent).as_mut_vec();

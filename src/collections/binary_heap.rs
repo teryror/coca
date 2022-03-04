@@ -9,7 +9,7 @@
 //! complexity. A binary heap can also be converted to a sorted vector in-place,
 //! allowing it to be used for an O(n log(n)) in-place heap sort.
 
-use crate::storage::{ArrayLike, Capacity, Storage};
+use crate::storage::{ArrayLayout, Capacity, Storage};
 use crate::collections::vec::{Drain, Vec};
 
 use core::fmt::{self, Debug, Formatter};
@@ -28,7 +28,7 @@ use core::ops::{Deref, DerefMut};
 /// item's ordering relative to any other item, as determined by the `Ord`
 /// trait, changes while it is in the heap. This is normally only possible
 /// through `Cell`, `RefCell`, global state, I/O, or unsafe code.
-pub struct BinaryHeap<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity = usize> {
+pub struct BinaryHeap<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity = usize> {
     a: Vec<T, S, I>,
 }
 
@@ -36,23 +36,23 @@ pub struct BinaryHeap<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity = usize> {
 ///
 /// This `struct` is created by the [`BinaryHeap::peek_mut()`] method. See its
 /// documentation for more.
-pub struct PeekMut<'a, T: 'a + Ord, S: Storage<ArrayLike<T>>, I: Capacity = usize> {
+pub struct PeekMut<'a, T: 'a + Ord, S: Storage<ArrayLayout<T>>, I: Capacity = usize> {
     heap: &'a mut BinaryHeap<T, S, I>,
 }
 
-impl<T: Ord + Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for PeekMut<'_, T, S, I> {
+impl<T: Ord + Debug, S: Storage<ArrayLayout<T>>, I: Capacity> Debug for PeekMut<'_, T, S, I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_tuple("PeekMut").field(&self.heap.peek()).finish()
     }
 }
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Drop for PeekMut<'_, T, S, I> {
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> Drop for PeekMut<'_, T, S, I> {
     fn drop(&mut self) {
         heapify(self.heap.a.as_mut_slice(), 0);
     }
 }
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Deref for PeekMut<'_, T, S, I> {
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> Deref for PeekMut<'_, T, S, I> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -61,14 +61,14 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Deref for PeekMut<'_, T, S, 
     }
 }
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> DerefMut for PeekMut<'_, T, S, I> {
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> DerefMut for PeekMut<'_, T, S, I> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         debug_assert!(!self.heap.is_empty());
         unsafe { self.heap.a.get_unchecked_mut(0) }
     }
 }
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> PeekMut<'_, T, S, I> {
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> PeekMut<'_, T, S, I> {
     /// Removes the peeked value from the heap and returns it.
     pub fn pop(this: PeekMut<'_, T, S, I>) -> T {
         debug_assert!(!this.heap.is_empty());
@@ -81,7 +81,7 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> PeekMut<'_, T, S, I> {
     }
 }
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for BinaryHeap<T, S, I> {
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> From<S> for BinaryHeap<T, S, I> {
     /// Converts a contiguous block of memory into an empty binary heap.
     ///
     /// # Panics
@@ -125,13 +125,13 @@ fn heapify<T: Ord>(a: &mut [T], i: usize) {
     }
 }
 
-impl<T: Ord + Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for BinaryHeap<T, S, I> {
+impl<T: Ord + Debug, S: Storage<ArrayLayout<T>>, I: Capacity> Debug for BinaryHeap<T, S, I> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list().entries(self.iter()).finish()
     }
 }
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> From<Vec<T, S, I>> for BinaryHeap<T, S, I> {
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> From<Vec<T, S, I>> for BinaryHeap<T, S, I> {
     /// Converts a [`Vec`] into a binary heap.
     ///
     /// This conversion happens in-place, and has O(n) time complexity.
@@ -144,7 +144,7 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> From<Vec<T, S, I>> for Binar
     }
 }
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> BinaryHeap<T, S, I> {
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> BinaryHeap<T, S, I> {
     /// Returns a reference to the greatest item in the binary heap, or [`None`] if it is empty.
     #[inline]
     pub fn peek(&self) -> Option<&T> {
@@ -383,7 +383,7 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> BinaryHeap<T, S, I> {
     }
 }
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for BinaryHeap<T, S, I> {
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> IntoIterator for BinaryHeap<T, S, I> {
     type Item = T;
     type IntoIter = <Vec<T, S, I> as IntoIterator>::IntoIter;
     fn into_iter(self) -> Self::IntoIter {
@@ -391,7 +391,7 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for BinaryHeap<
     }
 }
 
-impl<T1, T2: Ord, S: Storage<ArrayLike<T2>>, I: Capacity> Extend<T1> for BinaryHeap<T2, S, I>
+impl<T1, T2: Ord, S: Storage<ArrayLayout<T2>>, I: Capacity> Extend<T1> for BinaryHeap<T2, S, I>
 where
     Vec<T2, S, I>: Extend<T1>,
 {
@@ -403,7 +403,7 @@ where
     }
 }
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> FromIterator<T> for BinaryHeap<T, S, I>
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> FromIterator<T> for BinaryHeap<T, S, I>
 where
     Vec<T, S, I>: FromIterator<T>,
 {
@@ -421,11 +421,11 @@ where
 ///
 /// This `struct` is created by [`BinaryHeap::drain_sorted()`].
 /// See its documentation for more.
-pub struct DrainSorted<'a, T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> {
+pub struct DrainSorted<'a, T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> {
     heap: &'a mut BinaryHeap<T, S, I>,
 }
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for DrainSorted<'_, T, S, I> {
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> Iterator for DrainSorted<'_, T, S, I> {
     type Item = T;
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -438,10 +438,10 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for DrainSorted<'_,
     }
 }
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> ExactSizeIterator for DrainSorted<'_, T, S, I> {}
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for DrainSorted<'_, T, S, I> {}
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> ExactSizeIterator for DrainSorted<'_, T, S, I> {}
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> FusedIterator for DrainSorted<'_, T, S, I> {}
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Drop for DrainSorted<'_, T, S, I> {
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> Drop for DrainSorted<'_, T, S, I> {
     fn drop(&mut self) {
         self.for_each(drop);
     }
@@ -452,11 +452,11 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Drop for DrainSorted<'_, T, 
 /// This `struct` is created by [`BinaryHeap::into_iter_sorted()`].
 /// See its documentation for more.
 #[derive(Debug)]
-pub struct IntoIterSorted<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> {
+pub struct IntoIterSorted<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> {
     heap: BinaryHeap<T, S, I>,
 }
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for IntoIterSorted<T, S, I> {
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> Iterator for IntoIterSorted<T, S, I> {
     type Item = T;
 
     #[inline]
@@ -471,10 +471,10 @@ impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for IntoIterSorted<
     }
 }
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> ExactSizeIterator for IntoIterSorted<T, S, I> {}
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for IntoIterSorted<T, S, I> {}
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> ExactSizeIterator for IntoIterSorted<T, S, I> {}
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> FusedIterator for IntoIterSorted<T, S, I> {}
 
-impl<T: Clone + Ord, S: Storage<ArrayLike<T>>, I: Capacity> Clone for IntoIterSorted<T, S, I>
+impl<T: Clone + Ord, S: Storage<ArrayLayout<T>>, I: Capacity> Clone for IntoIterSorted<T, S, I>
 where
     BinaryHeap<T, S, I>: Clone,
 {
@@ -483,7 +483,7 @@ where
     }
 }
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Drop for IntoIterSorted<T, S, I> {
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> Drop for IntoIterSorted<T, S, I> {
     fn drop(&mut self) {
         self.for_each(drop);
     }

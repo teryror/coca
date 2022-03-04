@@ -206,8 +206,8 @@ pub trait LayoutSpec {
 }
 
 /// Inconstructible type to mark data structures that require an array-like storage layout.
-pub struct ArrayLike<T>(PhantomData<T>);
-impl<T> LayoutSpec for ArrayLike<T> {
+pub struct ArrayLayout<T>(PhantomData<T>);
+impl<T> LayoutSpec for ArrayLayout<T> {
     fn layout_with_capacity(items: usize) -> Result<Layout, LayoutError> {
         Layout::array::<T>(items)
     }
@@ -241,14 +241,14 @@ pub unsafe trait Storage<R: LayoutSpec>: Sized {
 }
 
 #[inline(always)]
-pub(crate) fn ptr_at_index<T, S: Storage<ArrayLike<T>>>(storage: &S, index: usize) -> *const T {
+pub(crate) fn ptr_at_index<T, S: Storage<ArrayLayout<T>>>(storage: &S, index: usize) -> *const T {
     debug_assert!(index <= storage.capacity());
     let ptr = storage.get_ptr().cast::<T>();
     ptr.wrapping_add(index)
 }
 
 #[inline(always)]
-pub(crate) fn mut_ptr_at_index<T, S: Storage<ArrayLike<T>>>(
+pub(crate) fn mut_ptr_at_index<T, S: Storage<ArrayLayout<T>>>(
     storage: &mut S,
     index: usize,
 ) -> *mut T {
@@ -259,7 +259,7 @@ pub(crate) fn mut_ptr_at_index<T, S: Storage<ArrayLike<T>>>(
 
 /// Shorthand for `&'a mut [MaybeUninit<T>]` for use with generic data structures.
 pub type SliceStorage<'a, T> = &'a mut [MaybeUninit<T>];
-unsafe impl<T: Sized> Storage<ArrayLike<T>> for &mut [MaybeUninit<T>] {
+unsafe impl<T: Sized> Storage<ArrayLayout<T>> for &mut [MaybeUninit<T>] {
     #[inline]
     fn get_ptr(&self) -> *const u8 {
         self.as_ptr().cast()
@@ -406,7 +406,7 @@ unsafe impl<R: LayoutSpec, S: Storage<R>> Storage<R> for alloc::boxed::Box<S> {
 /// Shorthand for `[MaybeUninit<T>; C]` for use with generic data structures.
 pub type InlineStorage<T, const C: usize> = [MaybeUninit<T>; C];
 
-unsafe impl<T, const C: usize> Storage<ArrayLike<T>> for InlineStorage<T, C> {
+unsafe impl<T, const C: usize> Storage<ArrayLayout<T>> for InlineStorage<T, C> {
     fn get_ptr(&self) -> *const u8 {
         self.as_ptr().cast()
     }

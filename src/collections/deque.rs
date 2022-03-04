@@ -10,7 +10,7 @@ use core::marker::PhantomData;
 use core::ops::{Index, IndexMut, Range};
 
 use crate::storage::{
-    buffer_too_large_for_index_type, mut_ptr_at_index, normalize_range, ptr_at_index, ArrayLike, Capacity, Storage,
+    buffer_too_large_for_index_type, mut_ptr_at_index, normalize_range, ptr_at_index, ArrayLayout, Capacity, Storage,
 };
 use crate::collections::vec::Vec;
 
@@ -31,14 +31,14 @@ use crate::collections::vec::Vec;
 /// performance benefits when the capacity is known at compile time, especially
 /// with powers of 2, which allow this expression to be optimized to
 /// `storage[(offset + index) & (CAPACITY - 1)]`.
-pub struct Deque<T, S: Storage<ArrayLike<T>>, I: Capacity> {
+pub struct Deque<T, S: Storage<ArrayLayout<T>>, I: Capacity> {
     front: I,
     len: I,
     buf: S,
     elem: PhantomData<T>,
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for Deque<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> From<S> for Deque<T, S, I> {
     /// Converts a contiguous block of memory into an empty deque.
     ///
     /// # Panics
@@ -57,7 +57,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<S> for Deque<T, S, I> {
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<Vec<T, S, I>> for Deque<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> From<Vec<T, S, I>> for Deque<T, S, I> {
     fn from(vec: Vec<T, S, I>) -> Self {
         let (buf, len) = vec.into_raw_parts();
         Deque {
@@ -69,7 +69,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> From<Vec<T, S, I>> for Deque<T, S
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Deque<T, S, I> {
     /// Decomposes a `Deque<T, S, I>` into its raw parts.
     ///
     /// Returns the raw storage type, the front offset and the length of the
@@ -1236,7 +1236,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Deque<T, S, I> {
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Index<I> for Deque<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Index<I> for Deque<T, S, I> {
     type Output = T;
 
     #[inline]
@@ -1245,14 +1245,14 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Index<I> for Deque<T, S, I> {
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> IndexMut<I> for Deque<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> IndexMut<I> for Deque<T, S, I> {
     #[inline]
     fn index_mut(&mut self, index: I) -> &mut T {
         self.get_mut(index).expect("out of bounds access")
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Deque<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Drop for Deque<T, S, I> {
     fn drop(&mut self) {
         let (front, back) = self.as_mut_slices();
         let front_ptr = front.as_mut_ptr();
@@ -1264,14 +1264,14 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Deque<T, S, I> {
     }
 }
 
-impl<T: Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for Deque<T, S, I> {
+impl<T: Debug, S: Storage<ArrayLayout<T>>, I: Capacity> Debug for Deque<T, S, I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let (front, back) = self.as_slices();
         f.debug_list().entries(front).entries(back).finish()
     }
 }
 
-impl<T: Hash, S: Storage<ArrayLike<T>>, I: Capacity> Hash for Deque<T, S, I> {
+impl<T: Hash, S: Storage<ArrayLayout<T>>, I: Capacity> Hash for Deque<T, S, I> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.len().hash(state);
         let (front, back) = self.as_slices();
@@ -1283,8 +1283,8 @@ impl<T: Hash, S: Storage<ArrayLike<T>>, I: Capacity> Hash for Deque<T, S, I> {
 impl<AT, AS, AI, BT, BS, BI> PartialEq<Deque<BT, BS, BI>> for Deque<AT, AS, AI>
 where
     AT: PartialEq<BT>,
-    AS: Storage<ArrayLike<AT>>,
-    BS: Storage<ArrayLike<BT>>,
+    AS: Storage<ArrayLayout<AT>>,
+    BS: Storage<ArrayLayout<BT>>,
     AI: Capacity,
     BI: Capacity,
 {
@@ -1320,9 +1320,9 @@ where
     }
 }
 
-impl<T: Eq, S: Storage<ArrayLike<T>>, I: Capacity> Eq for Deque<T, S, I> {}
+impl<T: Eq, S: Storage<ArrayLayout<T>>, I: Capacity> Eq for Deque<T, S, I> {}
 
-impl<T: PartialEq, S: Storage<ArrayLike<T>>, I: Capacity, R: AsRef<[T]>> PartialEq<R>
+impl<T: PartialEq, S: Storage<ArrayLayout<T>>, I: Capacity, R: AsRef<[T]>> PartialEq<R>
     for Deque<T, S, I>
 {
     fn eq(&self, other: &R) -> bool {
@@ -1340,8 +1340,8 @@ impl<T: PartialEq, S: Storage<ArrayLike<T>>, I: Capacity, R: AsRef<[T]>> Partial
 impl<T, AS, AI, BS, BI> PartialOrd<Deque<T, BS, BI>> for Deque<T, AS, AI>
 where
     T: PartialOrd,
-    AS: Storage<ArrayLike<T>>,
-    BS: Storage<ArrayLike<T>>,
+    AS: Storage<ArrayLayout<T>>,
+    BS: Storage<ArrayLayout<T>>,
     AI: Capacity,
     BI: Capacity,
 {
@@ -1350,19 +1350,19 @@ where
     }
 }
 
-impl<T: Ord, S: Storage<ArrayLike<T>>, I: Capacity> Ord for Deque<T, S, I> {
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> Ord for Deque<T, S, I> {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.iter().cmp(other.iter())
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Extend<T> for Deque<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Extend<T> for Deque<T, S, I> {
     fn extend<It: IntoIterator<Item = T>>(&mut self, iter: It) {
         iter.into_iter().for_each(|item| self.push_back(item));
     }
 }
 
-impl<'a, T: 'a + Clone, S: Storage<ArrayLike<T>>, I: Capacity> Extend<&'a T> for Deque<T, S, I> {
+impl<'a, T: 'a + Clone, S: Storage<ArrayLayout<T>>, I: Capacity> Extend<&'a T> for Deque<T, S, I> {
     fn extend<It: IntoIterator<Item = &'a T>>(&mut self, iter: It) {
         iter.into_iter()
             .for_each(|item| self.push_back(item.clone()));
@@ -1373,14 +1373,14 @@ impl<'a, T: 'a + Clone, S: Storage<ArrayLike<T>>, I: Capacity> Extend<&'a T> for
 ///
 /// This `struct` is created by the [`iter`](Deque::iter) method on [`Deque`].
 /// See its documentation for more.
-pub struct Iter<'a, T: 'a, S: Storage<ArrayLike<T>>, I: Capacity> {
+pub struct Iter<'a, T: 'a, S: Storage<ArrayLayout<T>>, I: Capacity> {
     front: I,
     len: I,
     buf: &'a S,
     _ref: PhantomData<&'a T>,
 }
 
-impl<'a, T: 'a + Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for Iter<'a, T, S, I> {
+impl<'a, T: 'a + Debug, S: Storage<ArrayLayout<T>>, I: Capacity> Debug for Iter<'a, T, S, I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let (front, back) = {
             let front = self.front.as_usize();
@@ -1416,7 +1416,7 @@ impl<'a, T: 'a + Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for Iter<'a
     }
 }
 
-impl<'a, T: 'a, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for Iter<'a, T, S, I> {
+impl<'a, T: 'a, S: Storage<ArrayLayout<T>>, I: Capacity> Iterator for Iter<'a, T, S, I> {
     type Item = &'a T;
 
     #[inline]
@@ -1441,7 +1441,7 @@ impl<'a, T: 'a, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for Iter<'a, T, 
     }
 }
 
-impl<'a, T: 'a, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator for Iter<'a, T, S, I> {
+impl<'a, T: 'a, S: Storage<ArrayLayout<T>>, I: Capacity> DoubleEndedIterator for Iter<'a, T, S, I> {
     #[inline]
     fn next_back(&mut self) -> Option<&'a T> {
         let len = self.len.as_usize();
@@ -1458,21 +1458,21 @@ impl<'a, T: 'a, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator for I
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> ExactSizeIterator for Iter<'_, T, S, I> {}
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for Iter<'_, T, S, I> {}
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> ExactSizeIterator for Iter<'_, T, S, I> {}
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> FusedIterator for Iter<'_, T, S, I> {}
 
 /// A mutable iterator over the elements of a deque.
 ///
 /// This `struct` is created by the [`iter_mut`](Deque::iter_mut) method on [`Deque`].
 /// See its documentation for more.
-pub struct IterMut<'a, T: 'a, S: Storage<ArrayLike<T>>, I: Capacity> {
+pub struct IterMut<'a, T: 'a, S: Storage<ArrayLayout<T>>, I: Capacity> {
     front: I,
     len: I,
     buf: &'a mut S,
     _ref: PhantomData<&'a mut T>,
 }
 
-impl<'a, T: 'a + Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for IterMut<'a, T, S, I> {
+impl<'a, T: 'a + Debug, S: Storage<ArrayLayout<T>>, I: Capacity> Debug for IterMut<'a, T, S, I> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> fmt::Result {
         let (front, back) = {
             let front = self.front.as_usize();
@@ -1508,7 +1508,7 @@ impl<'a, T: 'a + Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for IterMut
     }
 }
 
-impl<'a, T: 'a, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for IterMut<'a, T, S, I> {
+impl<'a, T: 'a, S: Storage<ArrayLayout<T>>, I: Capacity> Iterator for IterMut<'a, T, S, I> {
     type Item = &'a mut T;
 
     #[inline]
@@ -1533,7 +1533,7 @@ impl<'a, T: 'a, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for IterMut<'a, 
     }
 }
 
-impl<'a, T: 'a, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator
+impl<'a, T: 'a, S: Storage<ArrayLayout<T>>, I: Capacity> DoubleEndedIterator
     for IterMut<'a, T, S, I>
 {
     #[inline]
@@ -1552,25 +1552,25 @@ impl<'a, T: 'a, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> ExactSizeIterator for IterMut<'_, T, S, I> {}
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for IterMut<'_, T, S, I> {}
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> ExactSizeIterator for IterMut<'_, T, S, I> {}
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> FusedIterator for IterMut<'_, T, S, I> {}
 
 /// An owning iterator over the elements of a deque.
 ///
 /// This `struct` is created by the [`into_iter`](Deque::into_iter) method on
 /// [`Deque`] (provided by the `IntoIterator` trait). See its documentation for
 /// more.
-pub struct IntoIter<T, S: Storage<ArrayLike<T>>, I: Capacity> {
+pub struct IntoIter<T, S: Storage<ArrayLayout<T>>, I: Capacity> {
     inner: Deque<T, S, I>,
 }
 
-impl<T: Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for IntoIter<T, S, I> {
+impl<T: Debug, S: Storage<ArrayLayout<T>>, I: Capacity> Debug for IntoIter<T, S, I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_tuple("IntoIterator").field(&self.inner).finish()
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for IntoIter<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Iterator for IntoIter<T, S, I> {
     type Item = T;
 
     #[inline]
@@ -1585,17 +1585,17 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for IntoIter<T, S, I> {
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator for IntoIter<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> DoubleEndedIterator for IntoIter<T, S, I> {
     #[inline]
     fn next_back(&mut self) -> Option<T> {
         self.inner.pop_back()
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> ExactSizeIterator for IntoIter<T, S, I> {}
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for IntoIter<T, S, I> {}
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> ExactSizeIterator for IntoIter<T, S, I> {}
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> FusedIterator for IntoIter<T, S, I> {}
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for Deque<T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> IntoIterator for Deque<T, S, I> {
     type Item = T;
     type IntoIter = IntoIter<T, S, I>;
 
@@ -1605,7 +1605,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for Deque<T, S, I> {
     }
 }
 
-impl<'a, T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for &'a Deque<T, S, I> {
+impl<'a, T, S: Storage<ArrayLayout<T>>, I: Capacity> IntoIterator for &'a Deque<T, S, I> {
     type Item = &'a T;
     type IntoIter = Iter<'a, T, S, I>;
 
@@ -1614,7 +1614,7 @@ impl<'a, T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for &'a Deque<T,
     }
 }
 
-impl<'a, T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for &'a mut Deque<T, S, I> {
+impl<'a, T, S: Storage<ArrayLayout<T>>, I: Capacity> IntoIterator for &'a mut Deque<T, S, I> {
     type Item = &'a mut T;
     type IntoIter = IterMut<'a, T, S, I>;
 
@@ -1627,7 +1627,7 @@ impl<'a, T, S: Storage<ArrayLike<T>>, I: Capacity> IntoIterator for &'a mut Dequ
 ///
 /// This `struct` is created by the [`drain`](Deque::drain) method on [`Deque`].
 /// See its documentation for more.
-pub struct Drain<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> {
+pub struct Drain<'p, T, S: Storage<ArrayLayout<T>>, I: Capacity> {
     parent: &'p mut Deque<T, S, I>,
     original_len: usize,
     target_start: usize,
@@ -1636,7 +1636,7 @@ pub struct Drain<'p, T, S: Storage<ArrayLike<T>>, I: Capacity> {
     target_end: usize,
 }
 
-impl<T: Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for Drain<'_, T, S, I> {
+impl<T: Debug, S: Storage<ArrayLayout<T>>, I: Capacity> Debug for Drain<'_, T, S, I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Drain")
             .field(&self.target_start)
@@ -1650,7 +1650,7 @@ impl<T: Debug, S: Storage<ArrayLike<T>>, I: Capacity> Debug for Drain<'_, T, S, 
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for Drain<'_, T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Iterator for Drain<'_, T, S, I> {
     type Item = T;
 
     #[inline]
@@ -1672,7 +1672,7 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Iterator for Drain<'_, T, S, I> {
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator for Drain<'_, T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> DoubleEndedIterator for Drain<'_, T, S, I> {
     #[inline]
     fn next_back(&mut self) -> Option<T> {
         if self.back_index == self.front_index {
@@ -1686,10 +1686,10 @@ impl<T, S: Storage<ArrayLike<T>>, I: Capacity> DoubleEndedIterator for Drain<'_,
     }
 }
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> ExactSizeIterator for Drain<'_, T, S, I> {}
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> FusedIterator for Drain<'_, T, S, I> {}
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> ExactSizeIterator for Drain<'_, T, S, I> {}
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> FusedIterator for Drain<'_, T, S, I> {}
 
-impl<T, S: Storage<ArrayLike<T>>, I: Capacity> Drop for Drain<'_, T, S, I> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Drop for Drain<'_, T, S, I> {
     fn drop(&mut self) {
         // 1. drop any items that remain untaken
         let cap = self.parent.capacity();

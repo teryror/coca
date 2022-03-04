@@ -59,7 +59,7 @@
 
 use crate::collections::cache::CacheTable;
 use crate::ArenaString;
-use crate::storage::{ArenaStorage, ArrayLike, Capacity, LayoutSpec};
+use crate::storage::{ArenaStorage, ArrayLayout, Capacity, LayoutSpec};
 
 use core::alloc::Layout;
 use core::cmp::Ordering;
@@ -1023,7 +1023,7 @@ impl<'src> Arena<'src> {
     /// 
     /// Returns `None` if the remaining space in the arena is insufficient.
     #[allow(clippy::type_complexity)]
-    pub fn try_cache_with_hasher<K: Eq + Hash, V, L: crate::collections::cache::CacheLine<K, V>, H: BuildHasher>(&mut self, capacity: usize, hash_builder: H) -> Option<CacheTable<K, V, ArenaStorage<'src, ArrayLike<L>>, L, H>> {
+    pub fn try_cache_with_hasher<K: Eq + Hash, V, L: crate::collections::cache::CacheLine<K, V>, H: BuildHasher>(&mut self, capacity: usize, hash_builder: H) -> Option<CacheTable<K, V, ArenaStorage<'src, ArrayLayout<L>>, L, H>> {
         let capacity = (capacity + L::CAPACITY - 1) / L::CAPACITY;
         let storage = self.try_storage_with_capacity(capacity)?;
         Some(CacheTable::from_storage_and_hasher(storage, hash_builder))
@@ -1035,7 +1035,7 @@ impl<'src> Arena<'src> {
     /// Panics if the remaining space in the arena is insufficient to exhaust
     /// the iterator. See [`try_cache_with_hasher`](Arena::try_cache_with_hasher)
     /// for a checked version that never panics.
-    pub fn cache_with_hasher<K: Eq + Hash, V, L: crate::collections::cache::CacheLine<K, V>, H: BuildHasher>(&mut self, capacity: usize, hash_builder: H) -> CacheTable<K, V, ArenaStorage<'src, ArrayLike<L>>, L, H> {
+    pub fn cache_with_hasher<K: Eq + Hash, V, L: crate::collections::cache::CacheLine<K, V>, H: BuildHasher>(&mut self, capacity: usize, hash_builder: H) -> CacheTable<K, V, ArenaStorage<'src, ArrayLayout<L>>, L, H> {
         self.try_cache_with_hasher(capacity, hash_builder)
             .expect("unexpected allocation failure in cache_with_hasher")
     }

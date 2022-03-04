@@ -53,7 +53,7 @@
 //! the memory [`Layout`](core::alloc::Layout) required by that container.
 //! 
 //! For instance, data structures built on an array (such as [`Vec`](collections::vec::Vec)
-//! or [`String`](string::String)) require `S: Storage<ArrayLike<T>>`, which is
+//! or [`String`](string::String)) require `S: Storage<ArrayLayout<T>>`, which is
 //! implemented for standard arrays and slices, among others, while more complex
 //! data structures (such as [`DirectPool`](collections::pool::direct::DirectPool))
 //! have unique layout requirements (in this case `S: Storage<DirectPoolLayout<T, H>>`)
@@ -132,7 +132,7 @@ pub mod object;
 pub use crate::object::InlineObject;
 
 use crate::string::String;
-use crate::storage::{ArenaStorage, ArrayLike, InlineStorage, SliceStorage};
+use crate::storage::{ArenaStorage, ArrayLayout, InlineStorage, SliceStorage};
 
 /// A string using any mutable byte slice for storage.
 /// 
@@ -158,7 +158,7 @@ pub type SliceString<'a, I = usize> = String<SliceStorage<'a, u8>, I>;
 /// let s: ArenaString<'_, usize> = arena.try_with_capacity(100).unwrap();
 /// assert!(arena.try_with_capacity::<_, ArenaString<'_, usize>>(100).is_none());
 /// ```
-pub type ArenaString<'a, I = usize> = String<ArenaStorage<'a, ArrayLike<u8>>, I>;
+pub type ArenaString<'a, I = usize> = String<ArenaStorage<'a, ArrayLayout<u8>>, I>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
@@ -172,7 +172,7 @@ pub type ArenaString<'a, I = usize> = String<ArenaStorage<'a, ArrayLike<u8>>, I>
 /// 
 /// assert_eq!(s, "Hello, World!");
 /// ```
-pub type AllocString<I = usize> = String<crate::storage::AllocStorage<ArrayLike<u8>>, I>;
+pub type AllocString<I = usize> = String<crate::storage::AllocStorage<ArrayLayout<u8>>, I>;
 
 /// A string using an inline array for storage.
 /// 
