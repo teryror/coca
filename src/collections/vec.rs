@@ -504,6 +504,49 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
         Ok(())
     }
 
+    /// Appends as many elements from `iter` to the `Vec` as possible.
+    /// 
+    /// Returns the iterator of remaining elements if the vector is filled, or
+    /// `None` if the iterator runs out of elements first.
+    /// 
+    /// # Examples
+    /// ```
+    /// use coca::collections::InlineVec;
+    /// let mut v = InlineVec::<u32, 5>::new();
+    /// 
+    /// assert_eq!(v.extend_to_capacity(1..=3), None);
+    /// assert_eq!(&v, &[1, 2, 3]);
+    /// 
+    /// assert_eq!(v.extend_to_capacity(4..=6), Some(6..=6));
+    /// assert_eq!(&v, &[1, 2, 3, 4, 5]);
+    /// 
+    /// v.clear();
+    /// 
+    /// // If the iterator and remaining space run out at the same time,
+    /// // Some(empty_iterator) is returned:
+    /// let mut iter = v.extend_to_capacity(1..=5).unwrap();
+    /// assert!(iter.next().is_none());
+    /// assert!(v.is_full());
+    /// ```
+    pub fn extend_to_capacity<It: core::iter::IntoIterator<Item = T>>(&mut self, iter: It) -> Option<It::IntoIter> {
+        let mut new_len = self.len();
+        let ptr = self.as_mut_ptr();
+        
+        let mut iter = iter.into_iter();
+        while new_len < self.capacity() {
+            if let Some(value) = iter.next() {
+                unsafe { ptr.add(new_len).write(value); }
+                new_len += 1;
+            } else {
+                self.len = I::from_usize(new_len);
+                return None;
+            }
+        }
+
+        self.len = I::from_usize(new_len);
+        Some(iter)
+    }
+
     /// Places an element at position `index` within the vector, returning the
     /// element previously stored there.
     ///
