@@ -1444,6 +1444,68 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Dr
     }
 }
 
+impl<T, I: Capacity> crate::collections::SliceVec<'_, T, I> {
+    /// Splits the underlying slice at the given position, reducing the capacity
+    /// of the vector to `at`, and returns a new vector constructed from the
+    /// split tail.
+    /// 
+    /// # Panics
+    /// Panics if `at > capacity()`.
+    /// 
+    /// # Examples
+    /// ```
+    /// let mut buf = [core::mem::MaybeUninit::uninit(); 16];
+    /// 
+    /// let mut v = coca::collections::SliceVec::<'_, u32>::from(&mut buf[..]);
+    /// v.extend(1..=8);
+    /// assert_eq!(v.capacity(), 16);
+    /// assert_eq!(&v, &[1, 2, 3, 4, 5, 6, 7, 8]);
+    /// 
+    /// let end = v.split_and_shrink_to(12);
+    /// assert_eq!(v.capacity(), 12);
+    /// assert_eq!(&v, &[1, 2, 3, 4, 5, 6, 7, 8]);
+    /// assert_eq!(end.capacity(), 4);
+    /// assert_eq!(end.len(), 0);
+    /// 
+    /// let mid = v.split_and_shrink_to(4);
+    /// assert_eq!(v.capacity(), 4);
+    /// assert_eq!(&v, &[1, 2, 3, 4]);
+    /// assert_eq!(mid.capacity(), 8);
+    /// assert_eq!(&mid, &[5, 6, 7, 8]);
+    /// ```
+    #[must_use]
+    pub fn split_and_shrink_to(&mut self, at: I) -> Self {
+        #[cold]
+        #[inline(never)]
+        fn assert_failed(at: usize, cap: usize) -> ! {
+            panic!(
+                "at (is {}) must be less than or equal to capacity (is {})",
+                at, cap
+            );
+        }
+
+        let at = at.as_usize();
+        if at > self.capacity() {
+            assert_failed(at, self.capacity());
+        }
+
+        let my_new_len = usize::min(self.len(), at);
+        let their_len = I::from_usize(self.len() - my_new_len.as_usize());
+        let their_cap = self.capacity() - at;
+
+        let ptr = self.buf.as_mut_ptr();
+        unsafe {
+            let my_new_buf = core::slice::from_raw_parts_mut(ptr, at);
+            let their_buf = core::slice::from_raw_parts_mut(ptr.add(at), their_cap);
+
+            self.len = I::from_usize(my_new_len);
+            self.buf = my_new_buf;
+
+            Vec { len: their_len, buf: their_buf, elem: PhantomData }
+        }
+    }
+}
+
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 impl<T, I: Capacity> crate::collections::AllocVec<T, I> {
