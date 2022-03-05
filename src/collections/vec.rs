@@ -181,6 +181,57 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
         self
     }
 
+    /// Constructs and returns a new `Vec` from a slice of this vector's underlying storage.
+    /// 
+    /// ## Panics
+    /// Panics if `at > capacity()`.
+    /// 
+    /// ## Examples
+    /// ```
+    /// use coca::collections::InlineVec;
+    /// let mut v = InlineVec::<u32, 16>::new();
+    /// v.extend(1..=12);
+    /// 
+    /// let mut tail = v.split_borrowed(10);
+    /// assert_eq!(tail.capacity(), 6);
+    /// 
+    /// tail.push(13);
+    /// assert_eq!(&tail, &[11, 12, 13]);
+    /// 
+    /// // Revoke the borrow on `v`:
+    /// drop(tail);
+    /// 
+    /// // The split off elements are removed:
+    /// assert_eq!(&v, &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    /// ```
+    #[must_use]
+    pub fn split_borrowed(&mut self, at: I) -> crate::collections::SliceVec<'_, T, I> {
+        #[cold]
+        #[inline(never)]
+        fn assert_failed(at: usize, cap: usize) -> ! {
+            panic!(
+                "at (is {}) must be less than or equal to capacity (is {})",
+                at, cap
+            );
+        }
+
+        let at = at.as_usize();
+        if at > self.capacity() {
+            assert_failed(at, self.capacity());
+        }
+
+        let my_new_len = usize::min(self.len(), at);
+        let their_len = I::from_usize(self.len() - my_new_len.as_usize());
+        let their_cap = self.capacity() - at;
+        self.len = I::from_usize(my_new_len);
+        
+        let data = self.buf.get_mut_ptr().cast::<MaybeUninit<T>>();
+        unsafe {
+            let buf = core::slice::from_raw_parts_mut(data.add(at), their_cap);
+            Vec { buf, len: their_len, elem: PhantomData }
+        }
+    }
+
     /// Returns the remaining empty space at the end of the vector as a slice of [`MaybeUninit<T>`].
     /// 
     /// The returned slice can be used to fill the vector with data before marking the data as initialized using [`set_len`](Vec::set_len).

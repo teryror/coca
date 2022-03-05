@@ -4,7 +4,7 @@
 ## New Features
 
 - Make `Vec::set_len` public and implement `Vec::{spare_capacity_mut, split_at_spare_mut}`.
-- New methods `Vec::extend_to_capacity`, `SliceVec::split_and_shrink_to`
+- New methods `Vec::{extend_to_capacity, split_borrowed}`, `SliceVec::split_and_shrink_to`
 
 ## Bugfixes
 
