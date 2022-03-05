@@ -89,7 +89,7 @@
 //! 
 //! Compared to the standard implementations, most of `coca`'s data structures
 //! have one more additional type parameter, which is bound by the
-//! [`Capacity` trait](storage::Capacity). This type used to index into the
+//! [`Capacity` trait](storage::Capacity). This type is used to index into the
 //! data structure and to represent its size at runtime. It generally defaults
 //! to `usize`, but `Capacity` is also implemented for `u8`, `u16`, `u32` and
 //! `u64`.
