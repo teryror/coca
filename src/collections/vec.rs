@@ -1315,7 +1315,7 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Dr
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T: Copy, I: Capacity> crate::collections::AllocVec<T, I> {
+impl<T, I: Capacity> crate::collections::AllocVec<T, I> {
     /// Constructs a new, empty `AllocVec<T, I>` with the specified capacity.
     ///
     /// # Panics
@@ -1336,12 +1336,10 @@ impl<T: Copy, I: Capacity> crate::collections::AllocVec<T, I> {
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T: Copy, I: Capacity> Clone for crate::collections::AllocVec<T, I> {
+impl<T: Clone, I: Capacity> Clone for crate::collections::AllocVec<T, I> {
     fn clone(&self) -> Self {
         let mut result = Self::with_capacity(I::from_usize(self.capacity()));
-        for item in self.iter() {
-            result.push(*item);
-        }
+        result.extend(self.iter().cloned());
         result
     }
 }

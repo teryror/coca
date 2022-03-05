@@ -1822,7 +1822,7 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Drop for Drain<'_, T, S, I> {
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T: Copy, I: Capacity> crate::collections::AllocDeque<T, I> {
+impl<T, I: Capacity> crate::collections::AllocDeque<T, I> {
     /// Creates an empty `AllocDeque` with the specified capacity.
     ///
     /// # Panics
@@ -1844,10 +1844,10 @@ impl<T: Copy, I: Capacity> crate::collections::AllocDeque<T, I> {
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T: Copy, I: Capacity> Clone for crate::collections::AllocDeque<T, I> {
+impl<T: Clone, I: Capacity> Clone for crate::collections::AllocDeque<T, I> {
     fn clone(&self) -> Self {
         let mut result = Self::with_capacity(I::from_usize(self.capacity()));
-        result.extend(self.iter().copied());
+        result.extend(self.iter().cloned());
         result
     }
 }

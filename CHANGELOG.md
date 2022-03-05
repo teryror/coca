@@ -1,3 +1,11 @@
+# 0.3.1 (WIP)
+
+## Breaking Changes
+## New Features
+## Bugfixes
+
+- Relax unnecessarily strict trait bounds on `{AllocVec, AllocDeque, AllocHeap}::{with_capacity, clone}`.
+
 # 0.3.0 (2022-03-04)
 ## Breaking Changes
 

@@ -491,7 +491,7 @@ impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> Drop for IntoIterSorted<T,
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T: Copy + Ord, I: Capacity> crate::collections::AllocHeap<T, I> {
+impl<T: Ord, I: Capacity> crate::collections::AllocHeap<T, I> {
     /// Constructs a new, empty `AllocHeap<T, I>` with the specified capacity.
     ///
     /// # Panics
@@ -505,7 +505,7 @@ impl<T: Copy + Ord, I: Capacity> crate::collections::AllocHeap<T, I> {
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T: Copy + Ord, I: Capacity> Clone for crate::collections::AllocHeap<T, I> {
+impl<T: Clone + Ord, I: Capacity> Clone for crate::collections::AllocHeap<T, I> {
     fn clone(&self) -> Self {
         BinaryHeap { a: self.a.clone() }
     }
