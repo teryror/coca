@@ -117,8 +117,18 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
         self.len.as_usize()
     }
 
+    /// Forces the length of the vector to `new_len`.
+    /// 
+    /// This is a low-level operation that does **not** maintain the normal
+    /// invariants of `Vec`. Normally, changing the length of a vector is done
+    /// using one of the safe operations, such as [`truncate`](Vec::truncate),
+    /// [`extend`](Vec::extend), or [`clear`](Vec::clear).
+    /// 
+    /// # Safety
+    /// * `new_len` must be less than or equal to `capacity()`.
+    /// * All elements at `old_len..new_len` must be fully initialized.
     #[inline]
-    pub(crate) unsafe fn set_len(&mut self, new_len: I) {
+    pub unsafe fn set_len(&mut self, new_len: I) {
         debug_assert!(new_len.as_usize() <= self.capacity());
         self.len = new_len;
     }
@@ -169,6 +179,84 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [T] {
         self
+    }
+
+    /// Returns the remaining empty space at the end of the vector as a slice of [`MaybeUninit<T>`].
+    /// 
+    /// The returned slice can be used to fill the vector with data before marking the data as initialized using [`set_len`](Vec::set_len).
+    /// 
+    /// # Examples
+    /// ```
+    /// use coca::collections::InlineVec;
+    /// 
+    /// // Allocate a vector big enough for 16 elements.
+    /// let mut v = InlineVec::<u32, 16>::new();
+    /// 
+    /// // Initialize the first 3 elements.
+    /// let uninit = v.spare_capacity_mut();
+    /// uninit[0].write(1);
+    /// uninit[1].write(2);
+    /// uninit[2].write(3);
+    /// 
+    /// // Mark them as being initialized.
+    /// unsafe { v.set_len(3); }
+    /// 
+    /// assert_eq!(&v, &[1, 2, 3]);
+    /// # assert_eq!(v.spare_capacity_mut().len(), 13);
+    /// ```
+    pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
+        let len = self.capacity() - self.len();
+        unsafe {
+            let data = self.buf.get_mut_ptr().cast::<MaybeUninit<T>>().add(self.len());
+            core::slice::from_raw_parts_mut(data, len)
+        }
+    }
+
+    /// Returns the vector's contents as a slice of `T` and the remaining empty
+    /// space at the end of the vector as a slice of [`MaybeUninit<T>`].
+    /// 
+    /// The returned spare capacity slice can be used to fill the vector with
+    /// data before marking it as initialized using [`set_len`](Vec::set_len).
+    /// 
+    /// This is a low-level API, which should only be used with care for
+    /// optimization purposes. If you need to append data to a `Vec`, consider
+    /// using one of the safe methods such as [`push`](Vec::push), [`extend`](Vec::extend),
+    /// [`extend_from_slice`](Vec::extend_from_slice), [`extend_from_within`](Vec::extend_from_within),
+    /// [`insert`](Vec::insert), or [`append`](Vec::append).
+    /// 
+    /// # Examples
+    /// ```
+    /// use coca::collections::InlineVec;
+    /// 
+    /// // Allocate a vector big enough for 16 elements
+    /// let mut v = InlineVec::<u32, 16>::new();
+    /// 
+    /// // Fill in the first 5 elements. 
+    /// v.extend(1..=5);
+    /// 
+    /// // Fill in the next 5 elements.
+    /// let (init, uninit) = v.split_at_spare_mut();
+    /// for (idx, val) in init.iter().enumerate() {
+    ///     uninit[idx].write(val * 2);
+    /// }
+    /// 
+    /// // Mark the new elements as being initialized.
+    /// unsafe { v.set_len(10); }
+    /// 
+    /// assert_eq!(&v, &[1, 2, 3, 4, 5, 2, 4, 6, 8, 10]);
+    /// ```
+    pub fn split_at_spare_mut(&mut self) -> (&mut [T], &mut [MaybeUninit<T>]) {
+        let initialized_len = self.len();
+        let uninitialized_len = self.capacity() - self.len();
+        let base_ptr = self.buf.get_mut_ptr();
+        unsafe {
+            let initialized_data = base_ptr.cast::<T>();
+            let initialized = core::slice::from_raw_parts_mut(initialized_data, initialized_len);
+
+            let uninitialized_data = base_ptr.cast::<MaybeUninit<T>>().add(initialized_len);
+            let uninitialized = core::slice::from_raw_parts_mut(uninitialized_data, uninitialized_len);
+            (initialized, uninitialized)
+        }
     }
 
     /// Returns a reference to the element at the specified index, or [`None`]

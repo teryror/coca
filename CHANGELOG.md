@@ -2,6 +2,9 @@
 
 ## Breaking Changes
 ## New Features
+
+- Make `Vec::set_len` public and implement `Vec::{spare_capacity_mut, split_at_spare_mut}`.
+
 ## Bugfixes
 
 - Relax unnecessarily strict trait bounds on `{AllocVec, AllocDeque, AllocHeap}::{with_capacity, clone}`.
