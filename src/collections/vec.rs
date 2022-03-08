@@ -10,8 +10,8 @@
 //! (c) 2019 by Daniel "Lokathor" Gee).
 
 use crate::storage::{
-    buffer_too_large_for_index_type, mut_ptr_at_index, normalize_range, ptr_at_index, ArrayLayout,
-    Capacity, InlineStorage, Storage,
+    buffer_too_large_for_index_type, cast_capacity, mut_ptr_at_index, normalize_range,
+    ptr_at_index, ArrayLayout, Capacity, DefaultStorage, OwnedStorage, Storage,
 };
 use crate::CapacityError;
 
@@ -46,7 +46,7 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> From<S> for Vec<T, S, I> {
         }
 
         Vec {
-            len: I::from_usize(0),
+            len: I::ZERO,
             buf,
             elem: PhantomData,
         }
@@ -368,7 +368,9 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     #[inline]
     pub fn try_push(&mut self, value: T) -> Result<(), T> {
         if self.is_full() {
-            return Err(value);
+            if let Err(_) = self.try_grow(None) {
+                return Err(value);
+            }
         }
 
         let len = self.len();
@@ -436,7 +438,7 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     /// Equivalent to `s.truncate(0)`.
     #[inline]
     pub fn clear(&mut self) {
-        self.truncate(I::from_usize(0));
+        self.truncate(I::ZERO);
     }
 
     /// Swaps two elements in the vector.
@@ -512,7 +514,7 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
         #[cold]
         #[inline(never)]
         fn assert_failed() -> ! {
-            panic!("vector is already at capacity")
+            panic!("vector is at capacity and cannot be expanded")
         }
 
         let result = self.try_insert(index, element);
@@ -550,7 +552,9 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
         }
 
         if self.is_full() {
-            return Err(element);
+            if let Err(_) = self.try_grow(None) {
+                return Err(element);
+            }
         }
 
         let idx = index.as_usize();
@@ -855,6 +859,19 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
             target_end: end,
         }
     }
+
+    #[inline]
+    /// Try to expand the backing Storage if supported.
+    fn try_grow(&mut self, min_capacity: Option<usize>) -> Result<(), CapacityError> {
+        let mut buf = self.buf.try_grow::<I>(min_capacity)?;
+        let src_ptr = self.as_ptr();
+        let dst_ptr = buf.get_mut_ptr().cast::<T>();
+        unsafe {
+            ptr::copy_nonoverlapping(src_ptr, dst_ptr, self.len());
+        }
+        self.buf = buf; // drops previous buffer
+        Ok(())
+    }
 }
 
 impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
@@ -878,7 +895,7 @@ impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     pub fn try_extend_from_slice(&mut self, other: &[T]) -> crate::Result<()> {
         let new_len = self.len() + other.len();
         if new_len > self.capacity() {
-            return CapacityError::new();
+            self.try_grow(Some(new_len))?;
         }
 
         unsafe {
@@ -936,7 +953,7 @@ impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
         let count = src.len();
         let new_len = self.len() + count;
         if new_len > self.capacity() {
-            return CapacityError::new();
+            self.try_grow(Some(new_len))?;
         }
 
         let idx = idx.as_usize();
@@ -996,7 +1013,7 @@ impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
         let count = end - start;
         let new_len = self.len() + count;
         if new_len > self.capacity() {
-            return CapacityError::new();
+            self.try_grow(Some(new_len))?;
         }
 
         unsafe {
@@ -1065,8 +1082,9 @@ impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
             }
         } else {
             let extra_space_needed = src_count - dst_count;
-            if self.len() + extra_space_needed > self.capacity() {
-                return CapacityError::new();
+            let min_cap = self.len() + extra_space_needed;
+            if min_cap > self.capacity() {
+                self.try_grow(Some(min_cap))?;
             }
 
             unsafe {
@@ -1101,6 +1119,127 @@ impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     pub fn replace_range<R: RangeBounds<I>>(&mut self, range: R, replace_with: &[T]) {
         self.try_replace_range(range, replace_with)
             .expect("remaining space is insufficient");
+    }
+}
+
+impl<T, S: DefaultStorage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
+    const UNINIT: Self = Vec {
+        len: I::ZERO,
+        buf: S::UNINIT,
+        elem: PhantomData,
+    };
+
+    /// Constructs a new, empty `Vec`.
+    ///
+    /// # Panics
+    /// Panics if `C` cannot be represented as a value of type `I`.
+    ///
+    /// # Examples
+    /// ```
+    /// let vec = coca::collections::InlineVec::<u32, 6>::new();
+    /// assert_eq!(vec.capacity(), 6);
+    /// assert_eq!(vec.len(), 0);
+    /// ```
+    #[inline]
+    pub fn new() -> Self {
+        if !S::supported_capacity::<I>() {
+            buffer_too_large_for_index_type::<I>();
+        }
+        Self::UNINIT
+    }
+}
+
+impl<T, S: OwnedStorage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
+    /// Constructs a new, empty Vec with the specified capacity.
+    ///
+    /// # Panics
+    /// Panics if the specified capacity cannot be represented by a `usize`
+    /// or if the capacity exceeds the maximum supported by the backing Storage.
+    pub fn with_capacity(capacity: I) -> Self {
+        if !S::supported_capacity::<I>() {
+            buffer_too_large_for_index_type::<I>();
+        }
+        Vec {
+            len: I::ZERO,
+            buf: S::try_with_capacity(capacity.as_usize())
+                .expect("exceeded maximum storage capacity"),
+            elem: PhantomData,
+        }
+    }
+}
+
+impl<T, S: DefaultStorage<ArrayLayout<T>>, I: Capacity> Default for Vec<T, S, I> {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T: Clone, S: OwnedStorage<ArrayLayout<T>>, I: Capacity> core::clone::Clone for Vec<T, S, I> {
+    fn clone(&self) -> Self {
+        let mut ret = Self::with_capacity(self.len);
+        ret.clone_from(self);
+        ret
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        self.clear();
+        self.extend(source.iter())
+    }
+}
+
+impl<T: Clone, S: OwnedStorage<ArrayLayout<T>>, I: Capacity> From<&[T]> for Vec<T, S, I> {
+    fn from(source: &[T]) -> Self {
+        let cap = cast_capacity(source.len());
+        let mut ret = Self::with_capacity(cap);
+        ret.extend(source.iter().cloned());
+        ret
+    }
+}
+
+impl<T: Clone, S: OwnedStorage<ArrayLayout<T>>, I: Capacity> From<&mut [T]> for Vec<T, S, I> {
+    fn from(source: &mut [T]) -> Self {
+        let cap = cast_capacity(source.len());
+        let mut ret = Self::with_capacity(cap);
+        ret.extend(source.iter().cloned());
+        ret
+    }
+}
+
+impl<T: Clone, S: OwnedStorage<ArrayLayout<T>>, I: Capacity, const N: usize> From<&[T; N]>
+    for Vec<T, S, I>
+{
+    fn from(source: &[T; N]) -> Self {
+        let cap = cast_capacity(source.len());
+        let mut ret = Self::with_capacity(cap);
+        ret.extend(source.iter().cloned());
+        ret
+    }
+}
+
+impl<T, S: OwnedStorage<ArrayLayout<T>>, I: Capacity, const N: usize> From<[T; N]>
+    for Vec<T, S, I>
+{
+    fn from(source: [T; N]) -> Self {
+        let cap = cast_capacity(N);
+        let mut buf = Self::with_capacity(cap);
+        buf.extend(core::iter::IntoIterator::into_iter(source));
+        buf
+    }
+}
+
+impl<T, S: OwnedStorage<ArrayLayout<T>>, I: Capacity> core::iter::FromIterator<T> for Vec<T, S, I> {
+    /// Creates a vector from an iterator.
+    ///
+    /// # Panics
+    /// Panics if the iterator yields more elements than the maximum storage capacity.
+    fn from_iter<It: core::iter::IntoIterator<Item = T>>(iter: It) -> Self {
+        let iter = iter.into_iter();
+        let (min_len, max_len) = iter.size_hint();
+        let cap = cast_capacity(max_len.unwrap_or(min_len));
+        let mut ret = Self::with_capacity(cap);
+        ret.extend(iter);
+        ret
     }
 }
 
@@ -1378,7 +1517,7 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> IntoIter for Vec<T, S, I> {
         core::mem::forget(self);
 
         IntoIterator {
-            start: I::from_usize(0),
+            start: I::ZERO,
             end,
             buf,
             elems: PhantomData,
@@ -1643,126 +1782,6 @@ impl<T, I: Capacity> crate::collections::SliceVec<'_, T, I> {
     }
 }
 
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T, I: Capacity> crate::collections::AllocVec<T, I> {
-    /// Constructs a new, empty `AllocVec<T, I>` with the specified capacity.
-    ///
-    /// # Panics
-    /// Panics if the specified capacity cannot be represented by a `usize`.
-    pub fn with_capacity(capacity: I) -> Self {
-        let cap = capacity.as_usize();
-        if capacity != I::from_usize(cap) {
-            buffer_too_large_for_index_type::<I>();
-        }
-
-        Vec {
-            len: I::from_usize(0),
-            buf: crate::storage::AllocStorage::with_capacity(cap),
-            elem: PhantomData,
-        }
-    }
-}
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<T: Clone, I: Capacity> Clone for crate::collections::AllocVec<T, I> {
-    fn clone(&self) -> Self {
-        let mut result = Self::with_capacity(I::from_usize(self.capacity()));
-        result.extend(self.iter().cloned());
-        result
-    }
-}
-
-impl<T, I: Capacity, const C: usize> Vec<T, InlineStorage<T, C>, I> {
-    /// Constructs a new, empty `Vec` backed by an inline array.
-    ///
-    /// # Panics
-    /// Panics if `C` cannot be represented as a value of type `I`.
-    ///
-    /// # Examples
-    /// ```
-    /// let vec = coca::collections::InlineVec::<u32, 6>::new();
-    /// assert_eq!(vec.capacity(), 6);
-    /// assert_eq!(vec.len(), 0);
-    /// ```
-    #[inline]
-    pub fn new() -> Self {
-        if C > I::MAX_REPRESENTABLE {
-            buffer_too_large_for_index_type::<I>();
-        }
-
-        Vec {
-            len: I::from_usize(0),
-            buf: unsafe { MaybeUninit::uninit().assume_init() },
-            elem: PhantomData,
-        }
-    }
-}
-
-impl<T, I: Capacity, const C: usize> Default for Vec<T, InlineStorage<T, C>, I> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<T: Clone, I: Capacity, const C: usize> core::clone::Clone for Vec<T, InlineStorage<T, C>, I> {
-    fn clone(&self) -> Self {
-        let mut ret = Self::new();
-        ret.clone_from(self);
-        ret
-    }
-
-    fn clone_from(&mut self, source: &Self) {
-        self.clear();
-        for next in source {
-            self.push(next.clone());
-        }
-    }
-}
-
-impl<T: Clone, I: Capacity, const C: usize> From<&[T]> for Vec<T, InlineStorage<T, C>, I> {
-    fn from(source: &[T]) -> Self {
-        if C > I::MAX_REPRESENTABLE {
-            buffer_too_large_for_index_type::<I>();
-        }
-
-        assert!(
-            source.len() <= C,
-            "source should not have more than {} elements (has {})",
-            C,
-            source.len()
-        );
-
-        let mut ret = Self::new();
-        for next in source {
-            ret.push(next.clone());
-        }
-        ret
-    }
-}
-
-impl<T: Clone, I: Capacity, const C: usize> From<&mut [T]> for Vec<T, InlineStorage<T, C>, I> {
-    fn from(source: &mut [T]) -> Self {
-        if C > I::MAX_REPRESENTABLE {
-            buffer_too_large_for_index_type::<I>();
-        }
-
-        assert!(
-            source.len() <= C,
-            "source should not have more than {} elements (has {})",
-            C,
-            source.len()
-        );
-
-        let mut ret = Self::new();
-        for next in source {
-            ret.push(next.clone());
-        }
-        ret
-    }
-}
-
 impl<V, T, S, I, const N: usize> PartialEq<Vec<T, S, I>> for [V; N]
 where
     V: PartialEq<T>,
@@ -1784,20 +1803,6 @@ where
     #[inline]
     fn eq(&self, other: &[V; N]) -> bool {
         self.as_slice() == &other[..]
-    }
-}
-
-impl<T, I: Capacity, const C: usize> core::iter::FromIterator<T>
-    for Vec<T, InlineStorage<T, C>, I>
-{
-    /// Creates a vector backed by an inline array from an iterator.
-    ///
-    /// # Panics
-    /// Panics if the iterator yields more than `N` elements.
-    fn from_iter<It: core::iter::IntoIterator<Item = T>>(iter: It) -> Self {
-        let mut result = Self::new();
-        result.extend(iter);
-        result
     }
 }
 
@@ -1909,5 +1914,48 @@ mod tests {
                 assert_eq!(clone, original);
             }
         }
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn alloc_vec() {
+        use crate::collections::AllocVec;
+        use core::iter::FromIterator;
+
+        let mut v = AllocVec::<u32>::with_capacity(32);
+        v.extend([1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(v.capacity(), 32);
+
+        let v = AllocVec::<u32>::from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        assert_eq!(v.capacity(), 10);
+
+        let mut v = AllocVec::<u32>::with_capacity(1);
+        v.push(1);
+        assert_eq!(v.try_push(2), Err(2));
+
+        let v = AllocVec::<u32>::from_iter([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        assert_eq!(v.capacity(), 10);
+    }
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn realloc_vec() {
+        use crate::collections::ReallocVec;
+        use core::iter::FromIterator;
+
+        let _v1 = ReallocVec::<u32>::new();
+        let _v2 = ReallocVec::<u32>::with_capacity(32);
+
+        let mut v = ReallocVec::<u32>::default();
+        v.extend([1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(v.capacity(), 8);
+        v.push(9);
+        assert_eq!(v.capacity(), 16);
+
+        let v = ReallocVec::<u32>::from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        assert_eq!(v.capacity(), 10);
+
+        let v = ReallocVec::<u32>::from_iter([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        assert_eq!(v.capacity(), 10);
     }
 }

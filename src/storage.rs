@@ -9,6 +9,8 @@ use core::mem::MaybeUninit;
 use core::ops::{Range, RangeBounds};
 use core::ptr::NonNull;
 
+use crate::CapacityError;
+
 /// Types that can be used for indexing into array-like data structures.
 ///
 /// # Safety
@@ -20,6 +22,8 @@ use core::ptr::NonNull;
 pub unsafe trait Capacity: Copy + Debug + Eq + Hash + Ord {
     /// The maximum `usize` value that can safely be represented by this type.
     const MAX_REPRESENTABLE: usize;
+    /// The zero value for this type.
+    const ZERO: Self;
     /// Convert a `usize` into `Self`.
     fn from_usize(i: usize) -> Self;
     /// Convert `self` into `usize`.
@@ -34,6 +38,23 @@ pub(crate) fn buffer_too_large_for_index_type<I: Capacity>() {
         "provided storage block cannot be fully indexed by type {}",
         core::any::type_name::<I>()
     );
+}
+
+#[cold]
+#[inline(never)]
+#[track_caller]
+pub(crate) fn usize_exceeds_max_capacity<I: Capacity>() {
+    panic!(
+        "maximum capacity of index type {} exceeds the requested capacity",
+        core::any::type_name::<I>()
+    );
+}
+
+pub(crate) fn cast_capacity<I: Capacity>(capacity: usize) -> I {
+    if capacity > I::MAX_REPRESENTABLE {
+        usize_exceeds_max_capacity::<I>();
+    }
+    I::from_usize(capacity)
 }
 
 pub(crate) fn normalize_range<I: Capacity, R: RangeBounds<I>>(
@@ -71,6 +92,7 @@ pub(crate) fn normalize_range<I: Capacity, R: RangeBounds<I>>(
 #[allow(clippy::cast_possible_truncation)]
 unsafe impl Capacity for u8 {
     const MAX_REPRESENTABLE: usize = 0xFF;
+    const ZERO: Self = 0u8;
     #[inline]
     fn from_usize(i: usize) -> Self {
         debug_assert!(<usize as TryInto<Self>>::try_into(i).is_ok());
@@ -86,6 +108,7 @@ unsafe impl Capacity for u8 {
 #[allow(clippy::cast_possible_truncation)]
 unsafe impl Capacity for u16 {
     const MAX_REPRESENTABLE: usize = 0xFFFF;
+    const ZERO: Self = 0u16;
     #[inline]
     fn from_usize(i: usize) -> Self {
         debug_assert!(<usize as TryInto<Self>>::try_into(i).is_ok());
@@ -101,6 +124,7 @@ unsafe impl Capacity for u16 {
 #[allow(clippy::cast_possible_truncation)]
 unsafe impl Capacity for u32 {
     const MAX_REPRESENTABLE: usize = 0xFFFF_FFFF;
+    const ZERO: Self = 0u32;
     #[inline]
     fn from_usize(i: usize) -> Self {
         debug_assert!(<usize as TryInto<Self>>::try_into(i).is_ok());
@@ -117,6 +141,7 @@ unsafe impl Capacity for u32 {
 #[allow(clippy::cast_possible_truncation)]
 unsafe impl Capacity for u64 {
     const MAX_REPRESENTABLE: usize = usize::max_value();
+    const ZERO: Self = 0u64;
     #[inline]
     fn from_usize(i: usize) -> Self {
         debug_assert!(<usize as TryInto<Self>>::try_into(i).is_ok());
@@ -132,6 +157,7 @@ unsafe impl Capacity for u64 {
 
 unsafe impl Capacity for usize {
     const MAX_REPRESENTABLE: usize = usize::max_value();
+    const ZERO: Self = 0usize;
     #[inline]
     fn from_usize(i: usize) -> Self {
         i
@@ -189,6 +215,7 @@ macro_rules! index_type {
 
         unsafe impl $crate::storage::Capacity for $name {
             const MAX_REPRESENTABLE: usize = <$repr as $crate::storage::Capacity>::MAX_REPRESENTABLE;
+            const ZERO: Self = Self(<$repr as $crate::storage::Capacity>::ZERO);
             #[inline]
             #[track_caller]
             fn from_usize(i: usize) -> Self {
@@ -213,6 +240,9 @@ macro_rules! index_type {
 
 /// Types that specify a data structure's storage layout requirements.
 pub trait LayoutSpec {
+    /// A type representing the approximate size of a single item.
+    type Item: Sized;
+
     /// Constructs a [`Layout`] for a memory block capable of holding the
     /// specified number of items.
     fn layout_with_capacity(items: usize) -> Result<Layout, LayoutError>;
@@ -221,6 +251,8 @@ pub trait LayoutSpec {
 /// Inconstructible type to mark data structures that require an array-like storage layout.
 pub struct ArrayLayout<T>(PhantomData<T>);
 impl<T> LayoutSpec for ArrayLayout<T> {
+    type Item = T;
+
     fn layout_with_capacity(items: usize) -> Result<Layout, LayoutError> {
         Layout::array::<T>(items)
     }
@@ -251,6 +283,32 @@ pub unsafe trait Storage<R: LayoutSpec>: Sized {
     /// Implementors must ensure the same value is returned every time this
     /// method is called throughout the block's lifetime.
     fn capacity(&self) -> usize;
+
+    /// Try to grow a storage instance, reallocating when supported.
+    fn try_grow<I: Capacity>(
+        &mut self,
+        _min_capacity: Option<usize>,
+    ) -> Result<Self, CapacityError> {
+        CapacityError::new()
+    }
+
+    /// Check if a Capacity exceeds the inherent bounds of the Storage.
+    #[inline]
+    fn supported_capacity<I: Capacity>() -> bool {
+        true
+    }
+}
+
+/// An interface for storage types which are owned, not bound to an external buffer.
+pub trait OwnedStorage<R: LayoutSpec>: Storage<R> {
+    /// Create a new storage buffer with a minimum capacity.
+    fn try_with_capacity(min_capacity: usize) -> Result<Self, CapacityError>;
+}
+
+/// An interface for storage types which have a default initializer.
+pub trait DefaultStorage<R: LayoutSpec>: OwnedStorage<R> {
+    /// An empty instance of the Storage.
+    const UNINIT: Self;
 }
 
 #[inline(always)]
@@ -348,18 +406,75 @@ unsafe impl<R: LayoutSpec, S: Storage<R>> Storage<R> for &mut S {
     }
 }
 
+#[cfg(feature = "alloc")]
+/// Policy for heap storage (re)allocation.
+pub unsafe trait AllocPolicy {
+    #[inline]
+    // FIXME add exact: bool parameter?
+    /// Try to grow an existing allocation.
+    fn try_grow<R: LayoutSpec, I: Capacity>(
+        _from_capacity: usize,
+        _min_capacity: Option<usize>,
+    ) -> Result<(NonNull<u8>, usize), CapacityError> {
+        CapacityError::new()
+    }
+}
+
+#[cfg(feature = "alloc")]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+/// An allocation policy for constant capacity storage.
+pub struct NoResize;
+
+#[cfg(feature = "alloc")]
+unsafe impl AllocPolicy for NoResize {}
+
+#[cfg(feature = "alloc")]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+/// An allocation policy using exponential growth.
+pub struct ExpGrow;
+
+#[cfg(feature = "alloc")]
+const fn min_non_zero_cap<T>() -> usize {
+    if core::mem::size_of::<T>() == 1 {
+        8
+    } else if core::mem::size_of::<T>() <= 1024 {
+        4
+    } else {
+        1
+    }
+}
+
+#[cfg(feature = "alloc")]
+unsafe impl AllocPolicy for ExpGrow {
+    #[inline]
+    fn try_grow<R: LayoutSpec, I: Capacity>(
+        from_capacity: usize,
+        min_capacity: Option<usize>,
+    ) -> Result<(NonNull<u8>, usize), CapacityError> {
+        let min_cap = min_capacity.unwrap_or(min_non_zero_cap::<R::Item>());
+        let cap = min_cap.max((from_capacity.saturating_mul(2)).min(I::MAX_REPRESENTABLE));
+        if cap == from_capacity || cap < min_cap {
+            return CapacityError::new();
+        }
+
+        let layout = R::layout_with_capacity(cap).expect("realloc to invalid AllocStorage");
+        let ptr = unsafe { alloc::alloc::alloc(layout) };
+        NonNull::new(ptr).map(|ptr| (ptr, cap)).ok_or(CapacityError)
+    }
+}
+
 /// A fat pointer to a heap-allocated storage block conforming to a [`LayoutSpec`].
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-pub struct AllocStorage<R: LayoutSpec> {
+pub struct AllocStorage<R: LayoutSpec, A: AllocPolicy = NoResize> {
     ptr: NonNull<u8>,
     cap: usize,
-    spec: PhantomData<R>,
+    spec: PhantomData<(R, A)>,
 }
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<R: LayoutSpec> AllocStorage<R> {
+impl<R: LayoutSpec, A: AllocPolicy> AllocStorage<R, A> {
     /// Allocates a new storage block with the specified capacity with the
     /// global allocator.
     ///
@@ -381,16 +496,19 @@ impl<R: LayoutSpec> AllocStorage<R> {
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<R: LayoutSpec> Drop for AllocStorage<R> {
+impl<R: LayoutSpec, A: AllocPolicy> Drop for AllocStorage<R, A> {
     fn drop(&mut self) {
-        let layout = R::layout_with_capacity(self.cap).expect("dropped an invalid AllocStorage");
-        unsafe { alloc::alloc::dealloc(self.ptr.as_ptr(), layout) };
+        if self.cap != 0 {
+            let layout =
+                R::layout_with_capacity(self.cap).expect("dropped an invalid AllocStorage");
+            unsafe { alloc::alloc::dealloc(self.ptr.as_ptr(), layout) };
+        }
     }
 }
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-unsafe impl<R: LayoutSpec> Storage<R> for AllocStorage<R> {
+unsafe impl<R: LayoutSpec, A: AllocPolicy> Storage<R> for AllocStorage<R, A> {
     fn get_ptr(&self) -> *const u8 {
         self.ptr.as_ptr() as _
     }
@@ -400,7 +518,42 @@ unsafe impl<R: LayoutSpec> Storage<R> for AllocStorage<R> {
     fn capacity(&self) -> usize {
         self.cap
     }
+    fn try_grow<I: Capacity>(
+        &mut self,
+        min_capacity: Option<usize>,
+    ) -> Result<Self, CapacityError> {
+        let (ptr, cap) = A::try_grow::<R, I>(self.cap, min_capacity)?;
+        Ok(AllocStorage {
+            ptr,
+            cap,
+            spec: PhantomData,
+        })
+    }
 }
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+impl<R: LayoutSpec, A: AllocPolicy> OwnedStorage<R> for AllocStorage<R, A> {
+    #[inline]
+    fn try_with_capacity(min_capacity: usize) -> Result<Self, CapacityError> {
+        Ok(Self::with_capacity(min_capacity))
+    }
+}
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+impl<R: LayoutSpec, A: AllocPolicy + Default> DefaultStorage<R> for AllocStorage<R, A> {
+    const UNINIT: Self = AllocStorage {
+        ptr: NonNull::dangling(),
+        cap: 0,
+        spec: PhantomData,
+    };
+}
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+/// Alias for a reallocating Storage type with the default behavior.
+pub type ReallocStorage<R> = AllocStorage<R, ExpGrow>;
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
@@ -429,4 +582,22 @@ unsafe impl<T, const C: usize> Storage<ArrayLayout<T>> for InlineStorage<T, C> {
     fn capacity(&self) -> usize {
         C
     }
+    fn supported_capacity<I: Capacity>() -> bool {
+        C <= I::MAX_REPRESENTABLE
+    }
+}
+
+impl<T, const C: usize> OwnedStorage<ArrayLayout<T>> for InlineStorage<T, C> {
+    #[inline]
+    fn try_with_capacity(min_capacity: usize) -> Result<Self, CapacityError> {
+        if min_capacity > C {
+            CapacityError::new()
+        } else {
+            unsafe { MaybeUninit::uninit().assume_init() }
+        }
+    }
+}
+
+impl<T, const C: usize> DefaultStorage<ArrayLayout<T>> for InlineStorage<T, C> {
+    const UNINIT: Self = unsafe { MaybeUninit::uninit().assume_init() };
 }

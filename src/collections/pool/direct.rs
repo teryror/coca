@@ -21,6 +21,8 @@ union Slot<T, I: Capacity> {
 /// The [`LayoutSpec`] for a [`DirectPool`].
 pub struct DirectPoolLayout<T, H>(PhantomData<(T, H)>);
 impl<T, H: Handle> LayoutSpec for DirectPoolLayout<T, H> {
+    type Item = (T, H::Index, u32);
+
     fn layout_with_capacity(items: usize) -> Result<Layout, LayoutError> {
         let item_array = Layout::array::<Slot<T, H::Index>>(items)?;
         let gen_count_array = Layout::array::<u32>(items)?;
