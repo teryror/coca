@@ -9,10 +9,11 @@ use core::iter::FusedIterator;
 use core::marker::PhantomData;
 use core::ops::{Index, IndexMut, Range};
 
-use crate::storage::{
-    buffer_too_large_for_index_type, mut_ptr_at_index, normalize_range, ptr_at_index, ArrayLayout, Capacity, Storage,
-};
 use crate::collections::vec::Vec;
+use crate::storage::{
+    buffer_too_large_for_index_type, mut_ptr_at_index, normalize_range, ptr_at_index, ArrayLayout,
+    Capacity, Storage,
+};
 
 /// A double-ended queue implemented with a ring buffer.
 ///
@@ -323,15 +324,15 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Deque<T, S, I> {
 
     /// Prepends an element to the front of the `Deque`, replacing and returning
     /// the back element if the `Deque` is already full.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// let mut deque = coca::collections::InlineDeque::<&'static str, 2>::new();
-    /// 
+    ///
     /// assert!(deque.force_push_front("Alice").is_none());
     /// assert!(deque.force_push_front("Bob").is_none());
     /// assert_eq!(deque.force_push_front("Charlie"), Some("Alice"));
-    /// 
+    ///
     /// assert_eq!(deque[0], "Charlie");
     /// assert_eq!(deque[1], "Bob");
     /// ```
@@ -382,15 +383,15 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Deque<T, S, I> {
 
     /// Appends an element to the back of the `Deque`, replacing and returning
     /// the front element if the `Deque` is already full.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// let mut deque = coca::collections::InlineDeque::<&'static str, 2>::new();
-    /// 
+    ///
     /// assert!(deque.force_push_back("Hello").is_none());
     /// assert!(deque.force_push_back("World").is_none());
     /// assert_eq!(deque.force_push_back("Peace"), Some("Hello"));
-    /// 
+    ///
     /// assert_eq!(deque[0], "World");
     /// assert_eq!(deque[1], "Peace");
     /// ```
@@ -587,15 +588,21 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Deque<T, S, I> {
                 if distance_to_front > 0 {
                     let dst = mut_ptr_at_index(&mut self.buf, new_front);
                     let src = ptr_at_index(&self.buf, front);
-                    unsafe { core::ptr::copy(src, dst, 1); }
+                    unsafe {
+                        core::ptr::copy(src, dst, 1);
+                    }
 
                     let dst = mut_ptr_at_index(&mut self.buf, front);
                     let src = ptr_at_index(&self.buf, front + 1);
-                    unsafe { core::ptr::copy(src, dst, distance_to_front - 1); }
+                    unsafe {
+                        core::ptr::copy(src, dst, distance_to_front - 1);
+                    }
                 }
 
                 let ptr = mut_ptr_at_index(&mut self.buf, (new_front + index) % cap);
-                unsafe { ptr.write(value); }
+                unsafe {
+                    ptr.write(value);
+                }
             }
             (true, false, _) => {
                 // storage is contiguous, insertion point is in upper half
@@ -603,9 +610,13 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Deque<T, S, I> {
                 let physical_index = front + index;
                 let src = ptr_at_index(&self.buf, physical_index);
                 let dst = mut_ptr_at_index(&mut self.buf, physical_index + 1);
-                unsafe { core::ptr::copy(src, dst, distance_to_back); }
+                unsafe {
+                    core::ptr::copy(src, dst, distance_to_back);
+                }
                 let ptr = mut_ptr_at_index(&mut self.buf, physical_index);
-                unsafe { ptr.write(value); }
+                unsafe {
+                    ptr.write(value);
+                }
             }
             (false, true, false) => {
                 // storage is not contiguous, insertion point is in lower half and does not wrap
@@ -839,11 +850,15 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Deque<T, S, I> {
 
             if retain {
                 let dst = mut_ptr_at_index(&mut self.buf, new_len % capacity);
-                unsafe { core::ptr::copy(src, dst, 1); }
+                unsafe {
+                    core::ptr::copy(src, dst, 1);
+                }
                 new_len += 1;
             } else {
                 let to_drop = mut_ptr_at_index(&mut self.buf, idx);
-                unsafe { core::ptr::drop_in_place(to_drop); }
+                unsafe {
+                    core::ptr::drop_in_place(to_drop);
+                }
             }
         }
 
@@ -868,11 +883,15 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Deque<T, S, I> {
 
         let src = ptr_at_index(&self.buf, front);
         let dst = mut_ptr_at_index(&mut self.buf, back % cap);
-        unsafe { core::ptr::copy(src, dst, first_count); }
+        unsafe {
+            core::ptr::copy(src, dst, first_count);
+        }
 
         let src = ptr_at_index(&self.buf, (front + first_count) % cap);
         let dst = mut_ptr_at_index(&mut self.buf, (back + first_count) % cap);
-        unsafe { core::ptr::copy(src, dst, mid - first_count); }
+        unsafe {
+            core::ptr::copy(src, dst, mid - first_count);
+        }
 
         self.front = I::from_usize((front + mid) % cap);
     }
@@ -895,11 +914,15 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Deque<T, S, I> {
 
         let src = ptr_at_index(&self.buf, (back - first_count) % cap);
         let dst = mut_ptr_at_index(&mut self.buf, (front + cap - first_count) % cap);
-        unsafe { core::ptr::copy(src, dst, first_count); }
+        unsafe {
+            core::ptr::copy(src, dst, first_count);
+        }
 
         let src = ptr_at_index(&self.buf, (back + cap - k) % cap);
         let dst = mut_ptr_at_index(&mut self.buf, (front + cap - k) % cap);
-        unsafe { core::ptr::copy(src, dst, k - first_count); }
+        unsafe {
+            core::ptr::copy(src, dst, k - first_count);
+        }
 
         self.front = I::from_usize((front + cap - k) % cap);
     }
@@ -1699,16 +1722,22 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Drop for Drain<'_, T, S, I> {
         if front >= cap || back <= cap {
             // remaining items are contiguous, drop as single slice
             let ptr = mut_ptr_at_index(&mut self.parent.buf, front % cap);
-            unsafe { core::ptr::slice_from_raw_parts_mut(ptr, back - front).drop_in_place(); }
+            unsafe {
+                core::ptr::slice_from_raw_parts_mut(ptr, back - front).drop_in_place();
+            }
         } else {
             // remaining items are discontiguous, account for wrapping
             let ptr = mut_ptr_at_index(&mut self.parent.buf, front);
             let len = cap - front;
-            unsafe { core::ptr::slice_from_raw_parts_mut(ptr, len).drop_in_place(); }
+            unsafe {
+                core::ptr::slice_from_raw_parts_mut(ptr, len).drop_in_place();
+            }
 
             let ptr = mut_ptr_at_index(&mut self.parent.buf, 0);
             let len = (back - front) - len;
-            unsafe { core::ptr::slice_from_raw_parts_mut(ptr, len).drop_in_place(); }
+            unsafe {
+                core::ptr::slice_from_raw_parts_mut(ptr, len).drop_in_place();
+            }
         }
 
         // 2. choose which portion of the unaffected items to shift over to close the gap
@@ -1732,7 +1761,9 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Drop for Drain<'_, T, S, I> {
                 // wrap point is outside relevant range, move back in one copy
                 let src = ptr_at_index(&self.parent.buf, target_end % cap);
                 let dst = mut_ptr_at_index(&mut self.parent.buf, target_start % cap);
-                unsafe { core::ptr::copy(src, dst, distance_to_back); }
+                unsafe {
+                    core::ptr::copy(src, dst, distance_to_back);
+                }
             }
             (true, false, false) => {
                 // wrap point is outside relevant range, move front in one copy
@@ -1741,58 +1772,76 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Drop for Drain<'_, T, S, I> {
 
                 let src = ptr_at_index(&self.parent.buf, front);
                 let dst = mut_ptr_at_index(&mut self.parent.buf, new_front);
-                unsafe { core::ptr::copy(src, dst, distance_to_front); }
+                unsafe {
+                    core::ptr::copy(src, dst, distance_to_front);
+                }
             }
             (false, true, false) => {
                 // wrap point is inside target range, move back in two copies
                 let fst_count = usize::min(cap - target_start, distance_to_back);
                 let src = ptr_at_index(&self.parent.buf, target_end % cap);
                 let dst = mut_ptr_at_index(&mut self.parent.buf, target_start % cap);
-                unsafe { core::ptr::copy(src, dst, fst_count); }
+                unsafe {
+                    core::ptr::copy(src, dst, fst_count);
+                }
 
                 let dst_idx = (target_start + fst_count) % cap;
                 let src = ptr_at_index(&self.parent.buf, (target_end + fst_count) % cap);
                 let dst = mut_ptr_at_index(&mut self.parent.buf, dst_idx);
-                unsafe { core::ptr::copy(src, dst, distance_to_back - fst_count); }
+                unsafe {
+                    core::ptr::copy(src, dst, distance_to_back - fst_count);
+                }
             }
             (true, true, false) => {
                 // wrap point is inside target range, move front in two copies
                 let fst_count = usize::min(target_end - cap, distance_to_front);
                 let src = ptr_at_index(&self.parent.buf, target_start - fst_count);
                 let dst = mut_ptr_at_index(&mut self.parent.buf, (target_end - fst_count) % cap);
-                unsafe { core::ptr::copy(src, dst, fst_count); }
+                unsafe {
+                    core::ptr::copy(src, dst, fst_count);
+                }
 
                 let new_front = (target_end - distance_to_front) % cap;
                 self.parent.front = I::from_usize(new_front);
 
                 let src = ptr_at_index(&self.parent.buf, front);
                 let dst = mut_ptr_at_index(&mut self.parent.buf, new_front);
-                unsafe { core::ptr::copy(src, dst, distance_to_front - fst_count); }
+                unsafe {
+                    core::ptr::copy(src, dst, distance_to_front - fst_count);
+                }
             }
             (false, false, true) => {
                 // wrap point is inside source range, move back in three copies
                 let fst_count = cap - target_end;
                 let src = ptr_at_index(&self.parent.buf, target_end);
                 let dst = mut_ptr_at_index(&mut self.parent.buf, target_start);
-                unsafe { core::ptr::copy(src, dst, fst_count); }
+                unsafe {
+                    core::ptr::copy(src, dst, fst_count);
+                }
 
                 let remaining = distance_to_back - fst_count;
                 let snd_count = usize::min(cap - (target_start + fst_count), remaining);
                 let src = ptr_at_index(&self.parent.buf, 0);
                 let dst = mut_ptr_at_index(&mut self.parent.buf, target_start + fst_count);
-                unsafe { core::ptr::copy(src, dst, snd_count); }
+                unsafe {
+                    core::ptr::copy(src, dst, snd_count);
+                }
 
                 let remaining = remaining - snd_count;
                 let src = ptr_at_index(&self.parent.buf, snd_count);
                 let dst = mut_ptr_at_index(&mut self.parent.buf, 0);
-                unsafe { core::ptr::copy(src, dst, remaining); }
+                unsafe {
+                    core::ptr::copy(src, dst, remaining);
+                }
             }
             (true, false, true) => {
                 // wrap point is inside source range, move front in three copies
                 let fst_count = target_start - cap;
                 let src = ptr_at_index(&self.parent.buf, 0);
                 let dst = mut_ptr_at_index(&mut self.parent.buf, target_end - cap - fst_count);
-                unsafe { core::ptr::copy(src, dst, fst_count); }
+                unsafe {
+                    core::ptr::copy(src, dst, fst_count);
+                }
 
                 let remaining = distance_to_front - fst_count;
                 let snd_count = usize::min(target_end - cap - fst_count, remaining);
@@ -1800,7 +1849,9 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Drop for Drain<'_, T, S, I> {
 
                 let src = ptr_at_index(&self.parent.buf, cap - snd_count);
                 let dst = mut_ptr_at_index(&mut self.parent.buf, dst_idx);
-                unsafe { core::ptr::copy(src, dst, snd_count); }
+                unsafe {
+                    core::ptr::copy(src, dst, snd_count);
+                }
 
                 let new_front = (front + (target_end - target_start)) % cap;
                 self.parent.front = I::from_usize(new_front);
@@ -1808,7 +1859,9 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Drop for Drain<'_, T, S, I> {
                 let remaining = remaining - snd_count;
                 let src = ptr_at_index(&self.parent.buf, front);
                 let dst = mut_ptr_at_index(&mut self.parent.buf, new_front);
-                unsafe { core::ptr::copy(src, dst, remaining); }
+                unsafe {
+                    core::ptr::copy(src, dst, remaining);
+                }
             }
             (_, true, true) => {
                 // wrap point cannot be in both the source and target ranges!
@@ -2001,7 +2054,9 @@ mod tests {
                             core::mem::MaybeUninit::<Droppable>::uninit(),
                             core::mem::MaybeUninit::<Droppable>::uninit(),
                         ];
-                        let mut deque = crate::collections::SliceDeque::<Droppable>::from(&mut backing_region[..]);
+                        let mut deque = crate::collections::SliceDeque::<Droppable>::from(
+                            &mut backing_region[..],
+                        );
 
                         for _ in 0..offset {
                             deque.push_front(drop_count.new_droppable(()));

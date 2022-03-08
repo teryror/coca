@@ -262,7 +262,8 @@ mod tests {
 
         let drop_count = DropCounter::new();
         {
-            let mut obj: InlineObject<dyn Debug, 8> = InlineObject::new(drop_count.new_droppable(()));
+            let mut obj: InlineObject<dyn Debug, 8> =
+                InlineObject::new(drop_count.new_droppable(()));
             obj.set(drop_count.new_droppable(()));
             assert_eq!(drop_count.dropped(), 1);
         }

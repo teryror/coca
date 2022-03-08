@@ -1,14 +1,14 @@
 //! Forgetful map data structures.
-//! 
+//!
 //! Useful for approximate search tasks and caching the results of expensive
 //! computations.
 
 #![allow(clippy::cast_possible_truncation)]
 
-use core::{borrow::Borrow, cell::Cell};
 use core::hash::{BuildHasher, BuildHasherDefault, Hash, Hasher};
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
+use core::{borrow::Borrow, cell::Cell};
 
 use crate::storage::{ArrayLayout, InlineStorage, Storage};
 
@@ -19,23 +19,23 @@ pub trait CacheLine<K: Eq, V> {
     /// The maximum number of entries that can be cached in a line.
     const CAPACITY: usize;
     /// Initialize the pointed to cache line to be empty.
-    /// 
+    ///
     /// # Safety
     /// Implementors may assume the provided pointer to be valid and non-null;
     /// they may *not* assume the referenced memory to be initialized.
     unsafe fn init(this: *mut Self);
     /// Returns a reference to the value corresponding to the key.
-    /// 
+    ///
     /// The key may be any borrowed form of the cache's key type, but [`Eq`] on
     /// the borrowed form *must* match that of the key type.
     fn get<Q: Borrow<K>>(&self, k: &Q) -> Option<&V>;
     /// Returns a mutable reference to the value corresponding to the key.
-    /// 
+    ///
     /// The key may be any borrowed form of the cache's key type, but [`Eq`] on
     /// the borrowed form *must* match that of the key type.
     fn get_mut<Q: Borrow<K>>(&mut self, k: &Q) -> Option<&mut V>;
     /// Inserts a key-value pair into the cache line.
-    /// 
+    ///
     /// If the cache line is already full, another key-value pair must be
     /// evicted from the cache line and returned. Otherwise returns [`None`].
     fn insert(&mut self, k: K, v: V) -> Option<(K, V)>;
@@ -49,18 +49,18 @@ pub trait CacheLine<K: Eq, V> {
 }
 
 /// The smallest possible cache, storing only the single most recently accessed key-value pair.
-/// 
+///
 /// Intended primarily for use as the [`CacheLine`] type `L` of a [`CacheTable`].
-/// 
+///
 /// # Examples
 /// ```
 /// use coca::collections::cache::{UnitCache, CacheLine};
 /// let mut cache = UnitCache::<&'static str, i32>::default();
-/// 
+///
 /// assert!(cache.get(&"hello").is_none());
 /// assert!(cache.insert("hello", 1).is_none());
 /// assert_eq!(cache.get(&"hello"), Some(&1));
-/// 
+///
 /// assert_eq!(cache.insert("world", 2), Some(("hello", 1)));
 /// assert_eq!(cache.get(&"world"), Some(&2));
 /// assert!(cache.get(&"hello").is_none());
@@ -89,7 +89,9 @@ impl<K: Eq, V> CacheLine<K, V> for UnitCache<K, V> {
     }
 
     fn get<Q: Borrow<K>>(&self, k: &Q) -> Option<&V> {
-        if !self.occupied { return None; }
+        if !self.occupied {
+            return None;
+        }
         let my_key = unsafe { &*self.key.as_ptr() };
         if my_key == k.borrow() {
             Some(unsafe { &*self.value.as_ptr() })
@@ -99,7 +101,9 @@ impl<K: Eq, V> CacheLine<K, V> for UnitCache<K, V> {
     }
 
     fn get_mut<Q: Borrow<K>>(&mut self, k: &Q) -> Option<&mut V> {
-        if !self.occupied { return None; }
+        if !self.occupied {
+            return None;
+        }
         let my_key = unsafe { &*self.key.as_ptr() };
         if my_key == k.borrow() {
             Some(unsafe { &mut *self.value.as_mut_ptr() })
@@ -109,12 +113,10 @@ impl<K: Eq, V> CacheLine<K, V> for UnitCache<K, V> {
     }
 
     fn insert(&mut self, k: K, v: V) -> Option<(K, V)> {
-        let evicted = self.occupied.then(|| {
-            unsafe {
-                let key = self.key.as_ptr().read();
-                let value = self.value.as_ptr().read();
-                (key, value)
-            }
+        let evicted = self.occupied.then(|| unsafe {
+            let key = self.key.as_ptr().read();
+            let value = self.value.as_ptr().read();
+            (key, value)
         });
 
         self.occupied = true;
@@ -189,10 +191,10 @@ macro_rules! get_methods {
                     return Some(unsafe { &*self.values[i].as_ptr() });
                 }
             }
-    
+
             None
         }
-    
+
         fn get_mut<Q: Borrow<K>>(&mut self, k: &Q) -> Option<&mut V> {
             for i in 0..self.len() {
                 let my_key = unsafe { &*self.keys[i].as_ptr() };
@@ -201,29 +203,29 @@ macro_rules! get_methods {
                     return Some(unsafe { &mut *self.values[i].as_mut_ptr() });
                 }
             }
-    
+
             None
         }
-    }
+    };
 }
 
 /// A cache storing the two most recently accessed key-value pairs.
-/// 
+///
 /// Intended primarily for use as the [`CacheLine`] type `L` of a [`CacheTable`].
-/// 
+///
 /// # Examples
 /// ```
 /// use coca::collections::cache::{LruCache2, CacheLine};
 /// let mut cache = LruCache2::<i32, &'static str>::default();
-/// 
+///
 /// assert!(cache.get(&1).is_none());
 /// assert!(cache.insert(1, "A").is_none());
 /// assert_eq!(cache.get(&1), Some(&"A"));
-/// 
+///
 /// assert!(cache.get(&2).is_none());
 /// assert!(cache.insert(2, "B").is_none());
 /// assert_eq!(cache.get(&1), Some(&"A")); // Entry 1 is now most recently used...
-/// 
+///
 /// assert_eq!(cache.insert(3, "C"), Some((2, "B"))); // ...so entry 2 will be evicted first.
 /// assert_eq!(cache.get(&1), Some(&"A"));
 /// assert_eq!(cache.get(&3), Some(&"C"));
@@ -279,11 +281,9 @@ impl<K: Eq, V> CacheLine<K, V> for LruCache2<K, V> {
             let my_key = unsafe { &*self.keys[i].as_ptr() };
             if my_key == k.borrow() {
                 self.mark_used(i);
-                
-                let evicted = unsafe {(
-                    self.keys[i].as_ptr().read(),
-                    self.values[i].as_ptr().read()
-                )};
+
+                let evicted =
+                    unsafe { (self.keys[i].as_ptr().read(), self.values[i].as_ptr().read()) };
 
                 self.keys[i] = MaybeUninit::new(k);
                 self.values[i] = MaybeUninit::new(v);
@@ -370,18 +370,18 @@ impl<K, V> Drop for LruCache2<K, V> {
 }
 
 /// A map implemented with an array of [`CacheLine`]s indexed by the keys' [`Hash`].
-/// 
+///
 /// The choice of cache line type has several implications for runtime performance,
 /// memory overhead, and caching behavior:
-/// 
+///
 /// * Using [`UnitCache`] requires an additional [`bool`] per cache slot for tracking
 ///   occupancy, and results in a direct-mapped cache.
 /// * Using [`LruCache2`] results in a 2-way set-associative cache with a least
 ///   recently used eviction policy tracked per cache line with a single [`u8`].
-/// 
+///
 /// Note that the cache's capacity is always an integer multiple of the cache line's
 /// capacity.
-/// 
+///
 /// For `no_std` compatibility, no default hash builder is provided, but when using
 /// [`Hasher`] types implementing [`Default`], the constructors [`new`](CacheTable::new),
 /// and [`with_capacity`](CacheTable::with_capacity)
@@ -396,10 +396,16 @@ pub struct CacheTable<K: Eq, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, 
     values: PhantomData<V>,
 }
 
-impl<K: Eq, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H: Default> From<S> for CacheTable<K, V, S, L, H> {
+impl<K: Eq, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H: Default> From<S>
+    for CacheTable<K, V, S, L, H>
+{
     fn from(buf: S) -> Self {
         let mut result = CacheTable {
-            buf, hash_builder: H::default(), lines: PhantomData, keys: PhantomData, values: PhantomData,
+            buf,
+            hash_builder: H::default(),
+            lines: PhantomData,
+            keys: PhantomData,
+            values: PhantomData,
         };
         result.init_cache_lines();
         result
@@ -410,7 +416,9 @@ impl<K: Eq, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H> CacheTable<K, 
     fn init_cache_lines(&mut self) {
         let line_ptr = self.buf.get_mut_ptr().cast::<L>();
         for i in 0..self.buf.capacity() {
-            unsafe { L::init(line_ptr.add(i)); }
+            unsafe {
+                L::init(line_ptr.add(i));
+            }
         }
     }
 
@@ -433,14 +441,14 @@ impl<K: Eq, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H> CacheTable<K, 
     }
 
     /// Clears the cache, removing all key-value pairs.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # extern crate rustc_hash;
     /// use rustc_hash::FxHasher;
     /// use coca::collections::InlineDirectMappedCache;
     /// use core::hash::BuildHasherDefault;
-    /// 
+    ///
     /// let mut cache = InlineDirectMappedCache::<i32, &'static str, BuildHasherDefault<FxHasher>, 4>::new();
     /// cache.insert(1, "A");
     /// cache.clear();
@@ -456,11 +464,17 @@ impl<K: Eq, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H> CacheTable<K, 
     }
 }
 
-impl<K: Eq + Hash, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H: BuildHasher> CacheTable<K, V, S, L, H> {
+impl<K: Eq + Hash, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H: BuildHasher>
+    CacheTable<K, V, S, L, H>
+{
     /// Constructs a new cache table using the specified storage and hash builder.
     pub fn from_storage_and_hasher(buf: S, hash_builder: H) -> Self {
         let mut result = CacheTable {
-            buf, hash_builder, lines: PhantomData, keys: PhantomData, values: PhantomData,
+            buf,
+            hash_builder,
+            lines: PhantomData,
+            keys: PhantomData,
+            values: PhantomData,
         };
         result.init_cache_lines();
         result
@@ -473,17 +487,17 @@ impl<K: Eq + Hash, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H: BuildHa
     }
 
     /// Returns a reference to the value corresponding to the key.
-    /// 
+    ///
     /// The key may be any borrowed form of the map's key type, but [`Hash`]
     /// and [`Eq`] on the borrowed form *must* match those for the key type.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # extern crate rustc_hash;
     /// use rustc_hash::FxHasher;
     /// use coca::collections::InlineDirectMappedCache;
     /// use core::hash::BuildHasherDefault;
-    /// 
+    ///
     /// let mut cache = InlineDirectMappedCache::<i32, &'static str, BuildHasherDefault<FxHasher>, 4>::new();
     /// cache.insert(1, "A");
     /// assert_eq!(cache.get(&1), Some(&"A"));
@@ -497,14 +511,14 @@ impl<K: Eq + Hash, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H: BuildHa
     }
 
     /// Returns a mutable reference to the value corresponding to the key.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # extern crate rustc_hash;
     /// use rustc_hash::FxHasher;
     /// use coca::collections::InlineDirectMappedCache;
     /// use core::hash::BuildHasherDefault;
-    /// 
+    ///
     /// let mut cache = InlineDirectMappedCache::<i32, &'static str, BuildHasherDefault<FxHasher>, 4>::new();
     /// cache.insert(1, "A");
     /// if let Some(x) = cache.get_mut(&1) {
@@ -520,14 +534,14 @@ impl<K: Eq + Hash, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H: BuildHa
 
     /// Inserts a value computed from `f` into the cache if the given key is
     /// not present, then returns a reference to the value in the cache.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # extern crate rustc_hash;
     /// use rustc_hash::FxHasher;
     /// use coca::collections::InlineDirectMappedCache;
     /// use core::hash::BuildHasherDefault;
-    /// 
+    ///
     /// let mut cache = InlineDirectMappedCache::<i32, &'static str, BuildHasherDefault<FxHasher>, 4>::new();
     /// cache.insert(1, "A");
     /// assert_eq!(cache.get_or_insert_with(1, |_| "B"), &"A");
@@ -542,17 +556,17 @@ impl<K: Eq + Hash, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H: BuildHa
     }
 
     /// Inserts a key-value pair into the cache.
-    /// 
+    ///
     /// Returns the evicted key-value pair if the cache line corresponding to
     /// the key is already full, or [`None`] otherwise.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # extern crate rustc_hash;
     /// use rustc_hash::FxHasher;
     /// use coca::collections::InlineDirectMappedCache;
     /// use core::hash::BuildHasherDefault;
-    /// 
+    ///
     /// let mut cache = InlineDirectMappedCache::<i32, &'static str, BuildHasherDefault<FxHasher>, 4>::new();
     /// assert_eq!(cache.insert(37, "a"), None);
     /// assert_eq!(cache.insert(37, "b"), Some((37, "a")));
@@ -564,15 +578,19 @@ impl<K: Eq + Hash, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H: BuildHa
     }
 }
 
-impl<K: Eq, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H> Drop for CacheTable<K, V, S, L, H> {
+impl<K: Eq, V, S: Storage<ArrayLayout<L>>, L: CacheLine<K, V>, H> Drop
+    for CacheTable<K, V, S, L, H>
+{
     fn drop(&mut self) {
         self.clear();
     }
 }
 
-impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: BuildHasher, const N: usize> CacheTable<K, V, InlineStorage<L, N>, L, H> {
+impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: BuildHasher, const N: usize>
+    CacheTable<K, V, InlineStorage<L, N>, L, H>
+{
     /// Constructs a new, empty `CacheTable` using inline storage and the specified [`BuildHasher`].
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # extern crate rustc_hash;
@@ -583,22 +601,22 @@ impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: BuildHasher, const N: usize> CacheT
     /// ```
     pub fn with_hasher(hash_builder: H) -> Self {
         let mut result = CacheTable {
-            buf: unsafe {
-                MaybeUninit::uninit().assume_init()
-            },
+            buf: unsafe { MaybeUninit::uninit().assume_init() },
             hash_builder,
             lines: PhantomData,
             keys: PhantomData,
-            values: PhantomData
+            values: PhantomData,
         };
         result.init_cache_lines();
         result
     }
 }
 
-impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: Hasher + Default, const N: usize> CacheTable<K, V, InlineStorage<L, N>, L, BuildHasherDefault<H>> {
+impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: Hasher + Default, const N: usize>
+    CacheTable<K, V, InlineStorage<L, N>, L, BuildHasherDefault<H>>
+{
     /// Constructs a new, empty `CacheTable` using inline storage and the default [`BuildHasherDefault`].
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # extern crate rustc_hash;
@@ -613,14 +631,16 @@ impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: Hasher + Default, const N: usize> C
             hash_builder: BuildHasherDefault::default(),
             lines: PhantomData,
             keys: PhantomData,
-            values: PhantomData
+            values: PhantomData,
         };
         result.init_cache_lines();
         result
     }
 }
 
-impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: Hasher + Default, const N: usize> Default for CacheTable<K, V, InlineStorage<L, N>, L, BuildHasherDefault<H>> {
+impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: Hasher + Default, const N: usize> Default
+    for CacheTable<K, V, InlineStorage<L, N>, L, BuildHasherDefault<H>>
+{
     fn default() -> Self {
         Self::new()
     }
@@ -628,11 +648,13 @@ impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: Hasher + Default, const N: usize> D
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: BuildHasher> CacheTable<K, V, crate::storage::AllocStorage<ArrayLayout<L>>, L, H> {
+impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: BuildHasher>
+    CacheTable<K, V, crate::storage::AllocStorage<ArrayLayout<L>>, L, H>
+{
     /// Constructs a new, empty `CacheTable` with the specified [`BuildHasher`]
     /// and heap-allocated storage of the specified capacity, rounded up to the
     /// next largest multiple of `L::CAPACITY`.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # extern crate rustc_hash;
@@ -650,11 +672,13 @@ impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: BuildHasher> CacheTable<K, V, crate
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
-impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: Hasher + Default> CacheTable<K, V, crate::storage::AllocStorage<ArrayLayout<L>>, L, BuildHasherDefault<H>> {
+impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: Hasher + Default>
+    CacheTable<K, V, crate::storage::AllocStorage<ArrayLayout<L>>, L, BuildHasherDefault<H>>
+{
     /// Constructs a new, empty `CacheTable` with the default [`BuildHasherDefault`]
     /// and heap-allocated storage the specified capacity, rounded up to the next
     /// largest multiple of `L::CAPACITY`.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # extern crate rustc_hash;
@@ -663,7 +687,7 @@ impl<K: Eq + Hash, V, L: CacheLine<K, V>, H: Hasher + Default> CacheTable<K, V, 
     /// let mut cache = CacheTable::with_capacity(63);
     /// assert_eq!(cache.capacity(), 64);
     /// ```
-    pub fn with_capacity(capacity: usize, ) -> Self {
+    pub fn with_capacity(capacity: usize) -> Self {
         let capacity = (capacity + L::CAPACITY - 1) / L::CAPACITY;
         let buf = crate::storage::AllocStorage::with_capacity(capacity);
         let hash_builder = BuildHasherDefault::default();

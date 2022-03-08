@@ -9,8 +9,8 @@
 //! complexity. A binary heap can also be converted to a sorted vector in-place,
 //! allowing it to be used for an O(n log(n)) in-place heap sort.
 
-use crate::storage::{ArrayLayout, Capacity, Storage};
 use crate::collections::vec::{Drain, Vec};
+use crate::storage::{ArrayLayout, Capacity, Storage};
 
 use core::fmt::{self, Debug, Formatter};
 use core::iter::{FromIterator, FusedIterator};
@@ -438,7 +438,10 @@ impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> Iterator for DrainSorted<'
     }
 }
 
-impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> ExactSizeIterator for DrainSorted<'_, T, S, I> {}
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> ExactSizeIterator
+    for DrainSorted<'_, T, S, I>
+{
+}
 impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> FusedIterator for DrainSorted<'_, T, S, I> {}
 
 impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> Drop for DrainSorted<'_, T, S, I> {
@@ -471,7 +474,10 @@ impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> Iterator for IntoIterSorte
     }
 }
 
-impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> ExactSizeIterator for IntoIterSorted<T, S, I> {}
+impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> ExactSizeIterator
+    for IntoIterSorted<T, S, I>
+{
+}
 impl<T: Ord, S: Storage<ArrayLayout<T>>, I: Capacity> FusedIterator for IntoIterSorted<T, S, I> {}
 
 impl<T: Clone + Ord, S: Storage<ArrayLayout<T>>, I: Capacity> Clone for IntoIterSorted<T, S, I>
@@ -636,7 +642,9 @@ mod tests {
         }
 
         let mut backing_array = [MaybeUninit::<usize>::uninit(); 16];
-        let drop_log = RefCell::new(crate::collections::SliceVec::<_>::from(&mut backing_array[..]));
+        let drop_log = RefCell::new(crate::collections::SliceVec::<_>::from(
+            &mut backing_array[..],
+        ));
 
         let mut backing_region = [
             core::mem::MaybeUninit::<Droppable>::uninit(),

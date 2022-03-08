@@ -9,10 +9,11 @@
 //! from the Rust standard library Vec, and from `tinyvec::SliceVec` (Copyright
 //! (c) 2019 by Daniel "Lokathor" Gee).
 
-use crate::CapacityError;
 use crate::storage::{
-    buffer_too_large_for_index_type, mut_ptr_at_index, normalize_range, ptr_at_index, ArrayLayout, Capacity, Storage, InlineStorage,
+    buffer_too_large_for_index_type, mut_ptr_at_index, normalize_range, ptr_at_index, ArrayLayout,
+    Capacity, InlineStorage, Storage,
 };
+use crate::CapacityError;
 
 use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
 use core::hash::{Hash, Hasher};
@@ -118,12 +119,12 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     }
 
     /// Forces the length of the vector to `new_len`.
-    /// 
+    ///
     /// This is a low-level operation that does **not** maintain the normal
     /// invariants of `Vec`. Normally, changing the length of a vector is done
     /// using one of the safe operations, such as [`truncate`](Vec::truncate),
     /// [`extend`](Vec::extend), or [`clear`](Vec::clear).
-    /// 
+    ///
     /// # Safety
     /// * `new_len` must be less than or equal to `capacity()`.
     /// * All elements at `old_len..new_len` must be fully initialized.
@@ -182,25 +183,25 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     }
 
     /// Constructs and returns a new `Vec` from a slice of this vector's underlying storage.
-    /// 
+    ///
     /// ## Panics
     /// Panics if `at > capacity()`.
-    /// 
+    ///
     /// ## Examples
     /// ```
     /// use coca::collections::InlineVec;
     /// let mut v = InlineVec::<u32, 16>::new();
     /// v.extend(1..=12);
-    /// 
+    ///
     /// let mut tail = v.split_borrowed(10);
     /// assert_eq!(tail.capacity(), 6);
-    /// 
+    ///
     /// tail.push(13);
     /// assert_eq!(&tail, &[11, 12, 13]);
-    /// 
+    ///
     /// // Revoke the borrow on `v`:
     /// drop(tail);
-    /// 
+    ///
     /// // The split off elements are removed:
     /// assert_eq!(&v, &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     /// ```
@@ -224,76 +225,84 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
         let their_len = I::from_usize(self.len() - my_new_len.as_usize());
         let their_cap = self.capacity() - at;
         self.len = I::from_usize(my_new_len);
-        
+
         let data = self.buf.get_mut_ptr().cast::<MaybeUninit<T>>();
         unsafe {
             let buf = core::slice::from_raw_parts_mut(data.add(at), their_cap);
-            Vec { buf, len: their_len, elem: PhantomData }
+            Vec {
+                buf,
+                len: their_len,
+                elem: PhantomData,
+            }
         }
     }
 
     /// Returns the remaining empty space at the end of the vector as a slice of [`MaybeUninit<T>`].
-    /// 
+    ///
     /// The returned slice can be used to fill the vector with data before marking the data as initialized using [`set_len`](Vec::set_len).
-    /// 
+    ///
     /// # Examples
     /// ```
     /// use coca::collections::InlineVec;
-    /// 
+    ///
     /// // Allocate a vector big enough for 16 elements.
     /// let mut v = InlineVec::<u32, 16>::new();
-    /// 
+    ///
     /// // Initialize the first 3 elements.
     /// let uninit = v.spare_capacity_mut();
     /// uninit[0].write(1);
     /// uninit[1].write(2);
     /// uninit[2].write(3);
-    /// 
+    ///
     /// // Mark them as being initialized.
     /// unsafe { v.set_len(3); }
-    /// 
+    ///
     /// assert_eq!(&v, &[1, 2, 3]);
     /// # assert_eq!(v.spare_capacity_mut().len(), 13);
     /// ```
     pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
         let len = self.capacity() - self.len();
         unsafe {
-            let data = self.buf.get_mut_ptr().cast::<MaybeUninit<T>>().add(self.len());
+            let data = self
+                .buf
+                .get_mut_ptr()
+                .cast::<MaybeUninit<T>>()
+                .add(self.len());
             core::slice::from_raw_parts_mut(data, len)
         }
     }
 
     /// Returns the vector's contents as a slice of `T` and the remaining empty
     /// space at the end of the vector as a slice of [`MaybeUninit<T>`].
-    /// 
+    ///
     /// The returned spare capacity slice can be used to fill the vector with
     /// data before marking it as initialized using [`set_len`](Vec::set_len).
-    /// 
+    ///
     /// This is a low-level API, which should only be used with care for
     /// optimization purposes. If you need to append data to a `Vec`, consider
     /// using one of the safe methods such as [`push`](Vec::push), [`extend`](Vec::extend),
     /// [`extend_from_slice`](Vec::extend_from_slice), [`extend_from_within`](Vec::extend_from_within),
     /// [`insert`](Vec::insert), or [`append`](Vec::append).
-    /// 
+    ///
     /// # Examples
     /// ```
     /// use coca::collections::InlineVec;
-    /// 
+    ///
     /// // Allocate a vector big enough for 16 elements
     /// let mut v = InlineVec::<u32, 16>::new();
-    /// 
-    /// // Fill in the first 5 elements. 
+    ///
+    /// // Fill in the first 5 elements.
     /// v.extend(1..=5);
-    /// 
+    ///
     /// // Fill in the next 5 elements.
     /// let (init, uninit) = v.split_at_spare_mut();
     /// for (idx, val) in init.iter().enumerate() {
     ///     uninit[idx].write(val * 2);
     /// }
-    /// 
+    ///
     /// // Mark the new elements as being initialized.
     /// unsafe { v.set_len(10); }
-    /// 
+    ///
     /// assert_eq!(&v, &[1, 2, 3, 4, 5, 2, 4, 6, 8, 10]);
     /// ```
     pub fn split_at_spare_mut(&mut self) -> (&mut [T], &mut [MaybeUninit<T>]) {
@@ -305,7 +314,8 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
             let initialized = core::slice::from_raw_parts_mut(initialized_data, initialized_len);
 
             let uninitialized_data = base_ptr.cast::<MaybeUninit<T>>().add(initialized_len);
-            let uninitialized = core::slice::from_raw_parts_mut(uninitialized_data, uninitialized_len);
+            let uninitialized =
+                core::slice::from_raw_parts_mut(uninitialized_data, uninitialized_len);
             (initialized, uninitialized)
         }
     }
@@ -362,7 +372,9 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
         }
 
         let len = self.len();
-        unsafe { mut_ptr_at_index(&mut self.buf, len).write(value); }
+        unsafe {
+            mut_ptr_at_index(&mut self.buf, len).write(value);
+        }
 
         self.len = I::from_usize(len + 1);
         Ok(())
@@ -411,7 +423,9 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
         }
 
         for i in new_len..old_len {
-            unsafe { mut_ptr_at_index(&mut self.buf, i).drop_in_place(); }
+            unsafe {
+                mut_ptr_at_index(&mut self.buf, i).drop_in_place();
+            }
         }
 
         self.len = len;
@@ -556,37 +570,42 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     }
 
     /// Appends as many elements from `iter` to the `Vec` as possible.
-    /// 
+    ///
     /// Returns the iterator of remaining elements if the vector is filled, or
     /// `None` if the iterator runs out of elements first.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// use coca::collections::InlineVec;
     /// let mut v = InlineVec::<u32, 5>::new();
-    /// 
+    ///
     /// assert_eq!(v.extend_to_capacity(1..=3), None);
     /// assert_eq!(&v, &[1, 2, 3]);
-    /// 
+    ///
     /// assert_eq!(v.extend_to_capacity(4..=6), Some(6..=6));
     /// assert_eq!(&v, &[1, 2, 3, 4, 5]);
-    /// 
+    ///
     /// v.clear();
-    /// 
+    ///
     /// // If the iterator and remaining space run out at the same time,
     /// // Some(empty_iterator) is returned:
     /// let mut iter = v.extend_to_capacity(1..=5).unwrap();
     /// assert!(iter.next().is_none());
     /// assert!(v.is_full());
     /// ```
-    pub fn extend_to_capacity<It: core::iter::IntoIterator<Item = T>>(&mut self, iter: It) -> Option<It::IntoIter> {
+    pub fn extend_to_capacity<It: core::iter::IntoIterator<Item = T>>(
+        &mut self,
+        iter: It,
+    ) -> Option<It::IntoIter> {
         let mut new_len = self.len();
         let ptr = self.as_mut_ptr();
-        
+
         let mut iter = iter.into_iter();
         while new_len < self.capacity() {
             if let Some(value) = iter.next() {
-                unsafe { ptr.add(new_len).write(value); }
+                unsafe {
+                    ptr.add(new_len).write(value);
+                }
                 new_len += 1;
             } else {
                 self.len = I::from_usize(new_len);
@@ -751,11 +770,11 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
 
     /// Creates an iterator which uses a closure to determine if an element
     /// should be removed.
-    /// 
+    ///
     /// If the closure returns `true`, the element is removed and yielded.
     /// If the closure returns `false`, the element will remain in the vector
     /// and will not be yielded by the iterator.
-    /// 
+    ///
     /// When the iterator **is** dropped, all remaining items matching the
     /// filter are removed from the vector, even if the iterator was not fully
     /// consumed. If the iterator **is not** dropped (with [`core::mem::forget`]
@@ -776,17 +795,20 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     /// }
     /// assert_eq!(vec, [2, 6, 10]);
     /// ```
-    pub fn drain_filter<F: FnMut(I, &mut T) -> bool>(&mut self, filter: F) -> DrainFilter<'_, T, S, I, F> {
+    pub fn drain_filter<F: FnMut(I, &mut T) -> bool>(
+        &mut self,
+        filter: F,
+    ) -> DrainFilter<'_, T, S, I, F> {
         self.drain_filter_range(.., filter)
     }
 
     /// Creates an iterator which uses a closure to determine if an element
     /// in the specified range should be removed.
-    /// 
+    ///
     /// If the closure returns `true`, the element is removed and yielded.
     /// If the closure returns `false`, the element will remain in the vector
     /// and will not be yielded by the iterator.
-    /// 
+    ///
     /// When the iterator **is** dropped, all remaining items matching the
     /// filter are removed from the vector, even if the iterator was not fully
     /// consumed. If the iterator **is not** dropped (with [`core::mem::forget`]
@@ -811,7 +833,11 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     /// }
     /// assert_eq!(vec, [1, 6, 5]);
     /// ```
-    pub fn drain_filter_range<R: RangeBounds<I>, F: FnMut(I, &mut T) -> bool>(&mut self, range: R, filter: F) -> DrainFilter<'_, T, S, I, F> {
+    pub fn drain_filter_range<R: RangeBounds<I>, F: FnMut(I, &mut T) -> bool>(
+        &mut self,
+        range: R,
+        filter: F,
+    ) -> DrainFilter<'_, T, S, I, F> {
         let Range { start, end } = normalize_range(range, self.len());
 
         // prevent leaking a DrainFilter from leaving the vector in
@@ -833,9 +859,9 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
 
 impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     /// Copies and appends all elements in a slice to the `Vec`.
-    /// 
+    ///
     /// Returns [`Err`] if the remaining space is insufficient.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// let mut backing_region = [core::mem::MaybeUninit::<u32>::uninit(); 5];
@@ -846,12 +872,14 @@ impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     ///     .expect_err("can't insert 3 elements into a 3-element vector with capacity 5");
     /// vec.try_extend_from_slice(&[4, 5])
     ///     .expect("must be able to insert 2 elements into a 3-element vector with capacity 5");
-    /// 
+    ///
     /// assert_eq!(&vec, &[1, 2, 3, 4, 5]);
     /// ```
     pub fn try_extend_from_slice(&mut self, other: &[T]) -> crate::Result<()> {
         let new_len = self.len() + other.len();
-        if new_len > self.capacity() { return CapacityError::new(); }
+        if new_len > self.capacity() {
+            return CapacityError::new();
+        }
 
         unsafe {
             let dst_ptr = self.as_mut_ptr().add(self.len());
@@ -865,7 +893,7 @@ impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     }
 
     /// Copies and appends all elements in a slice to the `Vec`.
-    /// 
+    ///
     /// # Panics
     /// Panics if the remaining space is insufficient. See
     /// [`try_extend_from_slice`](Vec::try_extend_from_slice) for a
@@ -873,25 +901,26 @@ impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     #[track_caller]
     #[inline]
     pub fn extend_from_slice(&mut self, other: &[T]) {
-        self.try_extend_from_slice(other).expect("`vec.len() + other.len()` must be less than or equal to `vec.capacity()`");
+        self.try_extend_from_slice(other)
+            .expect("`vec.len() + other.len()` must be less than or equal to `vec.capacity()`");
     }
 
     /// Copies and inserts all elements from a slice at a given position in the `Vec`.
-    /// 
+    ///
     /// Returns [`Err`] if the remaining space is insufficient.
-    /// 
+    ///
     /// # Panics
     /// Panics if `idx` is out of bounds.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// let mut vec = coca::collections::InlineVec::<u32, 8>::new();
-    /// 
+    ///
     /// assert!(vec.try_insert_slice(0, &[1, 2, 5, 6]).is_ok());
     /// assert!(vec.try_insert_slice(2, &[3, 4]).is_ok());
     /// assert!(vec.try_insert_slice(6, &[7, 8, 9]).is_err());
     /// assert!(vec.try_insert_slice(6, &[7, 8]).is_ok());
-    /// 
+    ///
     /// assert_eq!(&vec, &[1, 2, 3, 4, 5, 6, 7, 8]);
     /// ```
     pub fn try_insert_slice(&mut self, idx: I, src: &[T]) -> crate::Result<()> {
@@ -933,23 +962,24 @@ impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     }
 
     /// Copies and inserts all elements from a slice at a given position in the `Vec`.
-    /// 
+    ///
     /// # Panics
     /// Panics if the remaining space is insufficient, or if `idx` is out of bounds.
     #[track_caller]
     #[inline]
     pub fn insert_slice(&mut self, idx: I, src: &[T]) {
-        self.try_insert_slice(idx, src).expect("`vec.len() + src.len()` must be less than or equal to `vec.capacity()`");
+        self.try_insert_slice(idx, src)
+            .expect("`vec.len() + src.len()` must be less than or equal to `vec.capacity()`");
     }
 
     /// Copies and appends elements from `src` range to the end of the `Vec`.
-    /// 
+    ///
     /// Returns [`Err`] if the remaining space is insufficient.
-    /// 
+    ///
     /// # Panics
     /// Panics if the starting point is greater than the end point or if the end
     /// point is greater than the length of the vector.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # fn test() -> coca::Result<()> {
@@ -981,7 +1011,7 @@ impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     }
 
     /// Copies and appends elements from `src` range to the end of the `Vec`.
-    /// 
+    ///
     /// # Panics
     /// Panics if the starting point is greater than the end point or if the end
     /// point is greater than the length of the vector, or if the remaining space
@@ -989,19 +1019,20 @@ impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     #[track_caller]
     #[inline]
     pub fn extend_from_within<R: RangeBounds<I>>(&mut self, src: R) {
-        self.try_extend_from_within(src).expect("`vec.len() + src.len` must be less than or equal to `vec.capacity()`");
+        self.try_extend_from_within(src)
+            .expect("`vec.len() + src.len` must be less than or equal to `vec.capacity()`");
     }
 
     /// Removes the specified range from the vector, and replaces it with a
     /// copy of the given slice. The given slice doesn't need to be the same
     /// length as the removed range.
-    /// 
+    ///
     /// Returns [`Err`] if the space remaining space is insufficient.
-    /// 
+    ///
     /// # Panics
     /// Panics if the starting point is greater than the end point or if the end
     /// point is greater than the length of the vector.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// let mut vec = coca::collections::InlineVec::<u32, 8>::new();
@@ -1010,7 +1041,11 @@ impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     /// assert!(vec.try_replace_range(.., &[1, 2, 3, 4, 5, 6, 7, 8, 9]).is_err());
     /// assert_eq!(&vec, &[1, 4, 1, 4, 1, 4]);
     /// ```
-    pub fn try_replace_range<R: RangeBounds<I>>(&mut self, range: R, replace_with: &[T]) -> crate::Result<()> {
+    pub fn try_replace_range<R: RangeBounds<I>>(
+        &mut self,
+        range: R,
+        replace_with: &[T],
+    ) -> crate::Result<()> {
         let Range { start, end } = normalize_range(range, self.len());
         let dst_count = end - start;
         let src_count = replace_with.len();
@@ -1024,7 +1059,7 @@ impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
                 let src_ptr = dst_ptr.add(dst_count) as *const T;
                 let dst_ptr = dst_ptr.add(src_count);
                 ptr::copy(src_ptr, dst_ptr, self.len() - end);
-                
+
                 let new_len = I::from_usize(self.len() - (dst_count - src_count));
                 self.set_len(new_len);
             }
@@ -1036,7 +1071,11 @@ impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
 
             unsafe {
                 let src_ptr = self.buf.get_ptr().cast::<T>().add(end);
-                let dst_ptr = self.buf.get_mut_ptr().cast::<T>().add(end + extra_space_needed);
+                let dst_ptr = self
+                    .buf
+                    .get_mut_ptr()
+                    .cast::<T>()
+                    .add(end + extra_space_needed);
                 ptr::copy(src_ptr, dst_ptr, self.len() - end);
 
                 let src_ptr = replace_with.as_ptr();
@@ -1054,13 +1093,14 @@ impl<T: Copy, S: Storage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     /// Removes the specified range from the vector, and replaces it with a
     /// copy of the given slice. The given slice doesn't need to be the same
     /// length as the removed range.
-    /// 
+    ///
     /// # Panics
     /// Panics if the starting point is greater than the end point or if the end
     /// point is greater than the length of the vector, or if the remaining space
     /// is insufficient.
     pub fn replace_range<R: RangeBounds<I>>(&mut self, range: R, replace_with: &[T]) {
-        self.try_replace_range(range, replace_with).expect("remaining space is insufficient");
+        self.try_replace_range(range, replace_with)
+            .expect("remaining space is insufficient");
     }
 }
 
@@ -1204,7 +1244,9 @@ where
     }
 }
 
-impl<V: PartialEq<T>, T, S: Storage<ArrayLayout<T>>, I: Capacity> PartialEq<Vec<T, S, I>> for &[V] {
+impl<V: PartialEq<T>, T, S: Storage<ArrayLayout<T>>, I: Capacity> PartialEq<Vec<T, S, I>>
+    for &[V]
+{
     #[inline]
     fn eq(&self, other: &Vec<T, S, I>) -> bool {
         &self[..] == other.as_slice()
@@ -1413,19 +1455,29 @@ impl<'p, T, S: Storage<ArrayLayout<T>>, I: Capacity> Drop for Drain<'p, T, S, I>
 
         let count = self.original_len - self.target_end;
         let src = unsafe { self.parent.as_slice().as_ptr().add(self.target_end) };
-        let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_start) };
-        unsafe { ptr::copy(src, dst, count); }
+        let dst = unsafe {
+            self.parent
+                .as_mut_slice()
+                .as_mut_ptr()
+                .add(self.target_start)
+        };
+        unsafe {
+            ptr::copy(src, dst, count);
+        }
 
         let removed = self.target_end - self.target_start;
         let new_len = I::from_usize(self.original_len - removed);
-        unsafe { self.parent.set_len(new_len); }
+        unsafe {
+            self.parent.set_len(new_len);
+        }
     }
 }
 
 /// An iterator which uses a closure to determine if an element should be removed.
-/// 
+///
 /// This struct is created by [`Vec::drain_filter`]. See its documentation for more.
-pub struct DrainFilter<'p, T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> {
+pub struct DrainFilter<'p, T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool>
+{
     parent: &'p mut Vec<T, S, I>,
     filter_fn: F,
     original_len: usize,
@@ -1435,7 +1487,9 @@ pub struct DrainFilter<'p, T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(
     target_end: usize,
 }
 
-impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Iterator for DrainFilter<'_, T, S, I, F> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Iterator
+    for DrainFilter<'_, T, S, I, F>
+{
     type Item = T;
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -1445,14 +1499,26 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> It
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.front_index != self.back_index {
-            let src = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.front_index) };
+            let src = unsafe {
+                self.parent
+                    .as_mut_slice()
+                    .as_mut_ptr()
+                    .add(self.front_index)
+            };
             let item = unsafe { src.as_mut().unwrap() };
             self.front_index += 1;
             if (self.filter_fn)(I::from_usize(self.front_index), item) {
                 return Some(unsafe { src.read() });
             }
-            let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_start) };
-            unsafe { ptr::copy(src as *const T, dst, 1); }
+            let dst = unsafe {
+                self.parent
+                    .as_mut_slice()
+                    .as_mut_ptr()
+                    .add(self.target_start)
+            };
+            unsafe {
+                ptr::copy(src as *const T, dst, 1);
+            }
             self.target_start += 1;
         }
 
@@ -1460,7 +1526,9 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> It
     }
 }
 
-impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> DoubleEndedIterator for DrainFilter<'_, T, S, I, F> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> DoubleEndedIterator
+    for DrainFilter<'_, T, S, I, F>
+{
     fn next_back(&mut self) -> Option<Self::Item> {
         while self.front_index != self.back_index {
             self.back_index -= 1;
@@ -1471,23 +1539,37 @@ impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Do
             }
             self.target_end -= 1;
             let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_end) };
-            unsafe { ptr::copy(src as *const T, dst, 1); }
+            unsafe {
+                ptr::copy(src as *const T, dst, 1);
+            }
         }
 
         None
     }
 }
 
-impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> FusedIterator for DrainFilter<'_, T, S, I, F> {}
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> FusedIterator
+    for DrainFilter<'_, T, S, I, F>
+{
+}
 
-impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Drop for DrainFilter<'_, T, S, I, F> {
+impl<T, S: Storage<ArrayLayout<T>>, I: Capacity, F: FnMut(I, &mut T) -> bool> Drop
+    for DrainFilter<'_, T, S, I, F>
+{
     fn drop(&mut self) {
         self.for_each(drop);
-        
+
         let count = self.original_len - self.target_end;
         let src = unsafe { self.parent.as_slice().as_ptr().add(self.target_end) };
-        let dst = unsafe { self.parent.as_mut_slice().as_mut_ptr().add(self.target_start) };
-        unsafe { ptr::copy(src, dst, count); }
+        let dst = unsafe {
+            self.parent
+                .as_mut_slice()
+                .as_mut_ptr()
+                .add(self.target_start)
+        };
+        unsafe {
+            ptr::copy(src, dst, count);
+        }
 
         let removed = self.target_end - self.target_start;
         let new_len = I::from_usize(self.original_len - removed);
@@ -1499,25 +1581,25 @@ impl<T, I: Capacity> crate::collections::SliceVec<'_, T, I> {
     /// Splits the underlying slice at the given position, reducing the capacity
     /// of the vector to `at`, and returns a new vector constructed from the
     /// split tail.
-    /// 
+    ///
     /// # Panics
     /// Panics if `at > capacity()`.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// let mut buf = [core::mem::MaybeUninit::uninit(); 16];
-    /// 
+    ///
     /// let mut v = coca::collections::SliceVec::<'_, u32>::from(&mut buf[..]);
     /// v.extend(1..=8);
     /// assert_eq!(v.capacity(), 16);
     /// assert_eq!(&v, &[1, 2, 3, 4, 5, 6, 7, 8]);
-    /// 
+    ///
     /// let end = v.split_and_shrink_to(12);
     /// assert_eq!(v.capacity(), 12);
     /// assert_eq!(&v, &[1, 2, 3, 4, 5, 6, 7, 8]);
     /// assert_eq!(end.capacity(), 4);
     /// assert_eq!(end.len(), 0);
-    /// 
+    ///
     /// let mid = v.split_and_shrink_to(4);
     /// assert_eq!(v.capacity(), 4);
     /// assert_eq!(&v, &[1, 2, 3, 4]);
@@ -1552,7 +1634,11 @@ impl<T, I: Capacity> crate::collections::SliceVec<'_, T, I> {
             self.len = I::from_usize(my_new_len);
             self.buf = my_new_buf;
 
-            Vec { len: their_len, buf: their_buf, elem: PhantomData }
+            Vec {
+                len: their_len,
+                buf: their_buf,
+                elem: PhantomData,
+            }
         }
     }
 }
@@ -1735,7 +1821,10 @@ mod tests {
         assert_eq!(size_of::<ArenaVec<u64, usize>>(), 3 * size_of::<usize>());
 
         #[cfg(feature = "alloc")]
-        assert_eq!(size_of::<crate::collections::AllocVec<u64, usize>>(), 3 * size_of::<usize>());
+        assert_eq!(
+            size_of::<crate::collections::AllocVec<u64, usize>>(),
+            3 * size_of::<usize>()
+        );
 
         assert_eq!(size_of::<InlineVec<u8, 8>>(), size_of::<usize>() + 8);
         assert_eq!(size_of::<InlineVec<u8, 99, u8>>(), 100);

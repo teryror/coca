@@ -67,14 +67,14 @@ pub unsafe trait Handle: Copy + Debug + Eq + Hash + Ord {
     const MAX_GENERATION: u32;
 
     /// Constructs a new handle from the storage location and generation count.
-    /// 
+    ///
     /// # Safety
     /// Implementors may assume the following preconditions:
-    /// 
+    ///
     /// * `index` is less than or equal to `MAX_INDEX`,
     /// * `generation` is less than or equal to `MAX_GENERATION`,
     /// * `generation` is odd.
-    /// 
+    ///
     /// Violating these requirements may cause undefined behavior.
     unsafe fn new(index: usize, generation: u32) -> Self;
     /// Returns the storage location and generation count packed into the handle.

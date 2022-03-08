@@ -36,7 +36,10 @@ pub(crate) fn buffer_too_large_for_index_type<I: Capacity>() {
     );
 }
 
-pub(crate) fn normalize_range<I: Capacity, R: RangeBounds<I>>(range: R, max_end: usize) -> Range<usize> {
+pub(crate) fn normalize_range<I: Capacity, R: RangeBounds<I>>(
+    range: R,
+    max_end: usize,
+) -> Range<usize> {
     use core::ops::Bound;
     let start = match range.start_bound() {
         Bound::Included(x) => x.as_usize(),
@@ -49,8 +52,18 @@ pub(crate) fn normalize_range<I: Capacity, R: RangeBounds<I>>(range: R, max_end:
         Bound::Unbounded => max_end,
     };
 
-    assert!(end <= max_end, "invalid range specifier: end (is {:?}) is greater than {:?}", end, max_end);
-    assert!(start <= end, "invalid range specifier: start (is {:?}) is greater than end (is {:?})", start, end);
+    assert!(
+        end <= max_end,
+        "invalid range specifier: end (is {:?}) is greater than {:?}",
+        end,
+        max_end
+    );
+    assert!(
+        start <= end,
+        "invalid range specifier: start (is {:?}) is greater than end (is {:?})",
+        start,
+        end
+    );
 
     Range { start, end }
 }

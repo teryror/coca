@@ -32,7 +32,7 @@ impl<T, H: Handle> LayoutSpec for PackedPoolLayout<T, H> {
 }
 
 /// A densely packed object pool with constant capacity.
-/// 
+///
 /// See the [super module documentation](crate::collections::pool) for information on
 /// pool-based memory management, and [this module's documentation](crate::collections::pool::packed)
 /// for details on this variation of it.
@@ -67,10 +67,14 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> From<S> for PackedPool<T,
         }
 
         let sentinel = H::Index::from_usize(Self::FREE_LIST_SENTINEL);
-        unsafe { *ptr = sentinel; }
+        unsafe {
+            *ptr = sentinel;
+        }
 
         // initialize generation counters:
-        unsafe { core::ptr::write_bytes(result.counters_mut(), 0x00, cap); }
+        unsafe {
+            core::ptr::write_bytes(result.counters_mut(), 0x00, cap);
+        }
 
         result
     }
@@ -95,7 +99,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
         let values_array = Layout::array::<T>(cap).unwrap();
         let handles_array = Layout::array::<H>(cap).unwrap();
         let (_, offset) = values_array.extend(handles_array).unwrap();
-        
+
         let base_ptr = self.buf.get_ptr();
         unsafe { base_ptr.add(offset) }.cast()
     }
@@ -106,7 +110,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
         let values_array = Layout::array::<T>(cap).unwrap();
         let handles_array = Layout::array::<H>(cap).unwrap();
         let (_, offset) = values_array.extend(handles_array).unwrap();
-        
+
         let base_ptr = self.buf.get_mut_ptr();
         unsafe { base_ptr.add(offset) }.cast()
     }
@@ -196,7 +200,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     }
 
     /// Returns a slice of all values currently held in the pool in arbitrary order.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use coca::collections::PackedInlinePool;
@@ -204,7 +208,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// let h0 = pool.insert(0);
     /// let h1 = pool.insert(1);
     /// let h2 = pool.insert(2);
-    /// 
+    ///
     /// let values = pool.values();
     /// assert_eq!(values.len(), 3);
     /// assert!(values.contains(&0));
@@ -217,7 +221,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     }
 
     /// Returns a mutable slice of all values currently held in the pool in an arbitrary order.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use coca::collections::PackedInlinePool;
@@ -225,11 +229,11 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// let h0 = pool.insert(0);
     /// let h1 = pool.insert(1);
     /// let h2 = pool.insert(2);
-    /// 
+    ///
     /// for v in pool.values_mut() {
     ///     *v *= 10;
     /// }
-    /// 
+    ///
     /// assert_eq!(pool.get(h0), Some(&0));
     /// assert_eq!(pool.get(h1), Some(&10));
     /// assert_eq!(pool.get(h2), Some(&20));
@@ -240,7 +244,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     }
 
     /// Returns a slice of all handles currently valid for the pool in an arbitrary order.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use coca::collections::PackedInlinePool;
@@ -248,7 +252,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// let h0 = pool.insert(0);
     /// let h1 = pool.insert(1);
     /// let h2 = pool.insert(2);
-    /// 
+    ///
     /// let handles = pool.handles();
     /// assert_eq!(handles.len(), 3);
     /// assert!(handles.contains(&h0));
@@ -263,23 +267,23 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// Returns a slice of all handles currently valid for the pool, and a
     /// mutable slice of all values it currently holds, in matching arbitrary
     /// order.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use coca::collections::PackedInlinePool;
     /// let mut pool = PackedInlinePool::<u128, 16>::new();
     /// let h0 = pool.insert(0);
     /// let h1 = pool.insert(1);
-    /// 
+    ///
     /// let (handles, values) = pool.handles_and_values_mut();
     /// assert_eq!(handles.len(), 2);
     /// assert_eq!(values.len(), 2);
-    /// 
+    ///
     /// let handles_copy = [handles[0], handles[1]];
     /// for v in values {
     ///     *v *= 10;
     /// }
-    /// 
+    ///
     /// for &h in &handles_copy {
     ///     if h == h0 { assert_eq!(pool.get(h), Some(&0)); }
     ///     else if h == h1 { assert_eq!(pool.get(h), Some(&10)); }
@@ -300,7 +304,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     }
 
     /// Returns [`true`] if the specified handle is valid for this pool.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use coca::collections::PackedInlinePool;
@@ -321,7 +325,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     }
 
     /// Returns a reference to the value corresponding to the handle.
-    /// 
+    ///
     /// Returns [`None`] if the handle is invalid for this pool.
     pub fn get(&self, handle: H) -> Option<&T> {
         let (index, input_gen_count) = handle.into_raw_parts();
@@ -335,13 +339,15 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
         }
 
         let packed_index = unsafe {
-            self.next_free_slot_or_packed_index_array().add(index).read()
+            self.next_free_slot_or_packed_index_array()
+                .add(index)
+                .read()
         };
         unsafe { self.values_ptr().add(packed_index.as_usize()).as_ref() }
     }
 
     /// Returns a mutable reference to the value corresponding to the handle.
-    /// 
+    ///
     /// Returns [`None`] if the handle is invalid for this pool.
     pub fn get_mut(&mut self, handle: H) -> Option<&mut T> {
         let (index, input_gen_count) = handle.into_raw_parts();
@@ -355,17 +361,19 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
         }
 
         let packed_index = unsafe {
-            self.next_free_slot_or_packed_index_array().add(index).read()
+            self.next_free_slot_or_packed_index_array()
+                .add(index)
+                .read()
         };
         unsafe { self.values_mut_ptr().add(packed_index.as_usize()).as_mut() }
     }
 
     /// Returns mutable references to the values corresponding to the specified
     /// handles.
-    /// 
+    ///
     /// Returns [`None`] if any of the handles are invalid, or if any two of
     /// them are equal to each other.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use coca::collections::PackedInlinePool;
@@ -373,13 +381,13 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// let ha = pool.insert("apple");
     /// let hb = pool.insert("berry");
     /// let hc = pool.insert("coconut");
-    /// 
+    ///
     /// assert!(pool.get_disjoint_mut([ha, ha]).is_none());
-    /// 
+    ///
     /// if let Some([a, c]) = pool.get_disjoint_mut([ha, hc]) {
     ///     core::mem::swap(a, c);
     /// }
-    /// 
+    ///
     /// assert_eq!(pool.get(ha), Some(&"coconut"));
     /// assert_eq!(pool.get(hb), Some(&"berry"));
     /// assert_eq!(pool.get(hc), Some(&"apple"));
@@ -425,9 +433,9 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     }
 
     /// Inserts a value into the pool, returning a unique handle to access it.
-    /// 
+    ///
     /// Returns `Err(value)` if the pool is already at capacity.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use coca::collections::PackedInlinePool;
@@ -450,20 +458,26 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
             debug_assert_eq!(gen_count % 2, 1);
             gen_count_ptr.write(gen_count);
 
-            let slot_ptr = self.next_free_slot_or_packed_index_array_mut().add(insert_position);
+            let slot_ptr = self
+                .next_free_slot_or_packed_index_array_mut()
+                .add(insert_position);
             self.next_free_slot = slot_ptr.read();
             slot_ptr.write(packed_insert_position);
 
             let handle = H::new(insert_position, gen_count);
-            self.handles_mut_ptr().add(packed_insert_position.as_usize()).write(handle);
-            self.values_mut_ptr().add(packed_insert_position.as_usize()).write(value);
-            
+            self.handles_mut_ptr()
+                .add(packed_insert_position.as_usize())
+                .write(handle);
+            self.values_mut_ptr()
+                .add(packed_insert_position.as_usize())
+                .write(value);
+
             Ok(handle)
         }
     }
 
     /// Inserts a value into the pool, returning a unique handle to access it.
-    /// 
+    ///
     /// # Panics
     /// Panics if the pool is already full. See [`try_insert`](PackedPool::try_insert)
     /// for a checked version.
@@ -484,9 +498,9 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// Inserts a value given by `f` into the pool. The handle where the value
     /// will be stored is passed into `f`. This is useful for storing values
     /// containing their own handle.
-    /// 
+    ///
     /// Returns [`None`] if the pool is already full, without calling `f`.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use coca::collections::{pool::DefaultHandle, PackedInlinePool};
@@ -509,14 +523,20 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
             debug_assert_eq!(gen_count % 2, 1);
             gen_count_ptr.write(gen_count);
 
-            let slot_ptr = self.next_free_slot_or_packed_index_array_mut().add(insert_position);
+            let slot_ptr = self
+                .next_free_slot_or_packed_index_array_mut()
+                .add(insert_position);
             self.next_free_slot = slot_ptr.read();
             slot_ptr.write(packed_insert_position);
 
             let handle = H::new(insert_position, gen_count);
-            self.handles_mut_ptr().add(packed_insert_position.as_usize()).write(handle);
-            self.values_mut_ptr().add(packed_insert_position.as_usize()).write(f(handle));
-            
+            self.handles_mut_ptr()
+                .add(packed_insert_position.as_usize())
+                .write(handle);
+            self.values_mut_ptr()
+                .add(packed_insert_position.as_usize())
+                .write(f(handle));
+
             Some(handle)
         }
     }
@@ -536,7 +556,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
 
     /// Removes the value referred to by the specified handle from the pool,
     /// returning it unless the handle is invalid. This invalidates the handle.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use coca::collections::PackedInlinePool;
@@ -563,7 +583,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
 
         unsafe {
             gen_count_ptr.write(current_gen_count.wrapping_add(1));
-            
+
             let slot_ptr = self.next_free_slot_or_packed_index_array_mut().add(index);
             let packed_index = slot_ptr.read();
             slot_ptr.write(self.next_free_slot);
@@ -582,20 +602,22 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
                 core::ptr::copy(last, hole, 1);
 
                 let (index, _) = last.read().into_raw_parts();
-                self.next_free_slot_or_packed_index_array_mut().add(index).write(packed_index);
+                self.next_free_slot_or_packed_index_array_mut()
+                    .add(index)
+                    .write(packed_index);
             }
-            
+
             self.len = H::Index::from_usize(new_len);
             Some(result)
         }
     }
 
     /// Retains only the elements specified by the predicate.
-    /// 
+    ///
     /// In other words, remove all handle-value pairs `(h, t)` such that
     /// `f(h, &mut t)` returns false. This method invalidates any removed
     /// handles.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use coca::collections::PackedInlinePool;
@@ -616,14 +638,14 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     }
 
     /// Clears the pool, dropping all values. This invalidates all handles.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use coca::collections::{pool::DefaultHandle, PackedInlinePool};
     /// let mut pool = PackedInlinePool::<u16, 5>::new();
     /// for i in 0..5 { pool.insert(i); }
     /// assert!(pool.is_full());
-    /// 
+    ///
     /// pool.clear();
     /// assert!(pool.is_empty());
     /// ```
@@ -646,7 +668,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
 
     /// Creates an iterator visiting all handle-value pairs in arbitrary order,
     /// yielding `(H, &'a T)`.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use coca::collections::PackedInlinePool;
@@ -665,7 +687,12 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// assert_eq!(counts, [1, 1, 1]);
     /// ```
     pub fn iter(&self) -> Iter<'_, H, T> {
-        Iter { handles: self.handles_ptr(), values: self.values_ptr(), len: self.len(), pool: PhantomData }
+        Iter {
+            handles: self.handles_ptr(),
+            values: self.values_ptr(),
+            len: self.len(),
+            pool: PhantomData,
+        }
     }
 
     /// Creates an iterator visiting all handle-value pairs in arbitrary order,
@@ -688,7 +715,12 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// assert_eq!(pool[h3], 6);
     /// ```
     pub fn iter_mut(&mut self) -> IterMut<'_, H, T> {
-        IterMut { handles: self.handles_ptr(), values: self.values_mut_ptr(), len: self.len(), pool: PhantomData }
+        IterMut {
+            handles: self.handles_ptr(),
+            values: self.values_mut_ptr(),
+            len: self.len(),
+            pool: PhantomData,
+        }
     }
 
     /// Creates a draining iterator that removes all values from the pool and
@@ -698,7 +730,7 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     /// from the pool, even if the iterator was not fully consumed. If the
     /// iterator **is not** dropped (with [`core::mem::forget`] for example),
     /// it is unspecified how many elements are removed.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// # use coca::collections::PackedInlinePool;
@@ -745,12 +777,15 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> PackedPool<T, S, H> {
     ///
     /// assert_eq!(pool.len(), 5);
     /// ```
-    pub fn drain_filter<F: FnMut(H, &mut T) -> bool>(&mut self, filter_fn: F) -> DrainFilter<'_, T, S, H, F> {
+    pub fn drain_filter<F: FnMut(H, &mut T) -> bool>(
+        &mut self,
+        filter_fn: F,
+    ) -> DrainFilter<'_, T, S, H, F> {
         let last_visited = self.len();
         DrainFilter {
             pool: self,
             last_visited,
-            filter_fn
+            filter_fn,
         }
     }
 }
@@ -764,7 +799,8 @@ impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Index<H> for PackedPool<T
 
 impl<T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> IndexMut<H> for PackedPool<T, S, H> {
     fn index_mut(&mut self, handle: H) -> &mut Self::Output {
-        self.get_mut(handle).expect("indexed with invalid pool handle")
+        self.get_mut(handle)
+            .expect("indexed with invalid pool handle")
     }
 }
 
@@ -848,7 +884,9 @@ impl<'a, H, T: 'a> Iterator for Iter<'a, H, T> {
 impl<'a, T: 'a, H> ExactSizeIterator for Iter<'a, H, T> {}
 impl<'a, T: 'a, H> FusedIterator for Iter<'a, H, T> {}
 
-impl<'a, T: 'a, S: Storage<PackedPoolLayout<T, H>>, H: Handle> IntoIterator for &'a PackedPool<T, S, H> {
+impl<'a, T: 'a, S: Storage<PackedPoolLayout<T, H>>, H: Handle> IntoIterator
+    for &'a PackedPool<T, S, H>
+{
     type Item = (H, &'a T);
     type IntoIter = Iter<'a, H, T>;
 
@@ -891,7 +929,9 @@ impl<'a, H, T: 'a> Iterator for IterMut<'a, H, T> {
 impl<'a, T: 'a, H> ExactSizeIterator for IterMut<'a, H, T> {}
 impl<'a, T: 'a, H> FusedIterator for IterMut<'a, H, T> {}
 
-impl<'a, T: 'a, S: Storage<PackedPoolLayout<T, H>>, H: Handle> IntoIterator for &'a mut PackedPool<T, S, H> {
+impl<'a, T: 'a, S: Storage<PackedPoolLayout<T, H>>, H: Handle> IntoIterator
+    for &'a mut PackedPool<T, S, H>
+{
     type Item = (H, &'a mut T);
     type IntoIter = IterMut<'a, H, T>;
 
@@ -922,8 +962,14 @@ impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Iterator for Drain<'a
 
         let (index, gen_count) = handle.into_raw_parts();
         unsafe {
-            self.pool.counters_mut().add(index).write(gen_count.wrapping_add(1));
-            self.pool.next_free_slot_or_packed_index_array_mut().add(index).write(self.pool.next_free_slot);
+            self.pool
+                .counters_mut()
+                .add(index)
+                .write(gen_count.wrapping_add(1));
+            self.pool
+                .next_free_slot_or_packed_index_array_mut()
+                .add(index)
+                .write(self.pool.next_free_slot);
         }
 
         self.pool.next_free_slot = H::Index::from_usize(index);
@@ -937,60 +983,82 @@ impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Iterator for Drain<'a
     }
 }
 
-impl <'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Drop for Drain<'a, T, S, H> {
+impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> Drop for Drain<'a, T, S, H> {
     fn drop(&mut self) {
         self.pool.clear();
     }
 }
 
-impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> ExactSizeIterator for Drain<'a, T, S, H> {}
+impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> ExactSizeIterator
+    for Drain<'a, T, S, H>
+{
+}
 impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle> FusedIterator for Drain<'a, T, S, H> {}
 
 /// An iterator which uses a closure to determine if an element should be removed.
 ///
 /// This `struct` is created by [`PackedPool::drain_filter`], see its documentation for more.
-pub struct DrainFilter<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> {
+pub struct DrainFilter<
+    'a,
+    T,
+    S: Storage<PackedPoolLayout<T, H>>,
+    H: Handle,
+    F: FnMut(H, &mut T) -> bool,
+> {
     pool: &'a mut PackedPool<T, S, H>,
     last_visited: usize,
     filter_fn: F,
 }
 
-impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> Iterator for DrainFilter<'a, T, S, H, F> {
+impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> Iterator
+    for DrainFilter<'a, T, S, H, F>
+{
     type Item = (H, T);
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.last_visited > 0 {
             self.last_visited -= 1;
-    
+
             let handle = unsafe { self.pool.handles_ptr().add(self.last_visited).read() };
             let should_remove = unsafe {
                 let value_ref = &mut *self.pool.values_mut_ptr().add(self.last_visited);
                 (self.filter_fn)(handle, value_ref)
             };
 
-            if !should_remove { continue; }
+            if !should_remove {
+                continue;
+            }
             let new_len = self.pool.len() - 1;
             let value = unsafe { self.pool.values_ptr().add(self.last_visited).read() };
 
             let (index, gen_count) = handle.into_raw_parts();
             unsafe {
-                self.pool.counters_mut().add(index).write(gen_count.wrapping_add(1));
-                self.pool.next_free_slot_or_packed_index_array_mut().add(index).write(self.pool.next_free_slot);
+                self.pool
+                    .counters_mut()
+                    .add(index)
+                    .write(gen_count.wrapping_add(1));
+                self.pool
+                    .next_free_slot_or_packed_index_array_mut()
+                    .add(index)
+                    .write(self.pool.next_free_slot);
 
                 if index != new_len {
                     let value_src = self.pool.values_ptr().add(new_len);
                     let value_dst = self.pool.values_mut_ptr().add(self.last_visited);
                     core::ptr::copy(value_src, value_dst, 1);
-    
+
                     let handle_src = self.pool.handles_ptr().add(new_len);
                     let handle_dst = self.pool.handles_mut_ptr().add(self.last_visited);
                     core::ptr::copy(handle_src, handle_dst, 1);
 
                     let (index, _) = handle_src.read().into_raw_parts();
-                    self.pool.next_free_slot_or_packed_index_array_mut().add(index).write(H::Index::from_usize(self.last_visited));
+                    self.pool
+                        .next_free_slot_or_packed_index_array_mut()
+                        .add(index)
+                        .write(H::Index::from_usize(self.last_visited));
                 }
             }
-            
+
             self.pool.len = H::Index::from_usize(new_len);
             return Some((handle, value));
         }
@@ -999,14 +1067,22 @@ impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -
     }
 }
 
-impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> Drop for DrainFilter<'a, T, S, H, F> {
+impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> Drop
+    for DrainFilter<'a, T, S, H, F>
+{
     fn drop(&mut self) {
         self.for_each(drop);
     }
 }
 
-impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> ExactSizeIterator for DrainFilter<'a, T, S, H, F> {}
-impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool> FusedIterator for DrainFilter<'a, T, S, H, F> {}
+impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool>
+    ExactSizeIterator for DrainFilter<'a, T, S, H, F>
+{
+}
+impl<'a, T, S: Storage<PackedPoolLayout<T, H>>, H: Handle, F: FnMut(H, &mut T) -> bool>
+    FusedIterator for DrainFilter<'a, T, S, H, F>
+{
+}
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
@@ -1074,7 +1150,9 @@ pub struct InlineStorage<T, H: Handle, const N: usize> {
     next_free_slot_or_packed_index: [MaybeUninit<H::Index>; N],
 }
 
-unsafe impl<T, H: Handle, const N: usize> Storage<PackedPoolLayout<T, H>> for InlineStorage<T, H, N> {
+unsafe impl<T, H: Handle, const N: usize> Storage<PackedPoolLayout<T, H>>
+    for InlineStorage<T, H, N>
+{
     fn get_ptr(&self) -> *const u8 {
         (self as *const Self).cast()
     }
@@ -1151,13 +1229,14 @@ mod tests {
     use super::*;
     use crate::collections::pool::{DefaultHandle, Handle};
     use crate::storage::LayoutSpec;
-    use crate::{fmt, arena::Arena};
+    use crate::{arena::Arena, fmt};
 
     #[test]
     fn debug_impl() {
         let mut storage = [MaybeUninit::uninit(); 2048];
         let mut arena = Arena::from(&mut storage[..]);
-        let mut pool: crate::collections::PackedArenaPool<&'static str, DefaultHandle> = arena.with_capacity(4);
+        let mut pool: crate::collections::PackedArenaPool<&'static str, DefaultHandle> =
+            arena.with_capacity(4);
 
         let empty = fmt!(arena, "{:?}", pool).unwrap();
         assert_eq!(

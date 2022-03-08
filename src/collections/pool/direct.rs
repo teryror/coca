@@ -65,10 +65,14 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> From<S> for DirectPool<T,
         }
 
         let sentinel = H::Index::from_usize(Self::FREE_LIST_SENTINEL);
-        unsafe { (*ptr).next_free_slot = sentinel; }
+        unsafe {
+            (*ptr).next_free_slot = sentinel;
+        }
 
         // initialize generation counters:
-        unsafe { core::ptr::write_bytes(result.gen_counts_mut(), 0x00, cap); }
+        unsafe {
+            core::ptr::write_bytes(result.gen_counts_mut(), 0x00, cap);
+        }
 
         result
     }
@@ -702,7 +706,11 @@ impl<T, S: Storage<DirectPoolLayout<T, H>>, H: Handle> Drop for DirectPool<T, S,
         for i in 0..self.capacity() {
             unsafe {
                 if gen_ptr.add(i).read() % 2 == 1 {
-                    ManuallyDrop::drop((item_ptr.add(i).cast::<ManuallyDrop<T>>()).as_mut().unwrap());
+                    ManuallyDrop::drop(
+                        (item_ptr.add(i).cast::<ManuallyDrop<T>>())
+                            .as_mut()
+                            .unwrap(),
+                    );
                     num_to_drop -= 1;
                 }
             }
@@ -1175,7 +1183,9 @@ impl<T: Clone, H: Handle, const N: usize> Clone for DirectPool<T, InlineStorage<
 
         let src_counts = self.gen_counts();
         let dst_counts = result.gen_counts_mut();
-        unsafe { core::ptr::copy(src_counts, dst_counts, self.capacity()); }
+        unsafe {
+            core::ptr::copy(src_counts, dst_counts, self.capacity());
+        }
 
         let src_slots = self.slots();
         let dst_slots = result.slots_mut();
@@ -1204,7 +1214,7 @@ mod tests {
     use super::*;
     use crate::collections::pool::{DefaultHandle, Handle};
     use crate::storage::LayoutSpec;
-    use crate::{fmt, arena::Arena};
+    use crate::{arena::Arena, fmt};
 
     #[test]
     fn inline_storage_layout() {
@@ -1226,7 +1236,8 @@ mod tests {
     fn debug_impl() {
         let mut storage = [MaybeUninit::uninit(); 2048];
         let mut arena = Arena::from(&mut storage[..]);
-        let mut pool: crate::collections::DirectArenaPool<&'static str, DefaultHandle> = arena.with_capacity(4);
+        let mut pool: crate::collections::DirectArenaPool<&'static str, DefaultHandle> =
+            arena.with_capacity(4);
 
         let empty = fmt!(arena, "{:?}", pool).unwrap();
         assert_eq!(
@@ -1281,7 +1292,8 @@ mod tests {
 
         let mut storage = [MaybeUninit::uninit(); 2048];
         let mut arena = Arena::from(&mut storage[..]);
-        let mut pool: crate::collections::DirectArenaPool<Droppable, DefaultHandle> = arena.with_capacity(32);
+        let mut pool: crate::collections::DirectArenaPool<Droppable, DefaultHandle> =
+            arena.with_capacity(32);
 
         for _ in 0..1000 {
             let remaining_slots = pool.capacity() - pool.len();
