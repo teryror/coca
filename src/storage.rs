@@ -50,6 +50,7 @@ pub(crate) fn usize_exceeds_max_capacity<I: Capacity>() {
     );
 }
 
+#[inline]
 pub(crate) fn cast_capacity<I: Capacity>(capacity: usize) -> I {
     if capacity > I::MAX_REPRESENTABLE {
         usize_exceeds_max_capacity::<I>();
@@ -261,6 +262,8 @@ impl<T> LayoutSpec for ArrayLayout<T> {
 /// An interface to a contiguous memory block for use by data structures.
 #[allow(clippy::missing_safety_doc)] // individual methods _do_ have safety docs!
 pub unsafe trait Storage<R: LayoutSpec>: Sized {
+    /// The minimum capacity which must be indexable for this storage type.
+    const MIN_REPRESENTABLE: usize = 0;
     /// Extracts a pointer to the beginning of the memory block.
     ///
     /// # Safety
@@ -283,19 +286,16 @@ pub unsafe trait Storage<R: LayoutSpec>: Sized {
     /// Implementors must ensure the same value is returned every time this
     /// method is called throughout the block's lifetime.
     fn capacity(&self) -> usize;
-
     /// Try to grow a storage instance, reallocating when supported.
+    ///
+    /// # Safety
+    /// When supported, this method must return a new, non-overlapping
+    /// memory block without invalidating the current block.
     fn try_grow<I: Capacity>(
         &mut self,
         _min_capacity: Option<usize>,
     ) -> Result<Self, CapacityError> {
         CapacityError::new()
-    }
-
-    /// Check if a Capacity exceeds the inherent bounds of the Storage.
-    #[inline]
-    fn supported_capacity<I: Capacity>() -> bool {
-        true
     }
 }
 
@@ -380,6 +380,8 @@ unsafe impl<R: LayoutSpec> Storage<R> for ArenaStorage<'_, R> {
 }
 
 unsafe impl<R: LayoutSpec, S: Storage<R>> Storage<R> for crate::arena::Box<'_, S> {
+    const MIN_REPRESENTABLE: usize = S::MIN_REPRESENTABLE;
+
     #[inline]
     fn get_ptr(&self) -> *const u8 {
         (**self).get_ptr()
@@ -395,6 +397,8 @@ unsafe impl<R: LayoutSpec, S: Storage<R>> Storage<R> for crate::arena::Box<'_, S
 }
 
 unsafe impl<R: LayoutSpec, S: Storage<R>> Storage<R> for &mut S {
+    const MIN_REPRESENTABLE: usize = S::MIN_REPRESENTABLE;
+
     fn get_ptr(&self) -> *const u8 {
         (**self).get_ptr()
     }
@@ -573,6 +577,7 @@ unsafe impl<R: LayoutSpec, S: Storage<R>> Storage<R> for alloc::boxed::Box<S> {
 pub type InlineStorage<T, const C: usize> = [MaybeUninit<T>; C];
 
 unsafe impl<T, const C: usize> Storage<ArrayLayout<T>> for InlineStorage<T, C> {
+    const MIN_REPRESENTABLE: usize = C;
     fn get_ptr(&self) -> *const u8 {
         self.as_ptr().cast()
     }
@@ -581,9 +586,6 @@ unsafe impl<T, const C: usize> Storage<ArrayLayout<T>> for InlineStorage<T, C> {
     }
     fn capacity(&self) -> usize {
         C
-    }
-    fn supported_capacity<I: Capacity>() -> bool {
-        C <= I::MAX_REPRESENTABLE
     }
 }
 

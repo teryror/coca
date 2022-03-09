@@ -1155,6 +1155,7 @@ pub struct InlineStorage<T, H: Handle, const N: usize> {
 unsafe impl<T, H: Handle, const N: usize> Storage<PackedPoolLayout<T, H>>
     for InlineStorage<T, H, N>
 {
+    const MIN_REPRESENTABLE: usize = N;
     fn get_ptr(&self) -> *const u8 {
         (self as *const Self).cast()
     }

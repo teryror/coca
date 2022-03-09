@@ -1142,7 +1142,7 @@ impl<T, S: DefaultStorage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     /// ```
     #[inline]
     pub fn new() -> Self {
-        if !S::supported_capacity::<I>() {
+        if S::MIN_REPRESENTABLE > I::MAX_REPRESENTABLE {
             buffer_too_large_for_index_type::<I>();
         }
         Self::UNINIT
@@ -1156,7 +1156,7 @@ impl<T, S: OwnedStorage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
     /// Panics if the specified capacity cannot be represented by a `usize`
     /// or if the capacity exceeds the maximum supported by the backing Storage.
     pub fn with_capacity(capacity: I) -> Self {
-        if !S::supported_capacity::<I>() {
+        if S::MIN_REPRESENTABLE > I::MAX_REPRESENTABLE {
             buffer_too_large_for_index_type::<I>();
         }
         Vec {
