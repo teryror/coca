@@ -291,10 +291,7 @@ pub unsafe trait Storage<R: LayoutSpec>: Sized {
     /// # Safety
     /// When supported, this method must return a new, non-overlapping
     /// memory block without invalidating the current block.
-    fn try_grow<I: Capacity>(
-        &mut self,
-        _min_capacity: Option<usize>,
-    ) -> Result<Self, CapacityError> {
+    fn try_grow<I: Capacity>(&self, _min_capacity: Option<usize>) -> Result<Self, CapacityError> {
         CapacityError::new()
     }
 }
@@ -527,10 +524,7 @@ unsafe impl<R: LayoutSpec, A: AllocPolicy> Storage<R> for AllocStorage<R, A> {
     fn capacity(&self) -> usize {
         self.cap
     }
-    fn try_grow<I: Capacity>(
-        &mut self,
-        min_capacity: Option<usize>,
-    ) -> Result<Self, CapacityError> {
+    fn try_grow<I: Capacity>(&self, min_capacity: Option<usize>) -> Result<Self, CapacityError> {
         let (ptr, cap) = A::try_grow::<R, I>(self.cap, min_capacity)?;
         Ok(AllocStorage {
             ptr,
@@ -575,6 +569,11 @@ unsafe impl<R: LayoutSpec, S: Storage<R>> Storage<R> for alloc::boxed::Box<S> {
     }
     fn capacity(&self) -> usize {
         (**self).capacity()
+    }
+    fn try_grow<I: Capacity>(&self, min_capacity: Option<usize>) -> Result<Self, CapacityError> {
+        Ok(alloc::boxed::Box::new(
+            (**self).try_grow::<I>(min_capacity)?,
+        ))
     }
 }
 
