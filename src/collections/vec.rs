@@ -1150,11 +1150,28 @@ impl<T, S: DefaultStorage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
 }
 
 impl<T, S: OwnedStorage<ArrayLayout<T>>, I: Capacity> Vec<T, S, I> {
+    /// Constructs a new, empty Vec with the specified capacity, returning
+    /// an error if the capacity exceeds the maximum supported by the backing
+    /// Storage or the Capacity type cannot fully index the backing Storage.
+    #[inline]
+    pub fn try_with_capacity(capacity: I) -> Result<Self, CapacityError> {
+        if S::MIN_REPRESENTABLE > I::MAX_REPRESENTABLE {
+            CapacityError::new()
+        } else {
+            Ok(Vec {
+                len: I::ZERO,
+                buf: S::try_with_capacity(capacity.as_usize())?,
+                elem: PhantomData,
+            })
+        }
+    }
+
     /// Constructs a new, empty Vec with the specified capacity.
     ///
     /// # Panics
-    /// Panics if the specified capacity cannot be represented by a `usize`
+    /// Panics if the Capacity type cannot fully index the backing Storage,
     /// or if the capacity exceeds the maximum supported by the backing Storage.
+    #[inline]
     pub fn with_capacity(capacity: I) -> Self {
         if S::MIN_REPRESENTABLE > I::MAX_REPRESENTABLE {
             buffer_too_large_for_index_type::<I>();
@@ -1210,6 +1227,17 @@ impl<T: Clone, S: OwnedStorage<ArrayLayout<T>>, I: Capacity, const N: usize> Fro
     for Vec<T, S, I>
 {
     fn from(source: &[T; N]) -> Self {
+        let cap = cast_capacity(source.len());
+        let mut ret = Self::with_capacity(cap);
+        ret.extend(source.iter().cloned());
+        ret
+    }
+}
+
+impl<T: Clone, S: OwnedStorage<ArrayLayout<T>>, I: Capacity, const N: usize> From<&mut [T; N]>
+    for Vec<T, S, I>
+{
+    fn from(source: &mut [T; N]) -> Self {
         let cap = cast_capacity(source.len());
         let mut ret = Self::with_capacity(cap);
         ret.extend(source.iter().cloned());
