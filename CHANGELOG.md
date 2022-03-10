@@ -5,6 +5,7 @@
 
 - Make `Vec::set_len` public and implement `Vec::{spare_capacity_mut, split_at_spare_mut}`.
 - New methods `Vec::{extend_to_capacity, split_borrowed}`, `SliceVec::split_and_shrink_to`
+- Generalize implementations of `PartialEq`, `PartialOrd` for `arena::Box`.
 
 ## Bugfixes
 
