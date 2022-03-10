@@ -455,9 +455,9 @@ unsafe impl AllocPolicy for ExpGrow {
         from_capacity: usize,
         min_capacity: Option<usize>,
     ) -> Result<(NonNull<u8>, usize), CapacityError> {
-        let min_cap = min_capacity.unwrap_or(min_non_zero_cap::<R::Item>());
+        let min_cap = min_capacity.unwrap_or(0).max(min_non_zero_cap::<R::Item>());
         let cap = min_cap.max((from_capacity.saturating_mul(2)).min(I::MAX_REPRESENTABLE));
-        if cap == from_capacity || cap < min_cap {
+        if cap <= from_capacity || cap < min_cap {
             return CapacityError::new();
         }
 

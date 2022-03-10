@@ -1957,5 +1957,16 @@ mod tests {
 
         let v = ReallocVec::<u32>::from_iter([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
         assert_eq!(v.capacity(), 10);
+
+        // test initial capacities based on size_of<T>
+        let mut v = ReallocVec::<u8>::new();
+        v.push(1u8);
+        assert_eq!(v.capacity(), 8);
+        let mut v = ReallocVec::<u32>::new();
+        v.push(1u32);
+        assert_eq!(v.capacity(), 4);
+        let mut v = ReallocVec::<[u8; 1025]>::new();
+        v.push([1u8; 1025]);
+        assert_eq!(v.capacity(), 1);
     }
 }
