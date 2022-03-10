@@ -210,31 +210,31 @@ impl<T: ?Sized> Pointer for Box<'_, T> {
     }
 }
 
-impl<T: ?Sized + PartialEq> PartialEq for Box<'_, T> {
+impl<'a, 'b, T: ?Sized + PartialEq<U>, U: ?Sized> PartialEq<Box<'b, U>> for Box<'a, T> {
     #[inline]
-    fn eq(&self, other: &Box<'_, T>) -> bool {
+    fn eq(&self, other: &Box<'b, U>) -> bool {
         PartialEq::eq(&**self, &**other)
     }
 }
-impl<T: ?Sized + PartialOrd> PartialOrd for Box<'_, T> {
+impl< 'a, 'b, T: ?Sized + PartialOrd<U>, U: ?Sized > PartialOrd<Box<'b, U>> for Box<'a, T> {
     #[inline]
-    fn partial_cmp(&self, other: &Box<'_, T>) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Box<'b, U>) -> Option<Ordering> {
         PartialOrd::partial_cmp(&**self, &**other)
     }
     #[inline]
-    fn lt(&self, other: &Box<'_, T>) -> bool {
+    fn lt(&self, other: &Box<'b, U>) -> bool {
         PartialOrd::lt(&**self, &**other)
     }
     #[inline]
-    fn le(&self, other: &Box<'_, T>) -> bool {
+    fn le(&self, other: &Box<'b, U>) -> bool {
         PartialOrd::le(&**self, &**other)
     }
     #[inline]
-    fn ge(&self, other: &Box<'_, T>) -> bool {
+    fn ge(&self, other: &Box<'b, U>) -> bool {
         PartialOrd::ge(&**self, &**other)
     }
     #[inline]
-    fn gt(&self, other: &Box<'_, T>) -> bool {
+    fn gt(&self, other: &Box<'b, U>) -> bool {
         PartialOrd::gt(&**self, &**other)
     }
 }
