@@ -596,6 +596,21 @@ pub type ArenaVec<'a, T, I = usize> = Vec<T, ArenaStorage<'a, ArrayLayout<T>>, I
 /// ```
 pub type AllocVec<T, I = usize> = Vec<T, crate::storage::AllocStorage<ArrayLayout<T>>, I>;
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
+/// A heap-allocated vector which automatically reallocates.
+///
+/// # Examples
+/// ```
+/// let mut vec = coca::collections::ReallocVec::<char>::new();
+/// vec.push('a');
+/// vec.push('b');
+/// vec.push('c');
+/// assert_eq!(vec.len(), 3);
+/// assert_eq!(vec.capacity(), 4);
+/// ```
+pub type ReallocVec<T, I = usize> = Vec<T, crate::storage::ReallocStorage<ArrayLayout<T>>, I>;
+
 /// A vector using an inline array for storage.
 ///
 /// # Examples

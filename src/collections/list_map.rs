@@ -14,6 +14,8 @@ use self::Entry::{Occupied, Vacant};
 /// The [`LayoutSpec`] for a [`ListMap`].
 pub struct ListMapLayout<K, V>(PhantomData<(K, V)>);
 impl<K, V> LayoutSpec for ListMapLayout<K, V> {
+    type Item = (K, V);
+
     fn layout_with_capacity(items: usize) -> Result<Layout, LayoutError> {
         let keys_array = Layout::array::<K>(items)?;
         let values_array = Layout::array::<V>(items)?;
@@ -847,6 +849,8 @@ pub struct InlineStorage<K, V, const N: usize> {
 }
 
 unsafe impl<K, V, const N: usize> Storage<ListMapLayout<K, V>> for InlineStorage<K, V, N> {
+    const MIN_REPRESENTABLE: usize = N;
+
     fn get_ptr(&self) -> *const u8 {
         (self as *const Self).cast()
     }

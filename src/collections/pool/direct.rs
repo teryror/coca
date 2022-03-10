@@ -21,6 +21,8 @@ union Slot<T, I: Capacity> {
 /// The [`LayoutSpec`] for a [`DirectPool`].
 pub struct DirectPoolLayout<T, H>(PhantomData<(T, H)>);
 impl<T, H: Handle> LayoutSpec for DirectPoolLayout<T, H> {
+    type Item = (T, H::Index, u32);
+
     fn layout_with_capacity(items: usize) -> Result<Layout, LayoutError> {
         let item_array = Layout::array::<Slot<T, H::Index>>(items)?;
         let gen_count_array = Layout::array::<u32>(items)?;
@@ -1133,6 +1135,8 @@ pub struct InlineStorage<T, H: Handle, const N: usize> {
 unsafe impl<T, H: Handle, const N: usize> Storage<DirectPoolLayout<T, H>>
     for InlineStorage<T, H, N>
 {
+    const MIN_REPRESENTABLE: usize = N;
+
     #[inline]
     fn get_ptr(&self) -> *const u8 {
         (self as *const Self).cast()

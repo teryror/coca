@@ -55,7 +55,7 @@ macro_rules! removals {
         #[bench]
         fn $fnn(b: &mut Bencher) {
             let mut rng = SmallRng::seed_from_u64(0x5432_1012_3454_3210);
-            let mut pairs = coca::AllocVec::<(u32, u32), usize>::with_capacity($n);
+            let mut pairs = coca::collections::AllocVec::<(u32, u32), usize>::with_capacity($n);
             for _ in 0..$n {
                 pairs.push((rng.next_u32(), rng.next_u32()));
             }
@@ -77,7 +77,7 @@ macro_rules! removals {
 
 mod unordered {
     use super::*;
-    use coca::AllocVec;
+    use coca::collections::AllocVec;
     use std::collections::HashMap as StdHashMap;
 
     #[allow(unconditional_recursion)] // false positive!
@@ -167,7 +167,7 @@ mod unordered {
 
 mod ordered {
     use super::*;
-    use coca::AllocVec;
+    use coca::collections::AllocVec;
     use std::collections::BTreeMap;
 
     impl<K, V> Map<K, V> for BTreeMap<K, V>

@@ -17,6 +17,8 @@ use crate::storage::{Capacity, LayoutSpec, Storage};
 /// The [`LayoutSpec`] for a [`PackedPool`].
 pub struct PackedPoolLayout<T, H>(PhantomData<(T, H)>);
 impl<T, H: Handle> LayoutSpec for PackedPoolLayout<T, H> {
+    type Item = (T, H, u32, H::Index);
+
     fn layout_with_capacity(items: usize) -> Result<Layout, LayoutError> {
         let values_array = Layout::array::<T>(items)?;
         let handles_array = Layout::array::<H>(items)?;
@@ -1153,6 +1155,7 @@ pub struct InlineStorage<T, H: Handle, const N: usize> {
 unsafe impl<T, H: Handle, const N: usize> Storage<PackedPoolLayout<T, H>>
     for InlineStorage<T, H, N>
 {
+    const MIN_REPRESENTABLE: usize = N;
     fn get_ptr(&self) -> *const u8 {
         (self as *const Self).cast()
     }
