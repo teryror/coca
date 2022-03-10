@@ -411,6 +411,7 @@ unsafe impl<R: LayoutSpec, S: Storage<R>> Storage<R> for &mut S {
 }
 
 #[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 /// Policy for heap storage (re)allocation.
 pub unsafe trait AllocPolicy {
     #[inline]
@@ -425,14 +426,17 @@ pub unsafe trait AllocPolicy {
 }
 
 #[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 /// An allocation policy for constant capacity storage.
 pub struct NoResize;
 
 #[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 unsafe impl AllocPolicy for NoResize {}
 
 #[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 /// An allocation policy using exponential growth.
 pub struct ExpGrow;
@@ -449,6 +453,7 @@ const fn min_non_zero_cap<T>() -> usize {
 }
 
 #[cfg(feature = "alloc")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "alloc")))]
 unsafe impl AllocPolicy for ExpGrow {
     #[inline]
     fn try_grow<R: LayoutSpec, I: Capacity>(
